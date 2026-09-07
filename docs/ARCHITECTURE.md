@@ -1,8 +1,8 @@
 # Architecture
 
 This document records the accepted architecture and the proposed component
-boundaries. Except where noted in `STATUS.md`, these components are not yet
-implemented.
+boundaries. A minimal FastAPI health endpoint and React shell exist; except where
+noted in `STATUS.md`, the remaining components are not yet implemented.
 
 ## Runtime shape
 
@@ -150,11 +150,32 @@ Convenience `start.bat` and `start.sh` files may call the launcher, but core log
 must remain cross-platform Python. Docker may be optional later and is not the
 normal runtime architecture.
 
+## Installation and distribution
+
+Ordinary users must not need Python, Node.js, `uv`, or pnpm preinstalled. Two
+delivery paths serve different audiences:
+
+1. Source-checkout bootstrap scripts (`install.ps1` on Windows and `install.sh`
+   on macOS/Linux) download pinned tool versions into ignored project-local
+   storage, use `uv` to install the pinned Python line and locked Python
+   dependencies, download a pinned Node.js distribution, install the locked
+   frontend dependencies, and build the static client. Subsequent `start`
+   wrappers use only those local assets.
+2. Release artifacts will eventually bundle the built frontend, Python runtime,
+   backend, and dependencies into OS-specific packages. These are the preferred
+   non-developer experience and require neither Git nor a first-run toolchain
+   download.
+
+Bootstrapping must be idempotent, avoid administrator rights and global PATH
+changes, verify published checksums where available, fail with actionable errors,
+and never install credentials. Runtime versions and download origins are pinned
+and reviewed explicitly. Because native application bundlers are not
+cross-compilers, Windows, macOS, and Linux releases are built and tested on their
+respective operating systems.
+
 ## Development layout and tooling
 
-Python uses a `src/` layout and `uv`; the frontend lives under `frontend/`.
-`pytest` is the test runner, and external calls use fixtures/mocks in normal
-tests. A generated `uv.lock` and frontend lockfile are required before the
-application scaffold is considered reproducible. They are not committed yet
-because the required package managers were unavailable during foundation setup.
-
+Python uses a `src/` layout and `uv`; the frontend lives under `frontend/` and
+uses pnpm. `pytest` is the Python test runner, and external calls use fixtures or
+mocks in normal tests. Generated `uv.lock` and `pnpm-lock.yaml` files make both
+dependency sets reproducible.

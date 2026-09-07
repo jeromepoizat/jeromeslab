@@ -11,8 +11,8 @@ unresolved ideas in other documentation are not decisions.
 | [0004](adr/0004-single-worker-persistent-queue.md) | Persistent sequential queue with one V1 worker | Accepted |
 | [0005](adr/0005-native-credential-storage.md) | Native credential store and non-disclosure | Accepted |
 | [0006](adr/0006-llm-calls-as-provenance.md) | First-class LLM call and historical cost provenance | Accepted |
+| [0007](adr/0007-self-bootstrapping-installation.md) | No preinstalled language runtimes for ordinary users | Accepted |
 
 Routine implementation choices belong in code and tests. Add an ADR when a
 choice constrains future architecture, security, scientific validity, data
 compatibility, or user-visible workflow semantics.
-

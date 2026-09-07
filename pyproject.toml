@@ -21,6 +21,9 @@ dependencies = [
     "uvicorn>=0.34",
 ]
 
+[project.urls]
+Repository = "https://github.com/jeromepoizat/jeromeslab"
+
 [dependency-groups]
 dev = [
     "mypy>=1.14",
@@ -43,4 +46,3 @@ target-version = "py312"
 [tool.mypy]
 python_version = "3.12"
 strict = true
-

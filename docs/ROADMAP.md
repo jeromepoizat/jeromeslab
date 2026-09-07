@@ -11,11 +11,14 @@ documentation agree.
 - Establish minimal Python package, frontend location, and test location.
 - Bootstrap reproducible Python and frontend environments with generated
   lockfiles.
+- Add idempotent Windows and POSIX bootstrap scripts that install pinned runtimes
+  locally without administrator rights or global system changes.
 - Establish linting, type-checking, and test commands in CI.
 - Add contribution and development setup guidance after commands are verified.
 
-Exit criterion: a new contributor can install dependencies, run checks, and
-understand current scope without prior conversation.
+Exit criterion: a new contributor can clone and bootstrap without preinstalled
+language runtimes, run checks, and understand current scope without prior
+conversation.
 
 ## Milestone 1 — Local application shell
 
@@ -25,7 +28,13 @@ understand current scope without prior conversation.
 - SQLite initialization and Alembic migration path.
 - Python launcher: migration, local port selection, `127.0.0.1` binding, browser
   open, terminal logs.
+- `start.ps1` and `start.sh` wrappers that invoke the project-local runtime after
+  bootstrap.
 - Basic settings surface without secret persistence yet.
+
+After the local shell stabilizes, add CI-built OS-specific release packages that
+bundle the frontend, backend, Python runtime, and dependencies. Validate packaging
+on each target OS rather than treating it as a cross-compiled artifact.
 
 ## Milestone 2 — Projects
 
@@ -99,4 +108,3 @@ evidence extraction, reconciliation/weighting, and synthesis. Each stage needs a
 explicit schema, provenance contract, human-correction behavior, evaluation plan,
 and ADRs where choices affect scientific validity. In-silico research is beyond
 these milestones and has no committed design.
-

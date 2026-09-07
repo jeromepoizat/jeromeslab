@@ -4,20 +4,23 @@ Last updated: 2026-09-07
 
 ## Current milestone
 
-**Milestone 0 — Repository foundation.** The repository is documentation-first;
-there is no runnable application yet.
+**Milestone 0 — Repository foundation.** Dependency locking, local verification,
+and the first runnable smoke-test slice are complete; CI and contributor setup
+remain.
 
 ## Implementation state
 
 - Source-of-truth product, architecture, workflow, data-model, roadmap, status,
   and decision documentation now exists.
-- A minimal Python `src/` package and `pyproject.toml` declare the accepted backend
-  dependencies and development tools.
-- `frontend/` and `tests/` have documented placeholders only.
-- No API, database schema, migration, UI, launcher, provider adapter, queue, or
-  scientific workflow code has been implemented.
-- No dependency lockfiles have been generated and no automated checks can yet be
-  run in the current environment.
+- Python dependencies are resolved in `uv.lock` and installed in the ignored
+  local `.venv` using Python 3.12.
+- The React/TypeScript/Vite frontend is resolved in `frontend/pnpm-lock.yaml` and
+  installed in ignored `node_modules` using Node 24 and pnpm 11.
+- A minimal FastAPI `/api/health` endpoint, API smoke test, and React application
+  shell exist. The Vite development server binds to `127.0.0.1` and proxies the
+  API to port 8000.
+- No database schema, migration, launcher, settings persistence, provider adapter,
+  queue, project feature, or scientific workflow code has been implemented.
 
 ## Recently completed
 
@@ -26,30 +29,38 @@ there is no runnable application yet.
   storage, sequential jobs, secret handling, and LLM provenance/cost accounting.
 - Made later scientific stages explicitly design-in-progress rather than finalized.
 - Added repository guidance and ignores for secrets and runtime data.
+- Generated reproducible Python and frontend lockfiles and installed both
+  dependency sets.
+- Added a health endpoint, one backend smoke test, and the header-only client
+  shell as the first runnable integration slice.
+- Verified locked installs, Python lint/type/tests, and frontend lint/build on
+  Windows.
 
 ## Work in progress
 
-None. The next task should complete the reproducible development scaffold.
+Milestone 0 verification and CI setup.
 
 ## Immediate next tasks
 
-1. Install or make available `uv` and a Node package manager; confirm supported
-   Python and Node versions.
-2. Generate and commit `uv.lock`, scaffold React/TypeScript/Vite, and commit the
-   frontend lockfile without hand-writing generated dependency state.
-3. Add minimal lint, type-check, and test commands plus CI; verify them locally.
-4. Implement Milestone 1 as a small vertical slice: app-data location, SQLite
-   initialization/migration, health API, header-only client, local launcher.
-5. Resolve the first schema decisions immediately before their implementation,
+1. Implement idempotent `install.ps1` and `install.sh` bootstrap paths that
+   download pinned, checksum-verified runtimes locally and install from lockfiles.
+2. Add `start.ps1` and `start.sh` wrappers using only project-local assets.
+3. Add CI for bootstrap coverage, locked installs, Python lint/type/tests, and
+   frontend lint/build on Windows, Linux, and macOS.
+4. Add contribution guidance based on the verified bootstrap and check commands.
+5. Begin the remaining Milestone 1 slice: app-data location, SQLite
+   initialization/migration, and local launcher/browser opening.
+6. Add the initial settings/configuration boundary without storing credentials.
+7. Resolve the first schema decisions immediately before their implementation,
    recording an ADR only where the choice is architecturally significant.
 
 ## Known issues and blockers
 
-- `uv`, Python, and npm were unavailable on PATH during foundation setup; Node was
-  present. This blocks verified dependency locking and test execution, not design
-  documentation.
-- Supported minimum runtime versions have not been validated. `pyproject.toml`
-  currently proposes Python 3.12 or newer.
+- The current Codex shell exposes bundled Python, Node, and pnpm by absolute path
+  rather than PATH. A workspace-local ignored `uv` bootstrap was used. Normal
+  contributors should install the documented prerequisites on PATH.
+- Windows with Python 3.12, Node 24, pnpm 11, and uv 0.12 is the only environment
+  verified so far; Linux and macOS still require CI coverage.
 
 ## Open design questions and risks
 
@@ -66,4 +77,5 @@ None. The next task should complete the reproducible development scaffold.
   and synthesis structure.
 - Localhost security details such as session/CSRF protection before any mutating
   browser API is exposed.
-
+- Bootstrap supply-chain integrity, supported OS/CPU matrix, disk-space needs,
+  proxy/offline behavior, and the eventual native package/signing format.

@@ -12,11 +12,10 @@ the provenance and cost of every LLM-assisted transformation.
 
 ## Current status
 
-The repository is in **Milestone 0: repository foundation**. It contains the
-source-of-truth product, architecture, workflow, data-model, decision, roadmap,
-and status documentation plus a minimal Python package scaffold. There is not
-yet a runnable application. See [current status](docs/STATUS.md) before starting
-work.
+The repository is in **Milestone 0: repository foundation**. The Python and
+frontend environments are locked, and a minimal FastAPI health endpoint and
+React shell are runnable. Scientific workflow features are not implemented. See
+[current status](docs/STATUS.md) before starting work.
 
 ## Intended workflow
 
@@ -46,12 +45,59 @@ finalized.
 These are accepted directions, but most are not implemented yet. Details and
 status labels are in [Architecture](docs/ARCHITECTURE.md).
 
-## Install and run
+## Development setup
 
-The application cannot be installed or run yet. The next foundation task is to
-bootstrap and lock the Python and frontend projects, add a minimal health-check
-application, and document verified development commands. Planned development
-tooling is `uv` for Python and a standard Vite package workflow for the frontend.
+The commands below describe the currently verified developer setup. The accepted
+distribution requirement is a self-bootstrapping `install.ps1`/`install.sh` path
+with no preinstalled Python or Node.js, followed by self-contained native release
+packages. That bootstrap is the next implementation task; see
+[ADR 0007](docs/adr/0007-self-bootstrapping-installation.md).
+
+Prerequisites:
+
+- Python 3.12 or newer;
+- [`uv`](https://docs.astral.sh/uv/);
+- Node.js 20.19 or newer; and
+- [`pnpm`](https://pnpm.io/) 11 or newer.
+
+Install the locked dependencies:
+
+```shell
+uv sync --all-groups
+cd frontend
+pnpm install --frozen-lockfile
+```
+
+Run the backend from the repository root:
+
+```shell
+uv run uvicorn jeromes_laboratory.api.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+In another terminal, run the frontend:
+
+```shell
+cd frontend
+pnpm dev
+```
+
+Open `http://127.0.0.1:5173`. The final single-command launcher and automatic
+browser opening belong to Milestone 1.
+
+Run Python checks from the repository root:
+
+```shell
+uv run ruff check .
+uv run mypy src tests
+uv run pytest
+```
+
+Run frontend checks from `frontend/`:
+
+```shell
+pnpm lint
+pnpm build
+```
 
 ## Documentation
 
@@ -64,4 +110,3 @@ tooling is `uv` for Python and a standard Vite package workflow for the frontend
 - [Decision index](docs/DECISIONS.md)
 
 Jerome's Laboratory is licensed under the [Apache License 2.0](LICENSE).
-

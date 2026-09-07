@@ -5,6 +5,7 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .venv/
+.tools/
 dist/
 build/
 *.egg-info/
@@ -12,6 +13,7 @@ build/
 # Frontend
 frontend/node_modules/
 frontend/dist/
+frontend/.vite/
 
 # Local configuration and secrets
 .env
@@ -29,4 +31,3 @@ data/
 .vscode/
 .DS_Store
 Thumbs.db
-

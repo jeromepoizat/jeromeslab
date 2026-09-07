@@ -20,10 +20,10 @@ Keep these invariants unless a new, explicit decision supersedes them:
 - fork at a checkpoint instead of rewriting history with downstream dependents;
 - never store or return API secrets outside the native credential store;
 - execute at most one research job at a time in V1;
+- do not require end users to preinstall Python, Node.js, `uv`, or pnpm;
 - do not present later scientific stages as settled designs.
 
 After meaningful work, run proportionate checks and update `docs/STATUS.md`.
 Update other documentation only when its subject changed. Add an ADR for a
 meaningful architectural or product decision, not for routine implementation
 details.
-

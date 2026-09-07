@@ -27,6 +27,8 @@ question.
   provenance even after deduplication.
 - Remain cross-platform and useful to a single researcher without operating a
   server stack.
+- Let ordinary users install and run without first installing language runtimes
+  or package managers.
 
 ## Non-goals
 
@@ -73,4 +75,6 @@ job.
 7. **Honest uncertainty.** Unknown metadata remains unknown; incomplete usage
    produces unavailable or estimated cost, never false precision.
 8. **Incremental scientific design.** Only agreed early stages are authoritative.
-
+9. **Self-bootstrapping distribution.** Source-checkout bootstrap scripts install
+   pinned tools into project-local storage, while release packages eventually
+   bundle everything needed to run.
