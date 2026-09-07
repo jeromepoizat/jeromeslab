@@ -5,8 +5,9 @@ Last updated: 2026-09-07
 ## Current milestone
 
 **Milestone 0 — Repository foundation.** Self-bootstrapping installation works on
-Windows x64. Cross-platform CI is configured and awaits its first GitHub-hosted
-Linux/macOS run; contributor setup remains.
+Windows x64 and the first cross-platform CI run passed on GitHub-hosted Windows
+x64, Linux x64, and macOS ARM64 runners. Contributor setup and the remaining
+architecture combinations remain.
 
 ## Implementation state
 
@@ -25,7 +26,8 @@ Linux/macOS run; contributor setup remains.
   chooses an available port, waits for health, and opens the default browser. The
   backend serves the built frontend.
 - `.github/workflows/ci.yml` defines bootstrap and verification jobs on GitHub-
-  hosted Windows, Linux, and macOS runners. Remote results are not yet verified.
+  hosted Windows, Linux, and macOS runners. All three jobs passed in workflow run
+  `34129495327` for commit `dfea3dd`.
 - No database schema, migration, settings persistence, provider adapter, queue,
   project feature, or scientific workflow code has been implemented.
 
@@ -51,28 +53,29 @@ Linux/macOS run; contributor setup remains.
   for deterministic, zero-cost workflow demonstrations without paid-API fallback.
 - Added the first cross-platform GitHub Actions workflow and user-facing guidance
   for inspecting its operating-system jobs and logs.
+- Verified fresh and repeatable bootstrap, locked dependency installation, Python
+  checks, frontend lint, and frontend build on GitHub-hosted Windows x64, Linux
+  x64, and macOS ARM64 runners.
 
 ## Work in progress
 
-First GitHub-hosted cross-platform CI run and bootstrap verification.
+Contributor setup and remaining architecture coverage.
 
 ## Immediate next tasks
 
-1. Push the CI workflow and review all Windows, Linux, and macOS job logs; repair
-   any platform-specific archive, path, permission, or launcher issues.
-2. Add explicit ARM64 coverage after the standard hosted-runner matrix is green.
-3. Add `CONTRIBUTING.md` once the verified commands are stable.
-4. Begin the remaining Milestone 1 slice: app-data location and SQLite
+1. Add explicit Windows ARM64, Linux ARM64, and Intel macOS coverage.
+2. Add `CONTRIBUTING.md` using the now-verified bootstrap and check commands.
+3. Begin the remaining Milestone 1 slice: app-data location and SQLite
    initialization/migration.
-5. Add the initial settings/configuration boundary without storing credentials.
-6. Resolve the first schema decisions immediately before their implementation,
+4. Add the initial settings/configuration boundary without storing credentials.
+5. Resolve the first schema decisions immediately before their implementation,
    recording an ADR only where the choice is architecturally significant.
 
 ## Known issues and blockers
 
-- Windows x64 with the project-local Python 3.12, Node 24, pnpm 11, and uv 0.12
-  bootstrap is the only environment verified so far. Linux, macOS, and ARM64
-  still require CI or hardware coverage.
+- Windows ARM64, Linux ARM64, and Intel macOS bootstrap paths are declared but
+  have not yet run in CI. Native release packaging and graphical interaction also
+  still require later platform-specific testing beyond bootstrap CI.
 
 ## Open design questions and risks
 

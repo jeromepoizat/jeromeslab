@@ -87,7 +87,9 @@ script binds the server to `127.0.0.1`, chooses an available port, opens the
 default browser, and keeps terminal logs visible.
 
 The source bootstrap currently supports x64 and ARM64 Windows, macOS, and glibc-
-based Linux. Windows x64 is locally verified; the other paths await CI coverage.
+based Linux. Windows x64 is locally verified. The first GitHub Actions run also
+verified the current Windows x64, Linux x64, and macOS ARM64 hosted runners;
+Windows ARM64, Linux ARM64, and Intel macOS still need explicit matrix coverage.
 
 ## Manual developer setup (optional)
 
