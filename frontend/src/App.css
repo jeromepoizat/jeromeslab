@@ -135,6 +135,73 @@ main {
   padding: clamp(3rem, 10vw, 8rem) clamp(1.25rem, 4vw, 4rem);
 }
 
+.project-layout {
+  background: var(--background);
+  bottom: 0;
+  display: grid;
+  grid-template-columns: 16rem minmax(0, 1fr);
+  min-height: calc(100vh - 6.25rem);
+  overflow: auto;
+  position: fixed;
+  right: 0;
+  top: 6.35rem;
+  width: 100%;
+  z-index: 4;
+}
+
+.project-layout--collapsed {
+  grid-template-columns: 3.5rem minmax(0, 1fr);
+}
+
+.project-sidebar {
+  background: var(--surface-subtle);
+  border-right: 1px solid var(--border);
+  padding: 1.25rem 0.75rem;
+}
+
+.project-sidebar-header,
+.project-list-row {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.sidebar-toggle,
+.rename-project {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.sidebar-toggle { font-size: 1.5rem; }
+
+.new-project-button,
+.project-list-item {
+  background: transparent;
+  border: 0;
+  border-radius: 0.45rem;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  padding: 0.65rem 0.75rem;
+  text-align: left;
+}
+
+.new-project-button { font-weight: 700; margin: 1rem 0; width: 100%; }
+.new-project-button:hover, .project-list-item:hover, .project-list-item--selected { background: var(--surface-hover); }
+.project-list { display: grid; gap: 0.2rem; }
+.project-list-item { flex: 1; }
+.project-list-row input { max-width: 8rem; }
+
+.project-content { min-width: 0; padding: clamp(3rem, 10vw, 8rem) clamp(1.25rem, 4vw, 4rem); }
+.new-project-card, .project-view { max-width: 48rem; }
+.new-project-card h2, .project-view h2 { color: var(--ink); font-family: Georgia, 'Times New Roman', serif; font-size: clamp(1.75rem, 4vw, 2.75rem); font-weight: 500; letter-spacing: -0.035em; }
+.new-project-card textarea { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; box-sizing: border-box; color: var(--ink); font: inherit; line-height: 1.6; margin: 1rem 0; min-height: 12rem; padding: 1rem; resize: vertical; width: 100%; }
+.scientific-question { color: var(--ink); font-size: 1.2rem; line-height: 1.7; white-space: pre-wrap; }
+.project-input-note { color: var(--muted); line-height: 1.6; }
+
 .foundation-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -412,4 +479,11 @@ main {
   .settings-drawer {
     width: 100vw;
   }
+
+  .project-layout,
+  .project-layout--collapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .project-sidebar { border-bottom: 1px solid var(--border); border-right: 0; }
 }

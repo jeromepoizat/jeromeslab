@@ -17,6 +17,7 @@ from jeromes_laboratory.database.initialize import upgrade_database
 
 APPLICATION_NAME = "Jerome's Laboratory"
 CONFIGURATION_FILE_NAME = "workspace.json"
+CLIENT_STATE_FILE_NAME = "client-state.json"
 WORKSPACE_MARKER_NAME = ".jeromes-laboratory-workspace.json"
 DATABASE_FILE_NAME = "jeromes-laboratory.sqlite3"
 WORKSPACE_FORMAT_VERSION = 1
@@ -71,6 +72,37 @@ class WorkspaceService:
     def configuration_file(self) -> Path:
         """Return the small config file that points to the selected workspace."""
         return self._configuration_directory / CONFIGURATION_FILE_NAME
+
+    @property
+    def client_state_file(self) -> Path:
+        """Return the device-local, non-research interface-state file."""
+        return self._configuration_directory / CLIENT_STATE_FILE_NAME
+
+    def read_client_state(self) -> dict[str, object]:
+        """Read optional device UI state without making it critical to launch."""
+        try:
+            if not self.client_state_file.is_file():
+                return {}
+            content = json.loads(self.client_state_file.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return {}
+        return content if isinstance(content, dict) else {}
+
+    def write_client_state(self, selected_project_id: str | None, scroll_top: int) -> None:
+        """Persist the last project and its viewport position on this device only."""
+        if scroll_top < 0:
+            raise WorkspaceLocationError("The saved scroll position is invalid.")
+        try:
+            self._configuration_directory.mkdir(parents=True, exist_ok=True)
+            self._write_json_atomically(
+                self.client_state_file,
+                {
+                    "selected_project_id": selected_project_id,
+                    "scroll_top": scroll_top,
+                },
+            )
+        except OSError as error:
+            raise WorkspaceLocationError("The local interface state could not be saved.") from error
 
     @property
     def recommended_workspace_path(self) -> Path:

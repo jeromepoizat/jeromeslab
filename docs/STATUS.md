@@ -37,6 +37,11 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   SHA-256/size verification, then pointer switch; it never deletes the source.
 - The launcher coordinates one loopback backend process per user. A second start
   opens the existing healthy or starting instance and exits; stale records recover.
+- The application now has a projects-only left navigation panel, expanded by
+  default. The central area restores the last valid project and scroll position
+  from device-local UI state, or shows a minimal scientific-question/start form.
+  Projects receive sequential default tags (`PROJ001`, etc.); tags are mutable,
+  while the scientific question is protected as workflow input.
 - The header includes Settings with a confirmed **Forget workspace on this
   device** action. It removes only the saved workspace pointer and returns to the
   first-run screen; it does not delete the workspace database, artifacts, or files.
@@ -52,7 +57,7 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   six jobs passed in workflow run `34131271837` for commit `3a441ec`.
 - `CONTRIBUTING.md` documents source installation, launch, project-local checks,
   pull-request expectations, CI review, and project invariants.
-- No provider adapter, queue, project feature, or scientific workflow code has
+- No provider adapter, queue, or later scientific workflow execution code has
   been implemented.
 
 ## Recently completed
@@ -94,16 +99,18 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   behavior without deleting local research data.
 - Added single-instance launch coordination, missing-workspace recovery, and a
   verified, non-destructive single-workspace move operation.
+- Added the first persistent project shell with exact scientific-question input,
+  sequential project tags, sidebar tag renaming, and device-local view restore.
 
 ## Work in progress
 
-Preparing the next Milestone 1 local-shell slice.
+Preparing the next Milestone 1 workflow-entry slice.
 
 ## Immediate next tasks
 
-1. Verify the local-shell slice on the full cross-platform CI matrix.
-2. Add the next basic settings surface without secret persistence.
-3. Design the project and scientific workflow entry point.
+1. Verify the project-shell slice on the full cross-platform CI matrix.
+2. Add editable project notes without changing scientific workflow inputs.
+3. Design the first research-question decomposition step and its provider setup.
 
 ## Known issues and blockers
 

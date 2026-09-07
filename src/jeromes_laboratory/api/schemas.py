@@ -54,3 +54,43 @@ class WorkspaceMovedResponse(BaseModel):
 
     previous_workspace_path: str
     workspace_path: str
+
+
+class ProjectResponse(BaseModel):
+    """The initial durable research project state."""
+
+    id: str
+    tag: str
+    scientific_question: str
+    created_at: str
+    updated_at: str
+    question_is_editable: bool
+
+
+class CreateProjectRequest(BaseModel):
+    """The exact initial scientific question supplied by the user."""
+
+    scientific_question: str = Field(min_length=1, max_length=20_000)
+
+
+class RenameProjectRequest(BaseModel):
+    """A mutable display tag for a project."""
+
+    tag: str = Field(min_length=1, max_length=64)
+
+
+class UpdateQuestionRequest(BaseModel):
+    """A pre-workflow correction to the project scientific question."""
+
+    scientific_question: str = Field(min_length=1, max_length=20_000)
+
+
+class ClientStateResponse(BaseModel):
+    """Device-local navigation state, not research data."""
+
+    selected_project_id: str | None = None
+    scroll_top: int = Field(default=0, ge=0)
+
+
+class UpdateClientStateRequest(ClientStateResponse):
+    """The project and scroll location to restore on the next local launch."""

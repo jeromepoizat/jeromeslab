@@ -23,11 +23,15 @@ No scientific workflow step is implemented yet.
 
 ## Agreed early workflow
 
-### Step 0 — Scientific question (planned)
+### Step 0 — Scientific question (implemented as project creation)
 
 The user enters a scientific question in a large text field and starts a project.
-The exact original text becomes an immutable artifact. It is not normalized or
-rewritten in place.
+The initial project shell stores the exact text in the project record; an
+immutable artifact version will replace that storage representation when the
+artifact engine is implemented. The question is not normalized or rewritten in
+place once a started or completed workflow job uses it as input. Project tags
+remain separately mutable display metadata; users can also add notes later
+without altering the question.
 
 ### Step 1 — Research question decomposition (planned)
 
@@ -125,4 +129,3 @@ confidence language remain unresolved.
 
 In-silico drug discovery and related computation are long-term possibilities and
 are outside the current design scope.
-

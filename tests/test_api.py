@@ -123,6 +123,71 @@ async def test_move_workspace_api_keeps_original_data(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_projects_have_sequential_default_tags_and_mutable_display_tags(tmp_path: Path) -> None:
+    workspace_service = WorkspaceService(
+        configuration_directory=tmp_path / "config",
+        documents_directory=tmp_path / "Documents",
+    )
+    workspace_service.configure_workspace(str(tmp_path / "research"))
+    transport = httpx.ASGITransport(
+        app=create_app(static_directory=None, workspace_service=workspace_service)
+    )
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        setup = (await client.get("/api/setup")).json()
+        headers = {"X-Jeromes-Lab-Setup-Token": setup["setup_token"]}
+        first = await client.post(
+            "/api/projects",
+            json={"scientific_question": "What is the evidence for intervention X?"},
+            headers=headers,
+        )
+        second = await client.post(
+            "/api/projects",
+            json={"scientific_question": "What is the evidence for intervention Y?"},
+            headers=headers,
+        )
+        renamed = await client.patch(
+            f"/api/projects/{first.json()['id']}/tag",
+            json={"tag": "CARDIO"},
+            headers=headers,
+        )
+        projects = await client.get("/api/projects")
+
+    assert first.status_code == 201
+    assert first.json()["tag"] == "PROJ001"
+    assert first.json()["scientific_question"] == "What is the evidence for intervention X?"
+    assert first.json()["question_is_editable"] is True
+    assert second.json()["tag"] == "PROJ002"
+    assert renamed.json()["tag"] == "CARDIO"
+    assert [project["tag"] for project in projects.json()] == ["CARDIO", "PROJ002"]
+
+
+@pytest.mark.asyncio
+async def test_client_state_is_saved_outside_the_workspace_database(tmp_path: Path) -> None:
+    workspace_service = WorkspaceService(
+        configuration_directory=tmp_path / "config",
+        documents_directory=tmp_path / "Documents",
+    )
+    transport = httpx.ASGITransport(
+        app=create_app(static_directory=None, workspace_service=workspace_service)
+    )
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        setup = (await client.get("/api/setup")).json()
+        headers = {"X-Jeromes-Lab-Setup-Token": setup["setup_token"]}
+        saved = await client.put(
+            "/api/client-state",
+            json={"selected_project_id": "project-id", "scroll_top": 240},
+            headers=headers,
+        )
+        restored = await client.get("/api/client-state")
+
+    assert saved.status_code == 200
+    assert restored.json() == {"selected_project_id": "project-id", "scroll_top": 240}
+    assert workspace_service.client_state_file.is_file()
+
+
+@pytest.mark.asyncio
 async def test_workspace_folder_picker_returns_the_native_selection(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
