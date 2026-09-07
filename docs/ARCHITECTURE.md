@@ -67,9 +67,10 @@ SQLite, SQLAlchemy, and Alembic are accepted for relational metadata, state,
 links, and indexes. One local backend process owns database writes.
 
 Large or raw payloads—LLM prompts and responses, database API responses, JSONL
-record sets, full-text XML, legal local PDFs, and exports—belong in an
-OS-appropriate application-data directory located with `platformdirs`, not in the
-repository. SQLite stores artifact identity, integrity metadata, and relationships
+record sets, full-text XML, legal local PDFs, and exports—belong in a user-selected
+research workspace, not in the repository. The platform-specific configuration
+directory located with `platformdirs` stores only a small pointer to that
+workspace. SQLite stores artifact identity, integrity metadata, and relationships
 to those payloads.
 
 Artifacts are immutable. An edit creates a new `ArtifactVersion`; a pointer or

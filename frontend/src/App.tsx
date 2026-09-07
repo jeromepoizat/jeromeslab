@@ -3,6 +3,13 @@ import './App.css'
 
 type ApiState = 'checking' | 'available' | 'unavailable'
 type Theme = 'dark' | 'light'
+type SetupStatus = 'loading' | 'needs_workspace' | 'configured' | 'unavailable'
+
+type WorkspaceSetup = {
+  recommended_workspace_path: string
+  setup_token: string
+  workspace_path: string | null
+}
 
 const apiStateLabels: Record<ApiState, string> = {
   checking: 'Checking connection',
@@ -32,6 +39,13 @@ function MoonIcon() {
 function App() {
   const [apiState, setApiState] = useState<ApiState>('checking')
   const [theme, setTheme] = useState<Theme>('dark')
+  const [setupStatus, setSetupStatus] = useState<SetupStatus>('loading')
+  const [workspaceSetup, setWorkspaceSetup] = useState<WorkspaceSetup | null>(null)
+  const [workspacePath, setWorkspacePath] = useState('')
+  const [setupError, setSetupError] = useState<string | null>(null)
+  const [needsNonemptyConfirmation, setNeedsNonemptyConfirmation] = useState(false)
+  const [isSelectingFolder, setIsSelectingFolder] = useState(false)
+  const [isConfiguringWorkspace, setIsConfiguringWorkspace] = useState(false)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -88,6 +102,100 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    const controller = new AbortController()
+
+    fetch('/api/setup', { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error('The local setup service is unavailable.')
+        }
+        return (await response.json()) as WorkspaceSetup & { configured: boolean }
+      })
+      .then((setup) => {
+        setWorkspaceSetup(setup)
+        setWorkspacePath(setup.workspace_path ?? setup.recommended_workspace_path)
+        setSetupStatus(setup.configured ? 'configured' : 'needs_workspace')
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return
+        }
+        setSetupStatus('unavailable')
+      })
+
+    return () => controller.abort()
+  }, [])
+
+  const readApiError = async (response: Response) => {
+    const body = (await response.json().catch(() => null)) as { detail?: string } | null
+    return body?.detail ?? 'The request could not be completed. Try again.'
+  }
+
+  const selectFolder = async () => {
+    if (workspaceSetup === null) {
+      return
+    }
+
+    setIsSelectingFolder(true)
+    setSetupError(null)
+    try {
+      const response = await fetch('/api/setup/select-folder', {
+        method: 'POST',
+        headers: { 'X-Jeromes-Lab-Setup-Token': workspaceSetup.setup_token },
+      })
+      if (!response.ok) {
+        throw new Error(await readApiError(response))
+      }
+      const result = (await response.json()) as { path: string | null }
+      if (result.path !== null) {
+        setWorkspacePath(result.path)
+        setNeedsNonemptyConfirmation(false)
+      }
+    } catch (error: unknown) {
+      setSetupError(error instanceof Error ? error.message : 'The folder picker could not be opened.')
+    } finally {
+      setIsSelectingFolder(false)
+    }
+  }
+
+  const configureWorkspace = async (confirmNonempty: boolean) => {
+    if (workspaceSetup === null) {
+      return
+    }
+
+    setIsConfiguringWorkspace(true)
+    setSetupError(null)
+    try {
+      const response = await fetch('/api/setup/workspace', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Jeromes-Lab-Setup-Token': workspaceSetup.setup_token,
+        },
+        body: JSON.stringify({ path: workspacePath, confirm_nonempty: confirmNonempty }),
+      })
+      if (!response.ok) {
+        const message = await readApiError(response)
+        if (!confirmNonempty && message.includes('already contains files')) {
+          setNeedsNonemptyConfirmation(true)
+          setSetupError(message)
+          return
+        }
+        throw new Error(message)
+      }
+      const result = (await response.json()) as { workspace_path: string }
+      setWorkspaceSetup({ ...workspaceSetup, workspace_path: result.workspace_path })
+      setWorkspacePath(result.workspace_path)
+      setSetupStatus('configured')
+      setNeedsNonemptyConfirmation(false)
+    } catch (error: unknown) {
+      setSetupError(error instanceof Error ? error.message : 'The workspace could not be created.')
+    } finally {
+      setIsConfiguringWorkspace(false)
+    }
+  }
+
   const nextTheme = theme === 'dark' ? 'light' : 'dark'
   const themeToggleLabel = `Switch to ${nextTheme} mode`
 
@@ -123,15 +231,86 @@ function App() {
       </header>
 
       <main>
-        <section className="foundation-card" aria-labelledby="foundation-title">
-          <p className="step-label">Milestone 0</p>
-          <h2 id="foundation-title">Application foundation</h2>
-          <p>
-            The local React client and FastAPI service are connected. Project and
-            scientific workflow features will be added incrementally with provenance
-            preserved from the start.
-          </p>
-        </section>
+        {setupStatus === 'loading' && (
+          <section className="foundation-card" aria-live="polite">
+            <p className="step-label">Preparing workspace</p>
+            <h2>Checking local setup</h2>
+            <p>Jerome&apos;s Laboratory is checking its local configuration.</p>
+          </section>
+        )}
+
+        {setupStatus === 'needs_workspace' && (
+          <section className="foundation-card workspace-setup" aria-labelledby="workspace-title">
+            <p className="step-label">First-run setup</p>
+            <h2 id="workspace-title">Choose your research workspace</h2>
+            <p>
+              Your projects, local database, artifacts, exports, and backups stay together in
+              this folder. You can paste a path or select a folder from your computer.
+            </p>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault()
+                void configureWorkspace(false)
+              }}
+            >
+              <label htmlFor="workspace-path">Workspace folder</label>
+              <div className="workspace-path-controls">
+                <input
+                  id="workspace-path"
+                  value={workspacePath}
+                  onChange={(event) => {
+                    setWorkspacePath(event.target.value)
+                    setNeedsNonemptyConfirmation(false)
+                  }}
+                  placeholder="C:\\Users\\you\\Documents\\Jerome's Laboratory"
+                  required
+                />
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void selectFolder()}
+                  disabled={isSelectingFolder || isConfiguringWorkspace}
+                >
+                  {isSelectingFolder ? 'Opening…' : 'Select folder'}
+                </button>
+              </div>
+              {setupError !== null && <p className="setup-error" role="alert">{setupError}</p>}
+              {needsNonemptyConfirmation && (
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void configureWorkspace(true)}
+                  disabled={isConfiguringWorkspace}
+                >
+                  Use this folder anyway
+                </button>
+              )}
+              <button className="primary-button" type="submit" disabled={isConfiguringWorkspace}>
+                {isConfiguringWorkspace ? 'Preparing workspace…' : 'Continue'}
+              </button>
+            </form>
+          </section>
+        )}
+
+        {setupStatus === 'configured' && (
+          <section className="foundation-card" aria-labelledby="foundation-title">
+            <p className="step-label">Local workspace ready</p>
+            <h2 id="foundation-title">Application foundation</h2>
+            <p>
+              Your workspace is ready at <code>{workspacePath}</code>. Project and scientific
+              workflow features will be added incrementally with provenance preserved from the
+              start.
+            </p>
+          </section>
+        )}
+
+        {setupStatus === 'unavailable' && (
+          <section className="foundation-card" aria-labelledby="unavailable-title">
+            <p className="step-label">Local setup unavailable</p>
+            <h2 id="unavailable-title">Reconnect the local application</h2>
+            <p>Start Jerome&apos;s Laboratory again, then refresh this page.</p>
+          </section>
+        )}
       </main>
     </div>
   )

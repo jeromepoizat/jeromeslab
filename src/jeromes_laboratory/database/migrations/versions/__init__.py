@@ -1,0 +1,1 @@
+"""Individual Alembic database revisions."""

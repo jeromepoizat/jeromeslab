@@ -4,10 +4,9 @@ Last updated: 2026-09-07
 
 ## Current milestone
 
-**Milestone 0 — Repository foundation is complete.** Self-bootstrapping
-installation and project checks pass on GitHub-hosted Windows x64/ARM64, Linux
-x64/ARM64, and macOS ARM64/Intel runners. Milestone 1 has not started and is
-waiting for owner direction.
+**Milestone 1 — Local application shell is in progress.** Milestone 0 remains
+complete: self-bootstrapping installation and project checks pass on GitHub-hosted
+Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 
 ## Implementation state
 
@@ -24,6 +23,14 @@ waiting for owner direction.
   health is polled every three seconds and represented by a minimal status dot
   with hover/focus detail rather than language that could be confused with an
   external LLM provider.
+- First run asks the user to choose a research workspace. The path field is
+  pre-filled with a Documents-based recommendation, supports typing/pasting, and
+  has a native folder-picker action. A small platform-configured pointer remembers
+  the selected workspace; workspace data itself remains together in the selected
+  folder.
+- The workspace initializes SQLite through a packaged Alembic migration chain and
+  creates dedicated `artifacts`, `exports`, and `backups` directories. The launcher
+  applies migrations before starting an already-configured workspace.
 - `install.ps1`/`.bat` and `install.sh` download pinned project-local runtimes,
   verify runtime archive checksums, install both lockfiles, and build the client.
 - `start.ps1`/`.bat` and `start.sh` call a Python launcher that binds to loopback,
@@ -70,17 +77,19 @@ waiting for owner direction.
   added a dark-default light/dark theme toggle.
 - Made the local API health indicator refresh periodically and when the browser
   regains focus so it cannot remain green after the local service stops.
+- Began Milestone 1 with user-selected local workspace setup, SQLite initialization,
+  Alembic migration support, and a protected first-run setup API.
 
 ## Work in progress
 
-No implementation work is active. Milestone 1 is intentionally waiting for owner
-direction.
+Implementing the remaining local-shell settings and workspace recovery behavior.
 
 ## Immediate next tasks
 
-1. Wait for owner direction before beginning Milestone 1.
-2. When authorized, design the first Milestone 1 storage slice immediately before
-   implementing the application-data location and SQLite migration foundation.
+1. Verify the workspace-selection slice on the full cross-platform CI matrix.
+2. Design and implement recovery for a missing configured workspace and the later
+   explicit workspace-move operation.
+3. Add the remaining basic settings surface without secret persistence.
 
 ## Known issues and blockers
 

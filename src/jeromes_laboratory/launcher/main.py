@@ -13,6 +13,7 @@ import webbrowser
 import uvicorn
 
 from jeromes_laboratory.api.main import app
+from jeromes_laboratory.storage.workspace import WorkspaceLocationError
 
 HOST = "127.0.0.1"
 
@@ -50,6 +51,11 @@ def open_browser_when_ready(url: str, health_url: str) -> None:
 
 def main() -> None:
     """Run the application on loopback while keeping terminal logs visible."""
+    try:
+        app.state.workspace_service.initialize_configured_workspace()
+    except WorkspaceLocationError as error:
+        raise SystemExit(f"Workspace initialization failed: {error}") from error
+
     port = get_launch_port()
     application_url = f"http://{HOST}:{port}"
     health_url = f"{application_url}/api/health"

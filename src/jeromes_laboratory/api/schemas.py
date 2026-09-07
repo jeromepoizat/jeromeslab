@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class HealthResponse(BaseModel):
@@ -11,3 +11,30 @@ class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     application: str = "Jerome's Laboratory"
 
+
+class WorkspaceSetupStatus(BaseModel):
+    """Safe state needed by the first-run workspace setup screen."""
+
+    configured: bool
+    recommended_workspace_path: str
+    setup_token: str
+    workspace_path: str | None = None
+
+
+class WorkspacePathRequest(BaseModel):
+    """A workspace path supplied by the local browser client."""
+
+    path: str = Field(min_length=1, max_length=4096)
+    confirm_nonempty: bool = False
+
+
+class WorkspaceConfiguredResponse(BaseModel):
+    """The successfully initialized local workspace."""
+
+    workspace_path: str
+
+
+class FolderPickerResponse(BaseModel):
+    """A directory selected by the operating-system folder picker."""
+
+    path: str | None

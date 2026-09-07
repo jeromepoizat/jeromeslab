@@ -13,6 +13,7 @@ unresolved ideas in other documentation are not decisions.
 | [0006](adr/0006-llm-calls-as-provenance.md) | First-class LLM call and historical cost provenance | Accepted |
 | [0007](adr/0007-self-bootstrapping-installation.md) | No preinstalled language runtimes for ordinary users | Accepted |
 | [0008](adr/0008-replay-provider-and-demo-project.md) | Explicit replay provider and bundled demo project | Accepted |
+| [0009](adr/0009-user-selected-research-workspace.md) | User-selected research workspace | Accepted |
 
 Routine implementation choices belong in code and tests. Add an ADR when a
 choice constrains future architecture, security, scientific validity, data

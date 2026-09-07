@@ -161,8 +161,101 @@ main {
   margin: 0;
 }
 
+.workspace-setup {
+  max-width: 48rem;
+}
+
+.workspace-setup form {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 1.75rem;
+}
+
+.workspace-setup label {
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.workspace-path-controls {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.workspace-path-controls input {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  color: var(--ink);
+  flex: 1;
+  font: inherit;
+  min-width: 0;
+  padding: 0.75rem 0.85rem;
+}
+
+.workspace-path-controls input:focus-visible {
+  border-color: var(--focus);
+  outline: 2px solid var(--focus);
+  outline-offset: 0.15rem;
+}
+
+.primary-button,
+.secondary-button {
+  border-radius: 0.55rem;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  padding: 0.75rem 1rem;
+}
+
+.primary-button {
+  background: var(--focus);
+  border: 1px solid var(--focus);
+  color: #0d1812;
+  justify-self: start;
+}
+
+.secondary-button {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  color: var(--ink);
+}
+
+.primary-button:hover,
+.secondary-button:hover {
+  background: var(--surface-hover);
+}
+
+.primary-button:focus-visible,
+.secondary-button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0.2rem;
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.setup-error {
+  color: #e48484;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin: 0;
+}
+
+.foundation-card code {
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 36rem) {
   .app-header {
     align-items: center;
+  }
+
+  .workspace-path-controls {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

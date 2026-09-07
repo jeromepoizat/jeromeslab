@@ -12,11 +12,11 @@ the provenance and cost of every LLM-assisted transformation.
 
 ## Current status
 
-**Milestone 0: repository foundation is complete.** The Python and frontend
+**Milestone 1: local application shell is in progress.** The Python and frontend
 environments are locked, the bootstrap is verified across all six supported
-OS/architecture combinations, and a minimal FastAPI health endpoint and React
-shell are runnable. Milestone 1 and scientific workflow features have not started.
-See [current status](docs/STATUS.md) before starting work.
+OS/architecture combinations, and the local application begins by asking where
+to create or open its research workspace. Scientific workflow features have not
+started. See [current status](docs/STATUS.md) before starting work.
 
 ## Intended workflow
 
@@ -90,6 +90,12 @@ default browser, and keeps terminal logs visible.
 The source bootstrap currently supports x64 and ARM64 Windows, macOS, and glibc-
 verified Windows x64, Linux x64, and macOS ARM64; the expanded matrix subsequently
 verified Windows ARM64, Linux ARM64, and Intel macOS as well.
+
+On first launch, choose a dedicated research workspace. The application suggests
+`Documents/Jerome's Laboratory`, but you can type or paste another absolute path
+or use the operating system folder picker. The workspace contains the local
+database, artifacts, exports, and backups; the repository itself never stores
+your research data.
 
 ## Manual developer setup (optional)
 
