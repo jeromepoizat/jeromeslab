@@ -25,6 +25,9 @@ export function ProjectShell({ setupToken }: Props) {
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [editingTagId, setEditingTagId] = useState<string | null>(null)
   const [editingTag, setEditingTag] = useState('')
+  const [isEditingQuestion, setIsEditingQuestion] = useState(false)
+  const [editedQuestion, setEditedQuestion] = useState('')
+  const [isSavingQuestion, setIsSavingQuestion] = useState(false)
   const restoredScrollTop = useRef(0)
   const saveTimer = useRef<number | null>(null)
 
@@ -121,6 +124,26 @@ export function ProjectShell({ setupToken }: Props) {
     }
   }
 
+  const saveScientificQuestion = async (projectId: string) => {
+    setIsSavingQuestion(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/projects/${projectId}/scientific-question`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Jeromes-Lab-Setup-Token': setupToken },
+        body: JSON.stringify({ scientific_question: editedQuestion }),
+      })
+      if (!response.ok) throw new Error(await readApiError(response))
+      const updated = (await response.json()) as Project
+      setProjects(previous => previous.map(project => project.id === updated.id ? updated : project))
+      setIsEditingQuestion(false)
+    } catch (saveError: unknown) {
+      setError(saveError instanceof Error ? saveError.message : 'The scientific question could not be saved.')
+    } finally {
+      setIsSavingQuestion(false)
+    }
+  }
+
   const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null
   return (
     <div className={`project-layout ${isCollapsed ? 'project-layout--collapsed' : ''}`}>
@@ -149,7 +172,16 @@ export function ProjectShell({ setupToken }: Props) {
         </div> : <article className="project-view">
           <p className="step-label">{selectedProject.tag}</p>
           <h2>Scientific question</h2>
-          <p className="scientific-question">{selectedProject.scientific_question}</p>
+          {isEditingQuestion ? <div className="question-editor">
+            <input value={editedQuestion} onChange={event => setEditedQuestion(event.target.value)} aria-label="Scientific question" />
+            <div>
+              <button className="primary-button" type="button" onClick={() => void saveScientificQuestion(selectedProject.id)} disabled={isSavingQuestion}>{isSavingQuestion ? 'Saving…' : 'Save question'}</button>
+              <button className="text-button" type="button" onClick={() => setIsEditingQuestion(false)} disabled={isSavingQuestion}>Cancel</button>
+            </div>
+          </div> : <>
+            <p className="scientific-question">{selectedProject.scientific_question}</p>
+            {selectedProject.question_is_editable && <button className="secondary-button" type="button" onClick={() => { setEditedQuestion(selectedProject.scientific_question); setIsEditingQuestion(true) }}>Edit scientific question</button>}
+          </>}
           <p className="project-input-note">This exact question is the input to later workflow steps. It can only be edited before a workflow job uses it.</p>
           {error !== null && <p className="setup-error" role="alert">{error}</p>}
         </article>}

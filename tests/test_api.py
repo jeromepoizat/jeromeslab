@@ -151,6 +151,11 @@ async def test_projects_have_sequential_default_tags_and_mutable_display_tags(tm
             json={"tag": "CARDIO"},
             headers=headers,
         )
+        updated_question = await client.patch(
+            f"/api/projects/{first.json()['id']}/scientific-question",
+            json={"scientific_question": "What is the corrected evidence for intervention X?"},
+            headers=headers,
+        )
         projects = await client.get("/api/projects")
 
     assert first.status_code == 201
@@ -159,6 +164,9 @@ async def test_projects_have_sequential_default_tags_and_mutable_display_tags(tm
     assert first.json()["question_is_editable"] is True
     assert second.json()["tag"] == "PROJ002"
     assert renamed.json()["tag"] == "CARDIO"
+    assert updated_question.json()["scientific_question"] == (
+        "What is the corrected evidence for intervention X?"
+    )
     assert [project["tag"] for project in projects.json()] == ["CARDIO", "PROJ002"]
 
 

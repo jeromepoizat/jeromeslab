@@ -202,6 +202,8 @@ main {
 .new-project-card input:focus-visible { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 0.15rem; }
 .scientific-question { color: var(--ink); font-size: 1.2rem; line-height: 1.7; white-space: pre-wrap; }
 .project-input-note { color: var(--muted); line-height: 1.6; }
+.question-editor input { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; box-sizing: border-box; color: var(--ink); font: inherit; margin: 0 0 0.75rem; padding: 0.9rem 1rem; width: 100%; }
+.question-editor input:focus-visible { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 0.15rem; }
 
 .foundation-card {
   background: var(--surface);
