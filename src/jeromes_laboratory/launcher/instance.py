@@ -106,4 +106,8 @@ class InstanceCoordinator:
             return False
         except PermissionError:
             return True
+        except OSError:
+            # Windows can raise errors such as WinError 11 for a stale or
+            # incompatible PID probe instead of ProcessLookupError.
+            return False
         return True

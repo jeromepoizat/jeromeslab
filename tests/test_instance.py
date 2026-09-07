@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from jeromes_laboratory.launcher.instance import InstanceCoordinator
 
 
@@ -45,3 +47,14 @@ def test_stale_instance_record_is_replaced(tmp_path: Path) -> None:
     assert second.owns_instance is True
     assert second.instance.instance_id != first.instance.instance_id
     assert second.instance.port == 9123
+
+
+def test_windows_pid_probe_error_is_treated_as_not_running(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def raise_windows_probe_error(_: int, __: int) -> None:
+        raise OSError(11, "incorrect format")
+
+    monkeypatch.setattr("jeromes_laboratory.launcher.instance.os.kill", raise_windows_probe_error)
+
+    assert InstanceCoordinator._default_process_is_running(1234) is False
