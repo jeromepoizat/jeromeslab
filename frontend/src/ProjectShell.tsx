@@ -163,7 +163,7 @@ export function ProjectShellBootstrap() {
 
   useEffect(() => {
     const controller = new AbortController()
-    fetch('/api/setup', { signal: controller.signal })
+    const loadSetup = () => fetch('/api/setup', { signal: controller.signal })
       .then(async response => {
         if (!response.ok) return null
         return (await response.json()) as { configured: boolean; setup_token: string }
@@ -172,8 +172,12 @@ export function ProjectShellBootstrap() {
         if (setup?.configured) setSetupToken(setup.setup_token)
       })
       .catch(() => undefined)
-    return () => controller.abort()
-  }, [])
+    void loadSetup()
+    const intervalId = window.setInterval(() => {
+      if (setupToken === null) void loadSetup()
+    }, 1_000)
+    return () => { controller.abort(); window.clearInterval(intervalId) }
+  }, [setupToken])
 
   return setupToken === null ? null : <ProjectShell setupToken={setupToken} />
 }
