@@ -72,6 +72,8 @@ start.bat
 
 The `.bat` wrappers run `install.ps1` and `start.ps1` with a process-local
 PowerShell execution-policy override; they do not change the system policy.
+When opened by double-click, a failed installation or launch keeps the Command
+Prompt window open so its error can be read or copied; press any key to close it.
 
 ### macOS and Linux
 
