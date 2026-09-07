@@ -10,6 +10,8 @@ const apiStateLabels: Record<ApiState, string> = {
   unavailable: 'Not connected',
 }
 
+const healthCheckIntervalMs = 3_000
+
 function SunIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -36,23 +38,54 @@ function App() {
   }, [theme])
 
   useEffect(() => {
-    const controller = new AbortController()
+    let controller: AbortController | null = null
+    let disposed = false
 
-    fetch('/api/health', { signal: controller.signal })
-      .then((response) => {
+    const checkHealth = async () => {
+      controller?.abort()
+      controller = new AbortController()
+
+      try {
+        const response = await fetch('/api/health', { signal: controller.signal })
         if (!response.ok) {
           throw new Error(`Health request failed: ${response.status}`)
         }
-        setApiState('available')
-      })
-      .catch((error: unknown) => {
+
+        if (!disposed) {
+          setApiState('available')
+        }
+      } catch (error: unknown) {
         if (error instanceof DOMException && error.name === 'AbortError') {
           return
         }
-        setApiState('unavailable')
-      })
 
-    return () => controller.abort()
+        if (!disposed) {
+          setApiState('unavailable')
+        }
+      }
+    }
+
+    const checkWhenVisible = () => {
+      if (document.visibilityState === 'visible') {
+        void checkHealth()
+      }
+    }
+
+    void checkHealth()
+    const intervalId = window.setInterval(() => {
+      void checkHealth()
+    }, healthCheckIntervalMs)
+
+    document.addEventListener('visibilitychange', checkWhenVisible)
+    window.addEventListener('focus', checkWhenVisible)
+
+    return () => {
+      disposed = true
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', checkWhenVisible)
+      window.removeEventListener('focus', checkWhenVisible)
+      controller?.abort()
+    }
   }, [])
 
   const nextTheme = theme === 'dark' ? 'light' : 'dark'

@@ -21,8 +21,9 @@ waiting for owner direction.
   shell exist. The Vite development server binds to `127.0.0.1` and proxies the
   API to port 8000.
 - The shell defaults to a dark theme with an accessible light/dark toggle. API
-  health is represented by a minimal status dot with hover/focus detail rather
-  than language that could be confused with an external LLM provider.
+  health is polled every three seconds and represented by a minimal status dot
+  with hover/focus detail rather than language that could be confused with an
+  external LLM provider.
 - `install.ps1`/`.bat` and `install.sh` download pinned project-local runtimes,
   verify runtime archive checksums, install both lockfiles, and build the client.
 - `start.ps1`/`.bat` and `start.sh` call a Python launcher that binds to loopback,
@@ -67,6 +68,8 @@ waiting for owner direction.
   the bootstrap.
 - Simplified the local API health display to a tooltip-enabled status dot and
   added a dark-default light/dark theme toggle.
+- Made the local API health indicator refresh periodically and when the browser
+  regains focus so it cannot remain green after the local service stops.
 
 ## Work in progress
 
