@@ -34,6 +34,8 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 - The header includes Settings with a confirmed **Forget workspace on this
   device** action. It removes only the saved workspace pointer and returns to the
   first-run screen; it does not delete the workspace database, artifacts, or files.
+  Settings open in a dedicated right-side drawer so workspace content remains in
+  view.
 - `install.ps1`/`.bat` and `install.sh` download pinned project-local runtimes,
   verify runtime archive checksums, install both lockfiles, and build the client.
 - `start.ps1`/`.bat` and `start.sh` call a Python launcher that binds to loopback,

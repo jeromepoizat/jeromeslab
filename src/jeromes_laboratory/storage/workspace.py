@@ -65,8 +65,25 @@ class WorkspaceService:
 
     def configured_workspace_path(self) -> Path | None:
         """Return the saved workspace path, if first-run setup is complete."""
-        if not self.configuration_file.is_file():
-            return None
+        try:
+            configuration_exists = self.configuration_file.is_file()
+        except OSError as error:
+            raise WorkspaceLocationError(
+                "The saved workspace location cannot be accessed. Restore access to the "
+                "configuration folder before opening or changing a workspace."
+            ) from error
+
+        if not configuration_exists:
+            try:
+                configuration_entry_exists = self.configuration_file.exists()
+            except OSError as error:
+                raise WorkspaceLocationError(
+                    "The saved workspace location cannot be accessed. Restore access to the "
+                    "configuration folder before opening or changing a workspace."
+                ) from error
+            if not configuration_entry_exists:
+                return None
+            raise WorkspaceLocationError("The saved workspace pointer is not a valid file.")
 
         try:
             content = json.loads(self.configuration_file.read_text(encoding="utf-8"))

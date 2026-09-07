@@ -276,6 +276,8 @@ function App() {
               className="theme-toggle"
               type="button"
               aria-label="Open settings"
+              aria-controls="settings-drawer"
+              aria-expanded={isSettingsOpen}
               title="Settings"
               onClick={() => setIsSettingsOpen(!isSettingsOpen)}
             >
@@ -350,53 +352,6 @@ function App() {
 
         {setupStatus === 'configured' && (
           <>
-            {isSettingsOpen && (
-              <section className="foundation-card settings-card" aria-labelledby="settings-title">
-                <p className="step-label">Settings</p>
-                <h2 id="settings-title">Local configuration</h2>
-                <p>
-                  This device remembers the workspace below so later launches reopen it.
-                </p>
-                <code className="workspace-location">{workspacePath}</code>
-                <div className="settings-danger-zone">
-                  <h3>Testing and recovery</h3>
-                  <p>
-                    Forgetting this workspace removes only this device&apos;s saved location. It
-                    does not delete the database, projects, artifacts, or folder.
-                  </p>
-                  {needsForgetConfirmation ? (
-                    <div className="settings-confirmation">
-                      <p>Continue? You can select this same folder later to reopen it.</p>
-                      <button
-                        className="secondary-button"
-                        type="button"
-                        onClick={() => void forgetWorkspace()}
-                        disabled={isForgettingWorkspace}
-                      >
-                        {isForgettingWorkspace ? 'Forgetting…' : 'Confirm forget workspace'}
-                      </button>
-                      <button
-                        className="text-button"
-                        type="button"
-                        onClick={() => setNeedsForgetConfirmation(false)}
-                        disabled={isForgettingWorkspace}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      className="secondary-button"
-                      type="button"
-                      onClick={() => setNeedsForgetConfirmation(true)}
-                    >
-                      Forget workspace on this device
-                    </button>
-                  )}
-                  {setupError !== null && <p className="setup-error" role="alert">{setupError}</p>}
-                </div>
-              </section>
-            )}
             <section className="foundation-card" aria-labelledby="foundation-title">
               <p className="step-label">Local workspace ready</p>
               <h2 id="foundation-title">Application foundation</h2>
@@ -417,6 +372,70 @@ function App() {
           </section>
         )}
       </main>
+
+      {isSettingsOpen && setupStatus === 'configured' && (
+        <aside className="settings-drawer" id="settings-drawer" aria-labelledby="settings-title">
+          <div className="settings-drawer-header">
+            <div>
+              <p className="step-label">Settings</p>
+              <h2 id="settings-title">Local configuration</h2>
+            </div>
+            <button
+              className="settings-close"
+              type="button"
+              aria-label="Close settings"
+              title="Close settings"
+              onClick={() => {
+                setIsSettingsOpen(false)
+                setNeedsForgetConfirmation(false)
+              }}
+            >
+              ×
+            </button>
+          </div>
+          <p>
+            This device remembers the workspace below so later launches reopen it.
+          </p>
+          <code className="workspace-location">{workspacePath}</code>
+          <div className="settings-danger-zone">
+            <h3>Testing and recovery</h3>
+            <p>
+              Forgetting this workspace removes only this device&apos;s saved location. It does not
+              delete the database, projects, artifacts, or folder.
+            </p>
+            {needsForgetConfirmation ? (
+              <div className="settings-confirmation">
+                <p>Continue? You can select this same folder later to reopen it.</p>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={() => void forgetWorkspace()}
+                  disabled={isForgettingWorkspace}
+                >
+                  {isForgettingWorkspace ? 'Forgetting…' : 'Confirm forget workspace'}
+                </button>
+                <button
+                  className="text-button"
+                  type="button"
+                  onClick={() => setNeedsForgetConfirmation(false)}
+                  disabled={isForgettingWorkspace}
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setNeedsForgetConfirmation(true)}
+              >
+                Forget workspace on this device
+              </button>
+            )}
+            {setupError !== null && <p className="setup-error" role="alert">{setupError}</p>}
+          </div>
+        </aside>
+      )}
     </div>
   )
 }

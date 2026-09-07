@@ -58,7 +58,13 @@ def create_app(
     @application.get("/api/setup", response_model=WorkspaceSetupStatus, tags=["setup"])
     def get_workspace_setup() -> WorkspaceSetupStatus:
         """Return first-run state without creating local research data."""
-        workspace_path = application.state.workspace_service.configured_workspace_path()
+        try:
+            workspace_path = application.state.workspace_service.configured_workspace_path()
+        except WorkspaceLocationError as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(error),
+            ) from error
         return WorkspaceSetupStatus(
             configured=workspace_path is not None,
             recommended_workspace_path=str(

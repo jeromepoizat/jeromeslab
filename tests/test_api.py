@@ -114,3 +114,21 @@ async def test_forget_workspace_api_removes_only_the_saved_pointer(tmp_path: Pat
     assert response.json() == {"forgotten_workspace_path": str(workspace_path)}
     assert updated_setup.json()["configured"] is False
     assert (workspace_path / "artifacts").is_dir()
+
+
+@pytest.mark.asyncio
+async def test_workspace_setup_reports_an_unreadable_saved_pointer(tmp_path: Path) -> None:
+    workspace_service = WorkspaceService(
+        configuration_directory=tmp_path / "config",
+        documents_directory=tmp_path / "Documents",
+    )
+    workspace_service.configuration_file.mkdir(parents=True)
+    transport = httpx.ASGITransport(
+        app=create_app(static_directory=None, workspace_service=workspace_service)
+    )
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        response = await client.get("/api/setup")
+
+    assert response.status_code == 503
+    assert "not a valid file" in response.json()["detail"]
