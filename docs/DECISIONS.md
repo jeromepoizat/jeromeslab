@@ -14,6 +14,7 @@ unresolved ideas in other documentation are not decisions.
 | [0007](adr/0007-self-bootstrapping-installation.md) | No preinstalled language runtimes for ordinary users | Accepted |
 | [0008](adr/0008-replay-provider-and-demo-project.md) | Explicit replay provider and bundled demo project | Accepted |
 | [0009](adr/0009-user-selected-research-workspace.md) | User-selected research workspace | Accepted |
+| [0010](adr/0010-single-local-application-instance.md) | One local application instance | Accepted |
 
 Routine implementation choices belong in code and tests. Add an ADR when a
 choice constrains future architecture, security, scientific validity, data

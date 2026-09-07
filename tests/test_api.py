@@ -19,6 +19,7 @@ async def test_health_endpoint() -> None:
     assert response.json() == {
         "status": "ok",
         "application": "Jerome's Laboratory",
+        "instance_id": None,
     }
 
 
@@ -62,6 +63,63 @@ async def test_workspace_setup_requires_token_and_initializes_selected_path(tmp_
     assert unauthorized_response.status_code == 403
     assert configured_response.status_code == 200
     assert configured_response.json() == {"workspace_path": str(tmp_path / "research")}
+
+
+@pytest.mark.asyncio
+async def test_setup_reports_missing_workspace_and_can_recover_it(tmp_path: Path) -> None:
+    workspace_service = WorkspaceService(
+        configuration_directory=tmp_path / "config",
+        documents_directory=tmp_path / "Documents",
+    )
+    original_path = tmp_path / "research"
+    recovered_path = tmp_path / "moved-research"
+    workspace_service.configure_workspace(str(original_path))
+    original_path.rename(recovered_path)
+    transport = httpx.ASGITransport(
+        app=create_app(static_directory=None, workspace_service=workspace_service)
+    )
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        setup = (await client.get("/api/setup")).json()
+        response = await client.post(
+            "/api/recovery/locate-workspace",
+            json={"path": str(recovered_path)},
+            headers={"X-Jeromes-Lab-Setup-Token": setup["setup_token"]},
+        )
+
+    assert setup["workspace_state"] == "unavailable"
+    assert response.status_code == 200
+    assert response.json() == {"workspace_path": str(recovered_path)}
+
+
+@pytest.mark.asyncio
+async def test_move_workspace_api_keeps_original_data(tmp_path: Path) -> None:
+    workspace_service = WorkspaceService(
+        configuration_directory=tmp_path / "config",
+        documents_directory=tmp_path / "Documents",
+    )
+    source_path = tmp_path / "research"
+    destination_path = tmp_path / "moved-research"
+    workspace_service.configure_workspace(str(source_path))
+    (source_path / "artifacts" / "data.txt").write_text("data", encoding="utf-8")
+    transport = httpx.ASGITransport(
+        app=create_app(static_directory=None, workspace_service=workspace_service)
+    )
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        setup = (await client.get("/api/setup")).json()
+        response = await client.post(
+            "/api/settings/move-workspace",
+            json={"path": str(destination_path)},
+            headers={"X-Jeromes-Lab-Setup-Token": setup["setup_token"]},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "previous_workspace_path": str(source_path),
+        "workspace_path": str(destination_path),
+    }
+    assert (source_path / "artifacts" / "data.txt").read_text(encoding="utf-8") == "data"
 
 
 @pytest.mark.asyncio

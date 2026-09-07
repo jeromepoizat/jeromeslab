@@ -12,6 +12,7 @@ from jeromes_laboratory.api.schemas import (
     HealthResponse,
     WorkspaceConfiguredResponse,
     WorkspaceForgottenResponse,
+    WorkspaceMovedResponse,
     WorkspacePathRequest,
     WorkspaceSetupStatus,
 )
@@ -38,6 +39,7 @@ def create_app(
         workspace_service if workspace_service is not None else WorkspaceService()
     )
     application.state.setup_token = token_urlsafe(32)
+    application.state.instance_id = None
 
     def require_setup_token(
         x_jeromes_lab_setup_token: Annotated[
@@ -53,25 +55,27 @@ def create_app(
 
     @application.get("/api/health", response_model=HealthResponse, tags=["system"])
     def health() -> HealthResponse:
-        return HealthResponse()
+        return HealthResponse(instance_id=application.state.instance_id)
 
     @application.get("/api/setup", response_model=WorkspaceSetupStatus, tags=["setup"])
     def get_workspace_setup() -> WorkspaceSetupStatus:
         """Return first-run state without creating local research data."""
         try:
-            workspace_path = application.state.workspace_service.configured_workspace_path()
+            availability = application.state.workspace_service.workspace_availability()
         except WorkspaceLocationError as error:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail=str(error),
             ) from error
         return WorkspaceSetupStatus(
-            configured=workspace_path is not None,
+            configured=availability.kind == "available",
             recommended_workspace_path=str(
                 application.state.workspace_service.recommended_workspace_path
             ),
             setup_token=application.state.setup_token,
-            workspace_path=str(workspace_path) if workspace_path is not None else None,
+            workspace_path=str(availability.path) if availability.path is not None else None,
+            workspace_state=availability.kind,
+            workspace_error=availability.error,
         )
 
     @application.post(
@@ -115,6 +119,25 @@ def create_app(
         return WorkspaceConfiguredResponse(workspace_path=str(location.path))
 
     @application.post(
+        "/api/recovery/locate-workspace",
+        response_model=WorkspaceConfiguredResponse,
+        tags=["setup"],
+    )
+    def recover_workspace(
+        request: WorkspacePathRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> WorkspaceConfiguredResponse:
+        """Reconnect a moved workspace without copying or deleting its data."""
+        try:
+            location = application.state.workspace_service.recover_configured_workspace(request.path)
+        except WorkspaceLocationError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(error),
+            ) from error
+        return WorkspaceConfiguredResponse(workspace_path=str(location.path))
+
+    @application.post(
         "/api/settings/forget-workspace",
         response_model=WorkspaceForgottenResponse,
         tags=["settings"],
@@ -131,6 +154,30 @@ def create_app(
                 detail=str(error),
             ) from error
         return WorkspaceForgottenResponse(forgotten_workspace_path=str(workspace_path))
+
+    @application.post(
+        "/api/settings/move-workspace",
+        response_model=WorkspaceMovedResponse,
+        tags=["settings"],
+    )
+    def move_workspace(
+        request: WorkspacePathRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> WorkspaceMovedResponse:
+        """Verify a complete copy before changing the one saved workspace location."""
+        try:
+            previous_path, workspace_path = application.state.workspace_service.move_configured_workspace(
+                request.path
+            )
+        except WorkspaceLocationError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(error),
+            ) from error
+        return WorkspaceMovedResponse(
+            previous_workspace_path=str(previous_path),
+            workspace_path=str(workspace_path),
+        )
 
     if static_directory is not None and (static_directory / "index.html").is_file():
         application.mount(

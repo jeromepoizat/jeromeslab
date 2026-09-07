@@ -10,6 +10,7 @@ class HealthResponse(BaseModel):
 
     status: Literal["ok"] = "ok"
     application: str = "Jerome's Laboratory"
+    instance_id: str | None = None
 
 
 class WorkspaceSetupStatus(BaseModel):
@@ -19,6 +20,8 @@ class WorkspaceSetupStatus(BaseModel):
     recommended_workspace_path: str
     setup_token: str
     workspace_path: str | None = None
+    workspace_state: Literal["unconfigured", "available", "unavailable"]
+    workspace_error: str | None = None
 
 
 class WorkspacePathRequest(BaseModel):
@@ -44,3 +47,10 @@ class WorkspaceForgottenResponse(BaseModel):
     """Confirmation that only this device's workspace pointer was removed."""
 
     forgotten_workspace_path: str
+
+
+class WorkspaceMovedResponse(BaseModel):
+    """Confirmation that a verified copy is now the remembered workspace."""
+
+    previous_workspace_path: str
+    workspace_path: str

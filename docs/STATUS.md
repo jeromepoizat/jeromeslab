@@ -31,6 +31,12 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 - The workspace initializes SQLite through a packaged Alembic migration chain and
   creates dedicated `artifacts`, `exports`, and `backups` directories. The launcher
   applies migrations before starting an already-configured workspace.
+- A moved or missing remembered workspace opens a recovery screen rather than
+  failing launch. It can reconnect only an existing recognized workspace or forget
+  the pointer. Settings can explicitly move the one workspace by copy, per-file
+  SHA-256/size verification, then pointer switch; it never deletes the source.
+- The launcher coordinates one loopback backend process per user. A second start
+  opens the existing healthy or starting instance and exits; stale records recover.
 - The header includes Settings with a confirmed **Forget workspace on this
   device** action. It removes only the saved workspace pointer and returns to the
   first-run screen; it does not delete the workspace database, artifacts, or files.
@@ -46,8 +52,8 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   six jobs passed in workflow run `34131271837` for commit `3a441ec`.
 - `CONTRIBUTING.md` documents source installation, launch, project-local checks,
   pull-request expectations, CI review, and project invariants.
-- No database schema, migration, settings persistence, provider adapter, queue,
-  project feature, or scientific workflow code has been implemented.
+- No provider adapter, queue, project feature, or scientific workflow code has
+  been implemented.
 
 ## Recently completed
 
@@ -86,17 +92,18 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   Alembic migration support, and a protected first-run setup API.
 - Added the first safe configuration-forgetting control for testing first-run
   behavior without deleting local research data.
+- Added single-instance launch coordination, missing-workspace recovery, and a
+  verified, non-destructive single-workspace move operation.
 
 ## Work in progress
 
-Implementing the remaining local-shell settings and workspace recovery behavior.
+Preparing the next Milestone 1 local-shell slice.
 
 ## Immediate next tasks
 
-1. Verify the workspace-selection slice on the full cross-platform CI matrix.
-2. Design and implement recovery for a missing configured workspace and the later
-   explicit workspace-move operation.
-3. Add the remaining basic settings surface without secret persistence.
+1. Verify the local-shell slice on the full cross-platform CI matrix.
+2. Add the next basic settings surface without secret persistence.
+3. Design the project and scientific workflow entry point.
 
 ## Known issues and blockers
 

@@ -24,10 +24,13 @@ requires an explicit confirmation; an existing recognized workspace can be
 reopened. The launcher applies Alembic migrations to a configured workspace
 before serving the application.
 
-Changing a location later is a future explicit workspace-move operation: copy,
-verify, then switch the pointer without automatically deleting the old copy. It
-is not a silent change to which projects happen to be displayed. Opening a
-separate workspace is a distinct advanced action.
+Changing a location is an explicit single-workspace move operation: it copies the
+workspace into a new or empty destination, compares every copied file's byte
+SHA-256 digest and size with the source, then switches the pointer only after a
+successful comparison. It never automatically deletes the old copy. A saved
+location that is unavailable presents recovery UI to locate the existing folder
+or forget only the pointer; it never silently creates a replacement workspace.
+Opening separate workspaces is out of scope for V1.
 
 Settings may include an explicit **Forget workspace on this device** action for
 testing and recovery. It removes only the small configuration pointer and never

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import socket
 import threading
@@ -13,6 +14,7 @@ import webbrowser
 import uvicorn
 
 from jeromes_laboratory.api.main import app
+from jeromes_laboratory.launcher.instance import InstanceCoordinator, RunningInstance
 from jeromes_laboratory.storage.workspace import WorkspaceLocationError
 
 HOST = "127.0.0.1"
@@ -37,14 +39,28 @@ def get_launch_port() -> int:
     return port
 
 
-def open_browser_when_ready(url: str, health_url: str) -> None:
+def instance_is_healthy(instance: RunningInstance) -> bool:
+    """Confirm that a record belongs to the responding local application."""
+    health_url = f"http://{HOST}:{instance.port}/api/health"
+    try:
+        with urllib.request.urlopen(health_url, timeout=0.25) as response:
+            content = json.loads(response.read().decode("utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError, urllib.error.URLError):
+        return False
+    return (
+        response.status == 200
+        and isinstance(content, dict)
+        and content.get("instance_id") == instance.instance_id
+    )
+
+
+def open_browser_when_ready(url: str, instance: RunningInstance) -> None:
     """Open the browser after the local API begins accepting requests."""
     for _ in range(100):
         try:
-            with urllib.request.urlopen(health_url, timeout=0.25) as response:
-                if response.status == 200:
-                    webbrowser.open(url)
-                    return
+            if instance_is_healthy(instance):
+                webbrowser.open(url)
+                return
         except (OSError, urllib.error.URLError):
             time.sleep(0.1)
 
@@ -54,19 +70,30 @@ def main() -> None:
     try:
         app.state.workspace_service.initialize_configured_workspace()
     except WorkspaceLocationError as error:
-        raise SystemExit(f"Workspace initialization failed: {error}") from error
+        print(f"Workspace recovery required: {error}")
 
     port = get_launch_port()
     application_url = f"http://{HOST}:{port}"
-    health_url = f"{application_url}/api/health"
+    coordinator = InstanceCoordinator(health_checker=instance_is_healthy)
+    claim = coordinator.claim(port)
+    if not claim.owns_instance:
+        if os.environ.get("JEROMES_LABORATORY_NO_BROWSER") != "1":
+            open_browser_when_ready(f"http://{HOST}:{claim.instance.port}", claim.instance)
+        return
+
+    app.state.instance_id = claim.instance.instance_id
     if os.environ.get("JEROMES_LABORATORY_NO_BROWSER") != "1":
         browser_thread = threading.Thread(
             target=open_browser_when_ready,
-            args=(application_url, health_url),
+            args=(application_url, claim.instance),
             daemon=True,
         )
         browser_thread.start()
-    uvicorn.run(app, host=HOST, port=port)
+    try:
+        uvicorn.run(app, host=HOST, port=port)
+    finally:
+        coordinator.release(claim.instance.instance_id)
+        app.state.instance_id = None
 
 
 if __name__ == "__main__":

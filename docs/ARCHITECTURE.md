@@ -149,14 +149,18 @@ require an explicit future security decision.
 
 ## Launch process
 
-The canonical Python launcher currently chooses a port, starts the server on
-loopback, opens the browser after the health endpoint responds, and keeps terminal
-logging active. As Milestone 1 continues, it will perform the full sequence:
+The canonical Python launcher uses a temporary per-user instance record to avoid
+running two backend processes. It reuses a healthy or starting loopback instance,
+recovers stale records, starts the server on loopback, opens the browser after the
+health endpoint responds, and keeps terminal logging active. A missing remembered
+workspace does not prevent the shell from launching: the API exposes a recovery
+screen that can locate the existing recognized folder or forget its pointer.
+As Milestone 1 continues, it will perform the full sequence:
 
 1. locate platform application data;
 2. initialize configuration and migrate SQLite;
 3. inspect/recover the job queue;
-4. choose an available local port;
+4. coordinate or choose one available local port;
 5. start Uvicorn on `127.0.0.1`;
 6. open the default browser with Python's `webbrowser` module; and
 7. keep terminal logging active without exposing secrets.

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+import shutil
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+from uuid import uuid4
 
 from platformdirs import user_config_path, user_documents_path
 
@@ -18,6 +22,7 @@ DATABASE_FILE_NAME = "jeromes-laboratory.sqlite3"
 WORKSPACE_FORMAT_VERSION = 1
 
 WorkspacePathKind = Literal["empty", "existing_workspace", "not_empty", "new"]
+WorkspaceAvailabilityKind = Literal["unconfigured", "available", "unavailable"]
 
 
 class WorkspaceLocationError(ValueError):
@@ -34,6 +39,15 @@ class WorkspaceLocation:
 
     path: Path
     kind: WorkspacePathKind
+
+
+@dataclass(frozen=True)
+class WorkspaceAvailability:
+    """The configured workspace's availability without changing its pointer."""
+
+    kind: WorkspaceAvailabilityKind
+    path: Path | None
+    error: str | None = None
 
 
 class WorkspaceService:
@@ -144,18 +158,28 @@ class WorkspaceService:
 
         return WorkspaceLocation(path=location.path, kind="existing_workspace")
 
+    def workspace_availability(self) -> WorkspaceAvailability:
+        """Describe whether the remembered workspace can safely be opened."""
+        workspace_path = self.configured_workspace_path()
+        if workspace_path is None:
+            return WorkspaceAvailability(kind="unconfigured", path=None)
+        try:
+            self._validate_existing_workspace(workspace_path)
+        except WorkspaceLocationError as error:
+            return WorkspaceAvailability(
+                kind="unavailable",
+                path=workspace_path,
+                error=str(error),
+            )
+        return WorkspaceAvailability(kind="available", path=workspace_path)
+
     def initialize_configured_workspace(self) -> Path | None:
         """Apply database migrations before serving an already-configured workspace."""
         workspace_path = self.configured_workspace_path()
         if workspace_path is None:
             return None
 
-        marker = workspace_path / WORKSPACE_MARKER_NAME
-        if not marker.is_file():
-            raise WorkspaceLocationError(
-                f"The configured workspace '{workspace_path}' could not be found. "
-                "Restore it or update the workspace location."
-            )
+        self._validate_existing_workspace(workspace_path)
 
         try:
             upgrade_database(workspace_path / DATABASE_FILE_NAME)
@@ -164,6 +188,67 @@ class WorkspaceService:
                 f"Jerome's Laboratory could not open '{workspace_path}'."
             ) from error
         return workspace_path
+
+    def recover_configured_workspace(self, path_value: str) -> WorkspaceLocation:
+        """Point the device at a moved, recognized workspace without copying data."""
+        availability = self.workspace_availability()
+        if availability.kind != "unavailable":
+            raise WorkspaceLocationError("Workspace recovery is only needed when the saved folder is unavailable.")
+
+        location = self.inspect_path(path_value)
+        if location.kind != "existing_workspace":
+            raise WorkspaceLocationError(
+                "Choose the existing Jerome's Laboratory workspace folder containing its database."
+            )
+        self._validate_existing_workspace(location.path)
+        try:
+            upgrade_database(location.path / DATABASE_FILE_NAME)
+            self._write_configuration(location.path)
+        except OSError as error:
+            raise WorkspaceLocationError(
+                f"Jerome's Laboratory could not open '{location.path}'."
+            ) from error
+        return location
+
+    def move_configured_workspace(self, destination_value: str) -> tuple[Path, Path]:
+        """Copy, byte-verify, then repoint one workspace; never remove its source."""
+        availability = self.workspace_availability()
+        if availability.kind != "available" or availability.path is None:
+            raise WorkspaceLocationError("The current workspace must be available before it can be moved.")
+        source_path = availability.path
+        destination = self._normalize_path(destination_value)
+        if destination == source_path or self._is_within(destination, source_path) or self._is_within(source_path, destination):
+            raise WorkspaceLocationError("Choose a separate destination folder outside the current workspace.")
+
+        destination_location = self.inspect_path(str(destination))
+        if destination_location.kind not in ("new", "empty"):
+            raise WorkspaceLocationError("Choose a new or empty destination folder for the workspace move.")
+
+        try:
+            self._checkpoint_database(source_path / DATABASE_FILE_NAME)
+            source_manifest = self._file_manifest(source_path)
+            required_bytes = sum(size for size, _ in source_manifest.values())
+            destination_parent = destination.parent
+            destination_parent.mkdir(parents=True, exist_ok=True)
+            if shutil.disk_usage(destination_parent).free < required_bytes:
+                raise WorkspaceLocationError("The destination drive does not have enough free space.")
+
+            staging_path = destination_parent / f".{destination.name}.moving-{uuid4().hex}"
+            shutil.copytree(source_path, staging_path, copy_function=shutil.copy2)
+            if self._file_manifest(staging_path) != source_manifest:
+                raise WorkspaceLocationError(
+                    "The copied workspace did not match the original. The saved location was not changed."
+                )
+            staging_path.replace(destination)
+            self._write_configuration(destination)
+        except WorkspaceLocationError:
+            raise
+        except OSError as error:
+            raise WorkspaceLocationError(
+                f"Jerome's Laboratory could not move the workspace to '{destination}'. "
+                "The original folder was not changed."
+            ) from error
+        return source_path, destination
 
     def forget_configured_workspace(self) -> Path:
         """Remove only this device's workspace pointer, never workspace data."""
@@ -217,6 +302,50 @@ class WorkspaceService:
         if normalized_path == Path(normalized_path.anchor):
             raise WorkspaceLocationError("Choose a dedicated folder, not a drive root.")
         return normalized_path
+
+    def _validate_existing_workspace(self, workspace_path: Path) -> None:
+        try:
+            if not workspace_path.is_dir():
+                raise WorkspaceLocationError(
+                    f"The configured workspace '{workspace_path}' could not be found. Locate its new folder or forget this saved location."
+                )
+            if not (workspace_path / WORKSPACE_MARKER_NAME).is_file() or not (
+                workspace_path / DATABASE_FILE_NAME
+            ).is_file():
+                raise WorkspaceLocationError(
+                    f"The configured workspace '{workspace_path}' is incomplete or cannot be recognized. Locate its intact folder or forget this saved location."
+                )
+        except OSError as error:
+            raise WorkspaceLocationError(
+                f"The configured workspace '{workspace_path}' cannot be accessed. Locate it after restoring access."
+            ) from error
+
+    @staticmethod
+    def _is_within(path: Path, parent: Path) -> bool:
+        try:
+            path.relative_to(parent)
+        except ValueError:
+            return False
+        return True
+
+    @staticmethod
+    def _checkpoint_database(database_path: Path) -> None:
+        with sqlite3.connect(database_path) as connection:
+            connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+    @staticmethod
+    def _file_manifest(workspace_path: Path) -> dict[str, tuple[int, str]]:
+        manifest: dict[str, tuple[int, str]] = {}
+        for entry in workspace_path.rglob("*"):
+            if entry.is_symlink():
+                raise WorkspaceLocationError("A workspace containing symbolic links cannot be moved yet.")
+            if entry.is_file():
+                digest = hashlib.sha256()
+                with entry.open("rb") as artifact:
+                    for chunk in iter(lambda: artifact.read(1024 * 1024), b""):
+                        digest.update(chunk)
+                manifest[str(entry.relative_to(workspace_path))] = (entry.stat().st_size, digest.hexdigest())
+        return manifest
 
     def _write_configuration(self, workspace_path: Path) -> None:
         self._configuration_directory.mkdir(parents=True, exist_ok=True)

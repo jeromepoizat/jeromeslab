@@ -332,6 +332,27 @@ main {
   padding-top: 1.5rem;
 }
 
+.settings-section {
+  border-top: 1px solid var(--border);
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+}
+
+.settings-section h3 {
+  color: var(--ink);
+  font-size: 1rem;
+  margin: 0 0 0.55rem;
+}
+
+.settings-section p {
+  line-height: 1.5;
+  margin-bottom: 1rem;
+}
+
+.settings-section .workspace-path-controls {
+  margin-bottom: 0.9rem;
+}
+
 .settings-danger-zone h3 {
   color: var(--ink);
   font-size: 1rem;

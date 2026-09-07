@@ -85,3 +85,51 @@ def test_forget_workspace_removes_only_the_saved_pointer(tmp_path: Path) -> None
     assert service.configured_workspace_path() is None
     assert (workspace_path / DATABASE_FILE_NAME).is_file()
     assert artifact_path.read_text(encoding="utf-8") == "research data"
+
+
+def test_moved_workspace_can_be_reconnected_without_copying(tmp_path: Path) -> None:
+    service = create_service(tmp_path)
+    original_path = tmp_path / "research"
+    moved_path = tmp_path / "moved-research"
+    service.configure_workspace(str(original_path))
+    original_path.rename(moved_path)
+
+    availability = service.workspace_availability()
+    recovered = service.recover_configured_workspace(str(moved_path))
+
+    assert availability.kind == "unavailable"
+    assert recovered.path == moved_path
+    assert service.configured_workspace_path() == moved_path
+
+
+def test_workspace_move_copies_verifies_and_keeps_the_source(tmp_path: Path) -> None:
+    service = create_service(tmp_path)
+    source_path = tmp_path / "research"
+    destination_path = tmp_path / "relocated-research"
+    service.configure_workspace(str(source_path))
+    artifact_path = source_path / "artifacts" / "result.txt"
+    artifact_path.write_text("verified research data", encoding="utf-8")
+
+    previous_path, moved_path = service.move_configured_workspace(str(destination_path))
+
+    assert previous_path == source_path
+    assert moved_path == destination_path
+    assert service.configured_workspace_path() == destination_path
+    assert artifact_path.read_text(encoding="utf-8") == "verified research data"
+    assert (destination_path / "artifacts" / "result.txt").read_text(encoding="utf-8") == (
+        "verified research data"
+    )
+
+
+def test_workspace_move_rejects_a_nonempty_destination(tmp_path: Path) -> None:
+    service = create_service(tmp_path)
+    source_path = tmp_path / "research"
+    destination_path = tmp_path / "occupied"
+    service.configure_workspace(str(source_path))
+    destination_path.mkdir()
+    (destination_path / "keep.txt").write_text("keep", encoding="utf-8")
+
+    with pytest.raises(WorkspaceLocationError, match="new or empty"):
+        service.move_configured_workspace(str(destination_path))
+
+    assert service.configured_workspace_path() == source_path
