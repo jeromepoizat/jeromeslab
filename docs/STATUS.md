@@ -93,7 +93,10 @@ direction.
 ## Open design questions and risks
 
 - Artifact hash algorithm, canonical serialization, filesystem layout, and
-  effective-version selection representation.
+  effective-version selection representation. A proposed integrity policy would
+  record a versioned byte hash for every immutable artifact, show a warning on a
+  mismatch without rewriting history, and require acknowledgement before known-
+  mismatched input is used in new downstream work.
 - Project-fork ownership/deletion semantics for shared runs and artifacts.
 - Queue ordering, cancellation, and restart policy for an interrupted running job.
 - LLM retry-attempt representation and the source/update process for trustworthy

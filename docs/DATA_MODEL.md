@@ -67,6 +67,29 @@ dependent run exists; otherwise the user forks.
 The precise representation of effective-version selection and content hashing is
 unresolved.
 
+### Proposed integrity-verification behavior
+
+Each immutable `ArtifactVersion` (including a workflow step or job output) should
+record the byte length plus a versioned content hash when it is committed. A
+future integrity verifier can recompute that hash from the stored bytes and
+report `verified`, `mismatch`, or `not yet verified` without changing the
+artifact, run, or project history.
+
+A mismatch is evidence that the stored bytes no longer match the recorded
+output; it is not by itself evidence that the scientific conclusion is true or
+false. The UI should show a visible warning on the affected artifact and its
+related step, retain the original provenance, and offer details and a
+re-verification action. It must not silently rewrite the recorded hash, delete
+the data, or retroactively change completed workflow status. Before a future
+downstream computation consumes known-mismatched input, the interface should at
+least require an explicit acknowledgement; this preserves user control without
+presenting the result as integrity-verified.
+
+The exact algorithm, hash scope, verification schedule, and recovery behavior
+remain to be decided before the artifact engine is implemented. The initial
+candidate is a named SHA-256 hash over the exact bytes stored, rather than an
+ambiguous reconstruction of structured content.
+
 ## Execution
 
 ### Job
