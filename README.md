@@ -45,6 +45,15 @@ finalized.
 These are accepted directions, but most are not implemented yet. Details and
 status labels are in [Architecture](docs/ARCHITECTURE.md).
 
+## Planned offline replay and example project
+
+The provider layer will include an explicit replay mode that returns versioned,
+saved responses without a network request, API key, or API cost. A future bundled
+example project will use it to demonstrate a realistic completed workflow. Replay
+results will be visibly marked as simulated, recorded in provenance, and will
+never silently fall back to a paid provider. See
+[ADR 0008](docs/adr/0008-replay-provider-and-demo-project.md).
+
 ## Quick start from source
 
 No preinstalled Python, Node.js, `uv`, or pnpm is required. The first installation
@@ -129,6 +138,27 @@ Run frontend checks from `frontend/`:
 pnpm lint
 pnpm build
 ```
+
+## Continuous integration
+
+The `Cross-platform CI` GitHub Actions workflow runs after every push and pull
+request, and can also be started manually. It provisions separate clean Windows,
+Linux, and macOS runners. Each runner performs a fresh bootstrap, repeats it to
+check idempotency, and runs the Python and frontend checks.
+
+To inspect a run on GitHub:
+
+1. Open the repository and select the **Actions** tab.
+2. Select **Cross-platform CI** in the left sidebar.
+3. Open a workflow run, then select an operating-system job in the graph or job
+   list.
+4. Expand the first red step. Its command output is normally the most useful
+   starting point; the **Set up job** step also identifies the exact runner image.
+
+The log view can be searched, downloaded, and linked to a specific line. Someone
+with repository write access can rerun all failed jobs or one specific job from
+the run page. A green workflow means all three operating-system jobs passed; a
+red workflow can still contain useful green results for the other systems.
 
 ## Documentation
 

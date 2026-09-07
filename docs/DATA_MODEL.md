@@ -93,6 +93,8 @@ Conceptual fields:
 - `id`
 - nullable `project_id`, `step_run_id`, and `job_id`
 - `provider`, exact `model`, and API `operation`
+- execution mode (`live` or `replay`) and, for replayed calls, fixture identity
+  and version
 - `purpose`
 - `prompt_template_id` and `prompt_template_version`
 - references to exact system/developer instructions and input content artifacts
@@ -108,6 +110,10 @@ Conceptual fields:
 - pricing snapshot/reference
 - locally estimated/calculated cost and provider-reported cost as distinct values
 - calculation method/version, currency, and `cost_status`
+
+Replay calls are explicitly simulated: actual provider usage and API cost are
+zero, while optional historical usage or estimated cost carried by a fixture is
+separate reference data. A replay call never receives a real provider request ID.
 
 Large prompt and response bodies should be immutable artifacts rather than large
 SQLite columns. The call record references the exact artifact versions used.

@@ -111,6 +111,18 @@ remain separate. A status distinguishes reported, estimated, and unavailable
 costs. Aggregates are derived from calls at step and project level; they are not a
 replacement for call-level records.
 
+### Replay and example data
+
+The provider-neutral boundary will also support an explicit `ReplayProvider` for
+deterministic, network-free integration tests and a future bundled example
+project. Replay requests match versioned local fixtures strictly; a missing match
+fails and never falls back to a paid provider. Replayed calls retain ordinary
+provenance but are marked simulated and identify their fixture and version. Their
+actual usage and API cost are zero; optional historical usage or cost is separate,
+clearly labelled reference data. The interface must visibly distinguish all
+example or simulated results from live research results. See
+[ADR 0008](adr/0008-replay-provider-and-demo-project.md).
+
 ## Scientific source integrations
 
 Each source adapter owns request construction, pagination, source-specific
@@ -184,3 +196,9 @@ Python uses a `src/` layout and `uv`; the frontend lives under `frontend/` and
 uses pnpm. `pytest` is the Python test runner, and external calls use fixtures or
 mocks in normal tests. Generated `uv.lock` and `pnpm-lock.yaml` files make both
 dependency sets reproducible.
+
+GitHub Actions exercises the user-facing bootstrap twice on Windows, Linux, and
+macOS, then runs Python linting, type checking, tests, and frontend linting. The
+second bootstrap verifies idempotency; each bootstrap also performs the locked
+frontend build. `fail-fast` is disabled so a failure on one operating system does
+not hide results from the others.

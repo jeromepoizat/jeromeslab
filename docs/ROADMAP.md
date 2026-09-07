@@ -80,6 +80,8 @@ on each target OS rather than treating it as a cross-compiled artifact.
   output, usage, timing, errors, and cost basis.
 - Tests proving credentials and authorization data never enter logs, exceptions,
   SQLite provenance, or artifacts.
+- Strict, deterministic replay-provider fixtures for network-free integration
+  tests, with simulated provenance and no fallback to paid APIs.
 
 ## Milestone 6 — Research question decomposition
 
@@ -87,6 +89,8 @@ on each target OS rather than treating it as a cross-compiled artifact.
 - Store full call provenance, raw output, and parsed original artifact.
 - Review/edit to an effective artifact without losing the original.
 - Continue only with the exact selected effective version.
+- Add a bundled example project once enough end-to-end workflow exists, using
+  clearly labelled replayed outputs so it requires no provider key or API cost.
 
 ## Milestone 7 — Literature query generation
 

@@ -5,7 +5,8 @@ Last updated: 2026-09-07
 ## Current milestone
 
 **Milestone 0 — Repository foundation.** Self-bootstrapping installation works on
-Windows x64; cross-platform CI and contributor setup remain.
+Windows x64. Cross-platform CI is configured and awaits its first GitHub-hosted
+Linux/macOS run; contributor setup remains.
 
 ## Implementation state
 
@@ -23,6 +24,8 @@ Windows x64; cross-platform CI and contributor setup remain.
 - `start.ps1`/`.bat` and `start.sh` call a Python launcher that binds to loopback,
   chooses an available port, waits for health, and opens the default browser. The
   backend serves the built frontend.
+- `.github/workflows/ci.yml` defines bootstrap and verification jobs on GitHub-
+  hosted Windows, Linux, and macOS runners. Remote results are not yet verified.
 - No database schema, migration, settings persistence, provider adapter, queue,
   project feature, or scientific workflow code has been implemented.
 
@@ -44,18 +47,21 @@ Windows x64; cross-platform CI and contributor setup remain.
 - Completed a clean project-local Windows x64 bootstrap and an idempotent second
   run without relying on system Python, Node.js, `uv`, or pnpm.
 - Added the canonical browser-opening launcher and static frontend serving.
+- Accepted an explicit, strict replay provider and future bundled example project
+  for deterministic, zero-cost workflow demonstrations without paid-API fallback.
+- Added the first cross-platform GitHub Actions workflow and user-facing guidance
+  for inspecting its operating-system jobs and logs.
 
 ## Work in progress
 
-Cross-platform bootstrap verification and CI setup.
+First GitHub-hosted cross-platform CI run and bootstrap verification.
 
 ## Immediate next tasks
 
-1. Add CI for bootstrap coverage, locked installs, Python lint/type/tests, and
-   frontend lint/build on Windows, Linux, and macOS.
-2. Exercise the POSIX installer on Linux/macOS and all declared ARM64 paths;
-   correct any platform-specific archive or shell behavior.
-3. Add contribution guidance based on the verified bootstrap and check commands.
+1. Push the CI workflow and review all Windows, Linux, and macOS job logs; repair
+   any platform-specific archive, path, permission, or launcher issues.
+2. Add explicit ARM64 coverage after the standard hosted-runner matrix is green.
+3. Add `CONTRIBUTING.md` once the verified commands are stable.
 4. Begin the remaining Milestone 1 slice: app-data location and SQLite
    initialization/migration.
 5. Add the initial settings/configuration boundary without storing credentials.

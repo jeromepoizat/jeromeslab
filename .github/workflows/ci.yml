@@ -1,0 +1,74 @@
+name: Cross-platform CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - windows-latest
+          - ubuntu-latest
+          - macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Bootstrap on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\install.ps1
+
+      - name: Bootstrap on Linux or macOS
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./install.sh
+
+      - name: Verify repeatable bootstrap on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\install.ps1
+
+      - name: Verify repeatable bootstrap on Linux or macOS
+        if: runner.os != 'Windows'
+        shell: bash
+        run: ./install.sh
+
+      - name: Run Python checks on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          .\.runtime\uv\uv.exe run ruff check .
+          .\.runtime\uv\uv.exe run mypy src tests
+          .\.runtime\uv\uv.exe run pytest
+
+      - name: Run Python checks on Linux or macOS
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          ./.runtime/uv/uv run ruff check .
+          ./.runtime/uv/uv run mypy src tests
+          ./.runtime/uv/uv run pytest
+
+      - name: Run frontend lint on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: frontend
+        run: ..\.runtime\node\node.exe ..\.runtime\pnpm\node_modules\pnpm\bin\pnpm.cjs lint
+
+      - name: Run frontend lint on Linux or macOS
+        if: runner.os != 'Windows'
+        shell: bash
+        working-directory: frontend
+        run: ../.runtime/node/bin/node ../.runtime/pnpm/lib/node_modules/pnpm/bin/pnpm.cjs lint
