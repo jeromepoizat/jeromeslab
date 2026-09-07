@@ -10,16 +10,25 @@ permissions:
 
 jobs:
   verify:
-    name: Verify on ${{ matrix.os }}
+    name: Verify ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - windows-latest
-          - ubuntu-latest
-          - macos-latest
+        include:
+          - name: Windows x64
+            os: windows-latest
+          - name: Windows ARM64
+            os: windows-11-arm
+          - name: Linux x64
+            os: ubuntu-latest
+          - name: Linux ARM64
+            os: ubuntu-24.04-arm
+          - name: macOS ARM64
+            os: macos-latest
+          - name: macOS Intel
+            os: macos-15-intel
 
     steps:
       - name: Check out repository
@@ -49,17 +58,17 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          .\.runtime\uv\uv.exe run ruff check .
-          .\.runtime\uv\uv.exe run mypy src tests
-          .\.runtime\uv\uv.exe run pytest
+          .\.venv\Scripts\ruff.exe check .
+          .\.venv\Scripts\mypy.exe src tests
+          .\.venv\Scripts\pytest.exe
 
       - name: Run Python checks on Linux or macOS
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          ./.runtime/uv/uv run ruff check .
-          ./.runtime/uv/uv run mypy src tests
-          ./.runtime/uv/uv run pytest
+          ./.venv/bin/ruff check .
+          ./.venv/bin/mypy src tests
+          ./.venv/bin/pytest
 
       - name: Run frontend lint on Windows
         if: runner.os == 'Windows'

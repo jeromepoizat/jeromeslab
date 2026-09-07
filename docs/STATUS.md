@@ -59,17 +59,14 @@ architecture combinations remain.
 
 ## Work in progress
 
-Contributor setup and remaining architecture coverage.
+Expanded six-platform CI verification. Milestone 1 is intentionally waiting for
+owner direction after this Milestone 0 work completes.
 
 ## Immediate next tasks
 
-1. Add explicit Windows ARM64, Linux ARM64, and Intel macOS coverage.
-2. Add `CONTRIBUTING.md` using the now-verified bootstrap and check commands.
-3. Begin the remaining Milestone 1 slice: app-data location and SQLite
-   initialization/migration.
-4. Add the initial settings/configuration boundary without storing credentials.
-5. Resolve the first schema decisions immediately before their implementation,
-   recording an ADR only where the choice is architecturally significant.
+1. Run and review the expanded Windows ARM64, Linux ARM64, and Intel macOS jobs.
+2. Correct any platform-specific failures and record the verified combinations.
+3. Wait for owner direction before beginning Milestone 1.
 
 ## Known issues and blockers
 

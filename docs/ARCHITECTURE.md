@@ -198,7 +198,7 @@ mocks in normal tests. Generated `uv.lock` and `pnpm-lock.yaml` files make both
 dependency sets reproducible.
 
 GitHub Actions exercises the user-facing bootstrap twice on Windows, Linux, and
-macOS, then runs Python linting, type checking, tests, and frontend linting. The
-second bootstrap verifies idempotency; each bootstrap also performs the locked
-frontend build. `fail-fast` is disabled so a failure on one operating system does
-not hide results from the others.
+macOS across x64 and ARM64, including Intel macOS, then runs Python linting, type
+checking, tests, and frontend linting. The second bootstrap verifies idempotency;
+each bootstrap also performs the locked frontend build. `fail-fast` is disabled
+so a failure on one platform does not hide results from the others.

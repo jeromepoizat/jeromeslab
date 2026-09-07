@@ -144,9 +144,10 @@ pnpm build
 ## Continuous integration
 
 The `Cross-platform CI` GitHub Actions workflow runs after every push and pull
-request, and can also be started manually. It provisions separate clean Windows,
-Linux, and macOS runners. Each runner performs a fresh bootstrap, repeats it to
-check idempotency, and runs the Python and frontend checks.
+request, and can also be started manually. It provisions separate clean x64 and
+ARM64 runners across Windows, Linux, and macOS, including Intel macOS. Each runner
+performs a fresh bootstrap, repeats it to check idempotency, and runs the Python
+and frontend checks.
 
 To inspect a run on GitHub:
 
@@ -159,11 +160,12 @@ To inspect a run on GitHub:
 
 The log view can be searched, downloaded, and linked to a specific line. Someone
 with repository write access can rerun all failed jobs or one specific job from
-the run page. A green workflow means all three operating-system jobs passed; a
-red workflow can still contain useful green results for the other systems.
+the run page. A green workflow means all six platform jobs passed; a red workflow
+can still contain useful green results for the other systems.
 
 ## Documentation
 
+- [Contributing](CONTRIBUTING.md)
 - [Product vision](docs/PROJECT.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Scientific workflow](docs/WORKFLOW.md)
