@@ -195,10 +195,11 @@ main {
 .project-list-item { flex: 1; }
 .project-list-row input { max-width: 8rem; }
 
-.project-content { min-width: 0; padding: clamp(3rem, 10vw, 8rem) clamp(1.25rem, 4vw, 4rem); }
-.new-project-card, .project-view { max-width: 48rem; }
+.project-content { align-items: flex-start; display: flex; justify-content: center; min-width: 0; padding: clamp(3rem, 10vw, 8rem) clamp(1.25rem, 4vw, 4rem); }
+.new-project-card, .project-view { max-width: 48rem; width: min(100%, 48rem); }
 .new-project-card h2, .project-view h2 { color: var(--ink); font-family: Georgia, 'Times New Roman', serif; font-size: clamp(1.75rem, 4vw, 2.75rem); font-weight: 500; letter-spacing: -0.035em; }
-.new-project-card textarea { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; box-sizing: border-box; color: var(--ink); font: inherit; line-height: 1.6; margin: 1rem 0; min-height: 12rem; padding: 1rem; resize: vertical; width: 100%; }
+.new-project-card input { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; box-sizing: border-box; color: var(--ink); font: inherit; margin: 1rem 0; padding: 0.9rem 1rem; width: 100%; }
+.new-project-card input:focus-visible { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 0.15rem; }
 .scientific-question { color: var(--ink); font-size: 1.2rem; line-height: 1.7; white-space: pre-wrap; }
 .project-input-note { color: var(--muted); line-height: 1.6; }
 

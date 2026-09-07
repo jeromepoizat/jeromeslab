@@ -143,7 +143,7 @@ export function ProjectShell({ setupToken }: Props) {
         {selectedProject === null ? <div className="new-project-card">
           <p className="step-label">New project</p>
           <h2>What scientific question do you want to investigate?</h2>
-          <textarea value={question} onChange={event => setQuestion(event.target.value)} placeholder="Enter the exact scientific question…" aria-label="Scientific question" />
+          <input value={question} onChange={event => setQuestion(event.target.value)} placeholder="Enter the exact scientific question…" aria-label="Scientific question" />
           {error !== null && <p className="setup-error" role="alert">{error}</p>}
           <button className="primary-button" type="button" onClick={() => void createProject()} disabled={isCreating}>{isCreating ? 'Starting…' : 'Start'}</button>
         </div> : <article className="project-view">
