@@ -70,3 +70,18 @@ def test_configured_workspace_is_initialized_on_a_later_launch(tmp_path: Path) -
     reopened_service = create_service(tmp_path)
 
     assert reopened_service.initialize_configured_workspace() == workspace_path
+
+
+def test_forget_workspace_removes_only_the_saved_pointer(tmp_path: Path) -> None:
+    service = create_service(tmp_path)
+    workspace_path = tmp_path / "research"
+    service.configure_workspace(str(workspace_path))
+    artifact_path = workspace_path / "artifacts" / "preserved.txt"
+    artifact_path.write_text("research data", encoding="utf-8")
+
+    forgotten_path = service.forget_configured_workspace()
+
+    assert forgotten_path == workspace_path
+    assert service.configured_workspace_path() is None
+    assert (workspace_path / DATABASE_FILE_NAME).is_file()
+    assert artifact_path.read_text(encoding="utf-8") == "research data"

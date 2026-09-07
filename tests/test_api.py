@@ -88,3 +88,29 @@ async def test_workspace_folder_picker_returns_the_native_selection(
 
     assert response.status_code == 200
     assert response.json() == {"path": str(selected_path)}
+
+
+@pytest.mark.asyncio
+async def test_forget_workspace_api_removes_only_the_saved_pointer(tmp_path: Path) -> None:
+    workspace_service = WorkspaceService(
+        configuration_directory=tmp_path / "config",
+        documents_directory=tmp_path / "Documents",
+    )
+    workspace_path = tmp_path / "research"
+    workspace_service.configure_workspace(str(workspace_path))
+    transport = httpx.ASGITransport(
+        app=create_app(static_directory=None, workspace_service=workspace_service)
+    )
+
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+        setup = (await client.get("/api/setup")).json()
+        response = await client.post(
+            "/api/settings/forget-workspace",
+            headers={"X-Jeromes-Lab-Setup-Token": setup["setup_token"]},
+        )
+        updated_setup = await client.get("/api/setup")
+
+    assert response.status_code == 200
+    assert response.json() == {"forgotten_workspace_path": str(workspace_path)}
+    assert updated_setup.json()["configured"] is False
+    assert (workspace_path / "artifacts").is_dir()

@@ -148,6 +148,20 @@ class WorkspaceService:
             ) from error
         return workspace_path
 
+    def forget_configured_workspace(self) -> Path:
+        """Remove only this device's workspace pointer, never workspace data."""
+        workspace_path = self.configured_workspace_path()
+        if workspace_path is None:
+            raise WorkspaceLocationError("No workspace is currently configured.")
+
+        try:
+            self.configuration_file.unlink()
+        except OSError as error:
+            raise WorkspaceLocationError(
+                "Jerome's Laboratory could not forget the saved workspace location."
+            ) from error
+        return workspace_path
+
     def choose_workspace_directory(self) -> str | None:
         """Open the native folder picker, returning no value when the user cancels."""
         try:

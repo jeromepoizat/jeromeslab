@@ -11,6 +11,7 @@ from jeromes_laboratory.api.schemas import (
     FolderPickerResponse,
     HealthResponse,
     WorkspaceConfiguredResponse,
+    WorkspaceForgottenResponse,
     WorkspacePathRequest,
     WorkspaceSetupStatus,
 )
@@ -106,6 +107,24 @@ def create_app(
                 detail=str(error),
             ) from error
         return WorkspaceConfiguredResponse(workspace_path=str(location.path))
+
+    @application.post(
+        "/api/settings/forget-workspace",
+        response_model=WorkspaceForgottenResponse,
+        tags=["settings"],
+    )
+    def forget_workspace(
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> WorkspaceForgottenResponse:
+        """Forget the workspace pointer without touching any workspace data."""
+        try:
+            workspace_path = application.state.workspace_service.forget_configured_workspace()
+        except WorkspaceLocationError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(error),
+            ) from error
+        return WorkspaceForgottenResponse(forgotten_workspace_path=str(workspace_path))
 
     if static_directory is not None and (static_directory / "index.html").is_file():
         application.mount(

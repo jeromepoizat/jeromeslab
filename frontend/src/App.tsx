@@ -36,6 +36,15 @@ function MoonIcon() {
   )
 }
 
+function SettingsIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.12 2.12-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.04 1.56V20.3h-3v-.08A1.7 1.7 0 0 0 10.66 18.66a1.7 1.7 0 0 0-1.88.34l-.06.06-2.12-2.12.06-.06A1.7 1.7 0 0 0 7 15a1.7 1.7 0 0 0-1.56-1.04h-.08v-3h.08A1.7 1.7 0 0 0 7 9.92a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.12-2.12.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.04-1.56V4.62h3v.08a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.12 2.12-.06.06A1.7 1.7 0 0 0 19.4 9.92a1.7 1.7 0 0 0 1.56 1.04h.08v3h-.08A1.7 1.7 0 0 0 19.4 15Z" />
+    </svg>
+  )
+}
+
 function App() {
   const [apiState, setApiState] = useState<ApiState>('checking')
   const [theme, setTheme] = useState<Theme>('dark')
@@ -46,6 +55,10 @@ function App() {
   const [needsNonemptyConfirmation, setNeedsNonemptyConfirmation] = useState(false)
   const [isSelectingFolder, setIsSelectingFolder] = useState(false)
   const [isConfiguringWorkspace, setIsConfiguringWorkspace] = useState(false)
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isForgettingWorkspace, setIsForgettingWorkspace] = useState(false)
+  const [needsForgetConfirmation, setNeedsForgetConfirmation] = useState(false)
+  const [setupNotice, setSetupNotice] = useState<string | null>(null)
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -196,6 +209,37 @@ function App() {
     }
   }
 
+  const forgetWorkspace = async () => {
+    if (workspaceSetup === null) {
+      return
+    }
+
+    setIsForgettingWorkspace(true)
+    setSetupError(null)
+    try {
+      const response = await fetch('/api/settings/forget-workspace', {
+        method: 'POST',
+        headers: { 'X-Jeromes-Lab-Setup-Token': workspaceSetup.setup_token },
+      })
+      if (!response.ok) {
+        throw new Error(await readApiError(response))
+      }
+      const result = (await response.json()) as { forgotten_workspace_path: string }
+      setWorkspaceSetup({ ...workspaceSetup, workspace_path: null })
+      setWorkspacePath(workspaceSetup.recommended_workspace_path)
+      setSetupNotice(
+        `Workspace forgotten on this device. '${result.forgotten_workspace_path}' was not deleted.`,
+      )
+      setSetupStatus('needs_workspace')
+      setIsSettingsOpen(false)
+      setNeedsForgetConfirmation(false)
+    } catch (error: unknown) {
+      setSetupError(error instanceof Error ? error.message : 'The workspace could not be forgotten.')
+    } finally {
+      setIsForgettingWorkspace(false)
+    }
+  }
+
   const nextTheme = theme === 'dark' ? 'light' : 'dark'
   const themeToggleLabel = `Switch to ${nextTheme} mode`
 
@@ -227,6 +271,17 @@ function App() {
           >
             {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
           </button>
+          {setupStatus === 'configured' && (
+            <button
+              className="theme-toggle"
+              type="button"
+              aria-label="Open settings"
+              title="Settings"
+              onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+            >
+              <SettingsIcon />
+            </button>
+          )}
         </div>
       </header>
 
@@ -247,6 +302,7 @@ function App() {
               Your projects, local database, artifacts, exports, and backups stay together in
               this folder. You can paste a path or select a folder from your computer.
             </p>
+            {setupNotice !== null && <p className="setup-notice" role="status">{setupNotice}</p>}
             <form
               onSubmit={(event) => {
                 event.preventDefault()
@@ -293,15 +349,64 @@ function App() {
         )}
 
         {setupStatus === 'configured' && (
-          <section className="foundation-card" aria-labelledby="foundation-title">
-            <p className="step-label">Local workspace ready</p>
-            <h2 id="foundation-title">Application foundation</h2>
-            <p>
-              Your workspace is ready at <code>{workspacePath}</code>. Project and scientific
-              workflow features will be added incrementally with provenance preserved from the
-              start.
-            </p>
-          </section>
+          <>
+            {isSettingsOpen && (
+              <section className="foundation-card settings-card" aria-labelledby="settings-title">
+                <p className="step-label">Settings</p>
+                <h2 id="settings-title">Local configuration</h2>
+                <p>
+                  This device remembers the workspace below so later launches reopen it.
+                </p>
+                <code className="workspace-location">{workspacePath}</code>
+                <div className="settings-danger-zone">
+                  <h3>Testing and recovery</h3>
+                  <p>
+                    Forgetting this workspace removes only this device&apos;s saved location. It
+                    does not delete the database, projects, artifacts, or folder.
+                  </p>
+                  {needsForgetConfirmation ? (
+                    <div className="settings-confirmation">
+                      <p>Continue? You can select this same folder later to reopen it.</p>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => void forgetWorkspace()}
+                        disabled={isForgettingWorkspace}
+                      >
+                        {isForgettingWorkspace ? 'Forgetting…' : 'Confirm forget workspace'}
+                      </button>
+                      <button
+                        className="text-button"
+                        type="button"
+                        onClick={() => setNeedsForgetConfirmation(false)}
+                        disabled={isForgettingWorkspace}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => setNeedsForgetConfirmation(true)}
+                    >
+                      Forget workspace on this device
+                    </button>
+                  )}
+                  {setupError !== null && <p className="setup-error" role="alert">{setupError}</p>}
+                </div>
+              </section>
+            )}
+            <section className="foundation-card" aria-labelledby="foundation-title">
+              <p className="step-label">Local workspace ready</p>
+              <h2 id="foundation-title">Application foundation</h2>
+              <p>
+                Your workspace is ready at <code>{workspacePath}</code>. Project and scientific
+                workflow features will be added incrementally with provenance preserved from the
+                start.
+              </p>
+            </section>
+          </>
         )}
 
         {setupStatus === 'unavailable' && (

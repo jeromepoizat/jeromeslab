@@ -29,10 +29,18 @@ verify, then switch the pointer without automatically deleting the old copy. It
 is not a silent change to which projects happen to be displayed. Opening a
 separate workspace is a distinct advanced action.
 
+Settings may include an explicit **Forget workspace on this device** action for
+testing and recovery. It removes only the small configuration pointer and never
+deletes workspace files. The same principle applies to future saved settings:
+each persistent configuration needs a clear, scoped forget action. Future API
+credential removal will clear the credential-store entry only; it will not erase
+provenance or research data.
+
 ## Consequences
 
 Research data is visible and user-controlled while the launcher still has a
 reliable location from which to recover it. The application must retain a small
 configuration file outside the workspace, provide recovery behavior when a
 saved workspace is missing, and implement workspace relocation with database and
-artifact verification before exposing it in settings.
+artifact verification before exposing it in settings. Settings must explain
+precisely what a forget action does and does not delete.

@@ -38,3 +38,9 @@ class FolderPickerResponse(BaseModel):
     """A directory selected by the operating-system folder picker."""
 
     path: str | None
+
+
+class WorkspaceForgottenResponse(BaseModel):
+    """Confirmation that only this device's workspace pointer was removed."""
+
+    forgotten_workspace_path: str
