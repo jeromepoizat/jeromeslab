@@ -196,20 +196,21 @@ export function ProjectShell({ setupToken }: Props) {
           <button className="primary-button" type="button" onClick={() => void createProject()} disabled={isCreating}>{isCreating ? 'Starting…' : 'Start'}</button>
         </div> : <article className="project-view">
           <p className="step-label">{selectedProject.tag}</p>
-          <div className="project-section-heading"><h2>Scientific question</h2>{selectedProject.question_is_editable && <button className="edit-icon" type="button" title="Edit scientific question" aria-label="Edit scientific question" onClick={() => { setEditedQuestion(selectedProject.scientific_question); setIsEditingQuestion(true) }}>✎</button>}</div>
+          <h2>Scientific question</h2>
           {isEditingQuestion ? <div className="question-editor">
             <input value={editedQuestion} onChange={event => setEditedQuestion(event.target.value)} aria-label="Scientific question" />
             <div>
               <button className="primary-button" type="button" onClick={() => void saveScientificQuestion(selectedProject.id)} disabled={isSavingQuestion}>{isSavingQuestion ? 'Saving…' : 'Save question'}</button>
               <button className="text-button" type="button" onClick={() => setIsEditingQuestion(false)} disabled={isSavingQuestion}>Cancel</button>
             </div>
-          </div> : <>
+          </div> : <div className="project-input-box">
             <p className="scientific-question">{selectedProject.scientific_question}</p>
-          </>}
+            {selectedProject.question_is_editable && <div className="project-input-actions"><button className="edit-icon" type="button" title="Edit scientific question" aria-label="Edit scientific question" onClick={() => { setEditedQuestion(selectedProject.scientific_question); setIsEditingQuestion(true) }}>✎</button></div>}
+          </div>}
           <p className="project-input-note">This exact question is the input to later workflow steps. It can only be edited before a workflow job uses it.</p>
           <section className="project-section">
-            <div className="project-section-heading"><h2>Question-detailing prompt</h2><button className="edit-icon" type="button" title="Edit question-detailing prompt" aria-label="Edit question-detailing prompt" onClick={() => { setEditedPrompt(selectedProject.question_detailing_prompt); setIsEditingPrompt(true) }}>✎</button></div>
-            {isEditingPrompt ? <div className="prompt-editor"><textarea value={editedPrompt} onChange={event => setEditedPrompt(event.target.value)} aria-label="Question-detailing prompt" /><div><button className="primary-button" type="button" onClick={() => void saveQuestionDetailingPrompt(selectedProject.id)} disabled={isSavingPrompt}>{isSavingPrompt ? 'Saving…' : 'Save prompt'}</button><button className="text-button" type="button" onClick={() => setIsEditingPrompt(false)} disabled={isSavingPrompt}>Cancel</button></div></div> : <pre className="question-detailing-prompt">{selectedProject.question_detailing_prompt}</pre>}
+            <h2>Question-detailing prompt</h2>
+            {isEditingPrompt ? <div className="prompt-editor"><textarea value={editedPrompt} onChange={event => setEditedPrompt(event.target.value)} aria-label="Question-detailing prompt" /><div><button className="primary-button" type="button" onClick={() => void saveQuestionDetailingPrompt(selectedProject.id)} disabled={isSavingPrompt}>{isSavingPrompt ? 'Saving…' : 'Save prompt'}</button><button className="text-button" type="button" onClick={() => setIsEditingPrompt(false)} disabled={isSavingPrompt}>Cancel</button></div></div> : <div className="project-input-box"><pre className="question-detailing-prompt">{selectedProject.question_detailing_prompt}</pre><div className="project-input-actions"><button className="edit-icon" type="button" title="Edit question-detailing prompt" aria-label="Edit question-detailing prompt" onClick={() => { setEditedPrompt(selectedProject.question_detailing_prompt); setIsEditingPrompt(true) }}>✎</button></div></div>}
           </section>
           {error !== null && <p className="setup-error" role="alert">{error}</p>}
         </article>}
