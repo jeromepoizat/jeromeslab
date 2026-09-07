@@ -156,6 +156,11 @@ async def test_projects_have_sequential_default_tags_and_mutable_display_tags(tm
             json={"scientific_question": "What is the corrected evidence for intervention X?"},
             headers=headers,
         )
+        updated_prompt = await client.patch(
+            f"/api/projects/{first.json()['id']}/question-detailing-prompt",
+            json={"prompt": "Use this project's saved custom prompt."},
+            headers=headers,
+        )
         projects = await client.get("/api/projects")
 
     assert first.status_code == 201
@@ -167,6 +172,10 @@ async def test_projects_have_sequential_default_tags_and_mutable_display_tags(tm
     assert updated_question.json()["scientific_question"] == (
         "What is the corrected evidence for intervention X?"
     )
+    assert updated_prompt.json()["question_detailing_prompt"] == (
+        "Use this project's saved custom prompt."
+    )
+    assert updated_prompt.json()["question_detailing_prompt_version"] == "custom"
     assert [project["tag"] for project in projects.json()] == ["CARDIO", "PROJ002"]
 
 

@@ -65,6 +65,8 @@ class ProjectResponse(BaseModel):
     created_at: str
     updated_at: str
     question_is_editable: bool
+    question_detailing_prompt: str
+    question_detailing_prompt_version: str
 
 
 class CreateProjectRequest(BaseModel):
@@ -83,6 +85,12 @@ class UpdateQuestionRequest(BaseModel):
     """A pre-workflow correction to the project scientific question."""
 
     scientific_question: str = Field(min_length=1, max_length=20_000)
+
+
+class UpdateQuestionDetailingPromptRequest(BaseModel):
+    """The exact project prompt for the question-detailing LLM operation."""
+
+    prompt: str = Field(min_length=1, max_length=20_000)
 
 
 class ClientStateResponse(BaseModel):

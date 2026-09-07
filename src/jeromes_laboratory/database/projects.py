@@ -8,6 +8,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from jeromes_laboratory.workflow.question_detailing import (
+    DEFAULT_QUESTION_DETAILING_PROMPT,
+    QUESTION_DETAILING_PROMPT_VERSION,
+)
+
 
 class ProjectError(ValueError):
     """Raised when a requested project operation is not valid."""
@@ -23,6 +28,8 @@ class ProjectRecord:
     created_at: str
     updated_at: str
     question_is_editable: bool
+    question_detailing_prompt: str
+    question_detailing_prompt_version: str
 
 
 class ProjectRepository:
@@ -34,7 +41,8 @@ class ProjectRepository:
     def list_projects(self) -> list[ProjectRecord]:
         with self._connect() as connection:
             rows = connection.execute(
-                "SELECT id, tag, scientific_question, created_at, updated_at "
+                "SELECT id, tag, scientific_question, created_at, updated_at, "
+                "question_detailing_prompt, question_detailing_prompt_version "
                 "FROM projects ORDER BY created_at"
             ).fetchall()
         return [self._record_from_row(row) for row in rows]
@@ -42,7 +50,8 @@ class ProjectRepository:
     def get_project(self, project_id: str) -> ProjectRecord:
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT id, tag, scientific_question, created_at, updated_at "
+                "SELECT id, tag, scientific_question, created_at, updated_at, "
+                "question_detailing_prompt, question_detailing_prompt_version "
                 "FROM projects WHERE id = ?",
                 (project_id,),
             ).fetchone()
@@ -59,9 +68,17 @@ class ProjectRepository:
             next_tag_number = self._next_tag_number(connection)
             tag = f"PROJ{next_tag_number:03d}"
             connection.execute(
-                "INSERT INTO projects (id, tag, scientific_question, created_at, updated_at) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (project_id, tag, question, now, now),
+                "INSERT INTO projects (id, tag, scientific_question, created_at, updated_at, "
+                "question_detailing_prompt, question_detailing_prompt_version) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    project_id,
+                    tag,
+                    question,
+                    now,
+                    now,
+                    DEFAULT_QUESTION_DETAILING_PROMPT,
+                    QUESTION_DETAILING_PROMPT_VERSION,
+                ),
             )
             connection.execute(
                 "INSERT INTO application_metadata (key, value) VALUES ('next_project_tag_number', ?) "
@@ -75,6 +92,8 @@ class ProjectRepository:
             created_at=now,
             updated_at=now,
             question_is_editable=True,
+            question_detailing_prompt=DEFAULT_QUESTION_DETAILING_PROMPT,
+            question_detailing_prompt_version=QUESTION_DETAILING_PROMPT_VERSION,
         )
 
     def rename_project(self, project_id: str, tag_value: str) -> ProjectRecord:
@@ -112,6 +131,20 @@ class ProjectRepository:
             raise ProjectError("The selected project no longer exists.")
         return self.get_project(project_id)
 
+    def update_question_detailing_prompt(self, project_id: str, prompt_value: str) -> ProjectRecord:
+        """Save the exact project-specific prompt that a later LLM call will use."""
+        prompt = self._required_text(prompt_value, "Enter a prompt before saving.")
+        now = self._timestamp()
+        with self._connect() as connection:
+            cursor = connection.execute(
+                "UPDATE projects SET question_detailing_prompt = ?, "
+                "question_detailing_prompt_version = 'custom', updated_at = ? WHERE id = ?",
+                (prompt, now, project_id),
+            )
+        if cursor.rowcount == 0:
+            raise ProjectError("The selected project no longer exists.")
+        return self.get_project(project_id)
+
     def _question_is_editable(self, project_id: str) -> bool:
         """Centralize the future job-input lock rule; no jobs exist in this slice."""
         del project_id
@@ -142,6 +175,8 @@ class ProjectRepository:
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             question_is_editable=True,
+            question_detailing_prompt=row["question_detailing_prompt"],
+            question_detailing_prompt_version=row["question_detailing_prompt_version"],
         )
 
     @staticmethod

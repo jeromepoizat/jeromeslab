@@ -29,3 +29,5 @@ class Project(Base):
     scientific_question: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[str] = mapped_column(String(32), nullable=False)
     updated_at: Mapped[str] = mapped_column(String(32), nullable=False)
+    question_detailing_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    question_detailing_prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)

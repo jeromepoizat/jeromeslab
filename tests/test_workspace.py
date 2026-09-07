@@ -43,7 +43,7 @@ def test_configure_workspace_creates_layout_and_applies_migration(tmp_path: Path
         revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
 
     assert "application_metadata" in tables
-    assert revision == ("0002",)
+    assert revision == ("0003",)
 
 
 def test_nonempty_folder_requires_explicit_confirmation(tmp_path: Path) -> None:

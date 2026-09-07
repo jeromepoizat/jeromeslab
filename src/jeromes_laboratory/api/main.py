@@ -15,6 +15,7 @@ from jeromes_laboratory.api.schemas import (
     ProjectResponse,
     RenameProjectRequest,
     UpdateClientStateRequest,
+    UpdateQuestionDetailingPromptRequest,
     UpdateQuestionRequest,
     WorkspaceConfiguredResponse,
     WorkspaceForgottenResponse,
@@ -73,6 +74,8 @@ def create_app(
             created_at=record.created_at,
             updated_at=record.updated_at,
             question_is_editable=record.question_is_editable,
+            question_detailing_prompt=record.question_detailing_prompt,
+            question_detailing_prompt_version=record.question_detailing_prompt_version,
         )
 
     def require_setup_token(
@@ -260,6 +263,24 @@ def create_app(
         try:
             return project_response(
                 project_repository().update_scientific_question(project_id, request.scientific_question)
+            )
+        except ProjectError as error:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
+
+    @application.patch(
+        "/api/projects/{project_id}/question-detailing-prompt",
+        response_model=ProjectResponse,
+        tags=["projects"],
+    )
+    def update_question_detailing_prompt(
+        project_id: str,
+        request: UpdateQuestionDetailingPromptRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> ProjectResponse:
+        """Save the exact effective prompt before the future LLM operation runs."""
+        try:
+            return project_response(
+                project_repository().update_question_detailing_prompt(project_id, request.prompt)
             )
         except ProjectError as error:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error

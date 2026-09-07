@@ -42,6 +42,10 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   from device-local UI state, or shows a minimal scientific-question/start form.
   Projects receive sequential default tags (`PROJ001`, etc.); tags are mutable,
   while the scientific question is protected as workflow input.
+- Each project snapshots the exact question-detailing prompt and template
+  version that will be supplied to the first LLM operation. The project page
+  displays it beneath the scientific question and supports an explicit edit;
+  custom prompts remain distinct from later app-default changes.
 - The header includes Settings with a confirmed **Forget workspace on this
   device** action. It removes only the saved workspace pointer and returns to the
   first-run screen; it does not delete the workspace database, artifacts, or files.

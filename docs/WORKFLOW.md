@@ -33,6 +33,11 @@ place once a started or completed workflow job uses it as input. Project tags
 remain separately mutable display metadata; users can also add notes later
 without altering the question.
 
+Before Step 1, the project displays a versioned question-detailing prompt. Each
+project snapshots the exact default template text and version at creation, or an
+explicit user edit marked as custom. The eventual LLM call must record that same
+effective prompt text; later application versions must never silently replace it.
+
 ### Step 1 — Research question decomposition (planned)
 
 An LLM expands the question into structured plain text describing the

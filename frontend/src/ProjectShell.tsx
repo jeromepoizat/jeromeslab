@@ -5,6 +5,8 @@ type Project = {
   tag: string
   scientific_question: string
   question_is_editable: boolean
+  question_detailing_prompt: string
+  question_detailing_prompt_version: string
 }
 
 type ClientState = { selected_project_id: string | null; scroll_top: number }
@@ -28,6 +30,9 @@ export function ProjectShell({ setupToken }: Props) {
   const [isEditingQuestion, setIsEditingQuestion] = useState(false)
   const [editedQuestion, setEditedQuestion] = useState('')
   const [isSavingQuestion, setIsSavingQuestion] = useState(false)
+  const [isEditingPrompt, setIsEditingPrompt] = useState(false)
+  const [editedPrompt, setEditedPrompt] = useState('')
+  const [isSavingPrompt, setIsSavingPrompt] = useState(false)
   const restoredScrollTop = useRef(0)
   const saveTimer = useRef<number | null>(null)
 
@@ -144,6 +149,26 @@ export function ProjectShell({ setupToken }: Props) {
     }
   }
 
+  const saveQuestionDetailingPrompt = async (projectId: string) => {
+    setIsSavingPrompt(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/projects/${projectId}/question-detailing-prompt`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Jeromes-Lab-Setup-Token': setupToken },
+        body: JSON.stringify({ prompt: editedPrompt }),
+      })
+      if (!response.ok) throw new Error(await readApiError(response))
+      const updated = (await response.json()) as Project
+      setProjects(previous => previous.map(project => project.id === updated.id ? updated : project))
+      setIsEditingPrompt(false)
+    } catch (saveError: unknown) {
+      setError(saveError instanceof Error ? saveError.message : 'The prompt could not be saved.')
+    } finally {
+      setIsSavingPrompt(false)
+    }
+  }
+
   const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null
   return (
     <div className={`project-layout ${isCollapsed ? 'project-layout--collapsed' : ''}`}>
@@ -171,7 +196,7 @@ export function ProjectShell({ setupToken }: Props) {
           <button className="primary-button" type="button" onClick={() => void createProject()} disabled={isCreating}>{isCreating ? 'Starting…' : 'Start'}</button>
         </div> : <article className="project-view">
           <p className="step-label">{selectedProject.tag}</p>
-          <h2>Scientific question</h2>
+          <div className="project-section-heading"><h2>Scientific question</h2>{selectedProject.question_is_editable && <button className="edit-icon" type="button" title="Edit scientific question" aria-label="Edit scientific question" onClick={() => { setEditedQuestion(selectedProject.scientific_question); setIsEditingQuestion(true) }}>✎</button>}</div>
           {isEditingQuestion ? <div className="question-editor">
             <input value={editedQuestion} onChange={event => setEditedQuestion(event.target.value)} aria-label="Scientific question" />
             <div>
@@ -180,9 +205,12 @@ export function ProjectShell({ setupToken }: Props) {
             </div>
           </div> : <>
             <p className="scientific-question">{selectedProject.scientific_question}</p>
-            {selectedProject.question_is_editable && <button className="secondary-button" type="button" onClick={() => { setEditedQuestion(selectedProject.scientific_question); setIsEditingQuestion(true) }}>Edit scientific question</button>}
           </>}
           <p className="project-input-note">This exact question is the input to later workflow steps. It can only be edited before a workflow job uses it.</p>
+          <section className="project-section">
+            <div className="project-section-heading"><h2>Question-detailing prompt</h2><button className="edit-icon" type="button" title="Edit question-detailing prompt" aria-label="Edit question-detailing prompt" onClick={() => { setEditedPrompt(selectedProject.question_detailing_prompt); setIsEditingPrompt(true) }}>✎</button></div>
+            {isEditingPrompt ? <div className="prompt-editor"><textarea value={editedPrompt} onChange={event => setEditedPrompt(event.target.value)} aria-label="Question-detailing prompt" /><div><button className="primary-button" type="button" onClick={() => void saveQuestionDetailingPrompt(selectedProject.id)} disabled={isSavingPrompt}>{isSavingPrompt ? 'Saving…' : 'Save prompt'}</button><button className="text-button" type="button" onClick={() => setIsEditingPrompt(false)} disabled={isSavingPrompt}>Cancel</button></div></div> : <pre className="question-detailing-prompt">{selectedProject.question_detailing_prompt}</pre>}
+          </section>
           {error !== null && <p className="setup-error" role="alert">{error}</p>}
         </article>}
       </section>
