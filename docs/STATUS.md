@@ -20,6 +20,9 @@ waiting for owner direction.
 - A minimal FastAPI `/api/health` endpoint, API smoke test, and React application
   shell exist. The Vite development server binds to `127.0.0.1` and proxies the
   API to port 8000.
+- The shell defaults to a dark theme with an accessible light/dark toggle. API
+  health is represented by a minimal status dot with hover/focus detail rather
+  than language that could be confused with an external LLM provider.
 - `install.ps1`/`.bat` and `install.sh` download pinned project-local runtimes,
   verify runtime archive checksums, install both lockfiles, and build the client.
 - `start.ps1`/`.bat` and `start.sh` call a Python launcher that binds to loopback,
@@ -62,6 +65,8 @@ waiting for owner direction.
   ARM64, and Intel macOS, completing all six declared platform combinations.
 - Added contributor guidance using only the project-local toolchain installed by
   the bootstrap.
+- Simplified the local API health display to a tooltip-enabled status dot and
+  added a dark-default light/dark theme toggle.
 
 ## Work in progress
 
