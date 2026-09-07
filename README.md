@@ -12,10 +12,11 @@ the provenance and cost of every LLM-assisted transformation.
 
 ## Current status
 
-The repository is in **Milestone 0: repository foundation**. The Python and
-frontend environments are locked, and a minimal FastAPI health endpoint and
-React shell are runnable. Scientific workflow features are not implemented. See
-[current status](docs/STATUS.md) before starting work.
+**Milestone 0: repository foundation is complete.** The Python and frontend
+environments are locked, the bootstrap is verified across all six supported
+OS/architecture combinations, and a minimal FastAPI health endpoint and React
+shell are runnable. Milestone 1 and scientific workflow features have not started.
+See [current status](docs/STATUS.md) before starting work.
 
 ## Intended workflow
 
@@ -87,9 +88,8 @@ script binds the server to `127.0.0.1`, chooses an available port, opens the
 default browser, and keeps terminal logs visible.
 
 The source bootstrap currently supports x64 and ARM64 Windows, macOS, and glibc-
-based Linux. Windows x64 is locally verified. The first GitHub Actions run also
-verified the current Windows x64, Linux x64, and macOS ARM64 hosted runners;
-Windows ARM64, Linux ARM64, and Intel macOS still need explicit matrix coverage.
+verified Windows x64, Linux x64, and macOS ARM64; the expanded matrix subsequently
+verified Windows ARM64, Linux ARM64, and Intel macOS as well.
 
 ## Manual developer setup (optional)
 

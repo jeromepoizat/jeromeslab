@@ -4,10 +4,10 @@ Last updated: 2026-09-07
 
 ## Current milestone
 
-**Milestone 0 — Repository foundation.** Self-bootstrapping installation works on
-Windows x64 and the first cross-platform CI run passed on GitHub-hosted Windows
-x64, Linux x64, and macOS ARM64 runners. Contributor setup and the remaining
-architecture combinations remain.
+**Milestone 0 — Repository foundation is complete.** Self-bootstrapping
+installation and project checks pass on GitHub-hosted Windows x64/ARM64, Linux
+x64/ARM64, and macOS ARM64/Intel runners. Milestone 1 has not started and is
+waiting for owner direction.
 
 ## Implementation state
 
@@ -26,8 +26,10 @@ architecture combinations remain.
   chooses an available port, waits for health, and opens the default browser. The
   backend serves the built frontend.
 - `.github/workflows/ci.yml` defines bootstrap and verification jobs on GitHub-
-  hosted Windows, Linux, and macOS runners. All three jobs passed in workflow run
-  `34129495327` for commit `dfea3dd`.
+  hosted Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners. All
+  six jobs passed in workflow run `34131271837` for commit `3a441ec`.
+- `CONTRIBUTING.md` documents source installation, launch, project-local checks,
+  pull-request expectations, CI review, and project invariants.
 - No database schema, migration, settings persistence, provider adapter, queue,
   project feature, or scientific workflow code has been implemented.
 
@@ -56,23 +58,29 @@ architecture combinations remain.
 - Verified fresh and repeatable bootstrap, locked dependency installation, Python
   checks, frontend lint, and frontend build on GitHub-hosted Windows x64, Linux
   x64, and macOS ARM64 runners.
+- Expanded CI and verified the same bootstrap and checks on Windows ARM64, Linux
+  ARM64, and Intel macOS, completing all six declared platform combinations.
+- Added contributor guidance using only the project-local toolchain installed by
+  the bootstrap.
 
 ## Work in progress
 
-Expanded six-platform CI verification. Milestone 1 is intentionally waiting for
-owner direction after this Milestone 0 work completes.
+No implementation work is active. Milestone 1 is intentionally waiting for owner
+direction.
 
 ## Immediate next tasks
 
-1. Run and review the expanded Windows ARM64, Linux ARM64, and Intel macOS jobs.
-2. Correct any platform-specific failures and record the verified combinations.
-3. Wait for owner direction before beginning Milestone 1.
+1. Wait for owner direction before beginning Milestone 1.
+2. When authorized, design the first Milestone 1 storage slice immediately before
+   implementing the application-data location and SQLite migration foundation.
 
 ## Known issues and blockers
 
-- Windows ARM64, Linux ARM64, and Intel macOS bootstrap paths are declared but
-  have not yet run in CI. Native release packaging and graphical interaction also
-  still require later platform-specific testing beyond bootstrap CI.
+- Native release packaging and graphical interaction still require later
+  platform-specific testing beyond bootstrap CI.
+- GitHub reports that the `windows-11-arm` runner label will migrate to a Visual
+  Studio 2026 image on 2026-09-21. The project does not currently depend on Visual
+  Studio, and normal CI pushes will detect any unexpected image regression.
 
 ## Open design questions and risks
 
