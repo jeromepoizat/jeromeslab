@@ -45,13 +45,44 @@ finalized.
 These are accepted directions, but most are not implemented yet. Details and
 status labels are in [Architecture](docs/ARCHITECTURE.md).
 
-## Development setup
+## Quick start from source
 
-The commands below describe the currently verified developer setup. The accepted
-distribution requirement is a self-bootstrapping `install.ps1`/`install.sh` path
-with no preinstalled Python or Node.js, followed by self-contained native release
-packages. That bootstrap is the next implementation task; see
-[ADR 0007](docs/adr/0007-self-bootstrapping-installation.md).
+No preinstalled Python, Node.js, `uv`, or pnpm is required. The first installation
+needs an internet connection and stores its runtimes and caches inside the
+ignored `.runtime/` directory.
+
+### Windows
+
+Double-click `install.bat`, then `start.bat`, or run:
+
+```bat
+install.bat
+start.bat
+```
+
+The `.bat` wrappers run `install.ps1` and `start.ps1` with a process-local
+PowerShell execution-policy override; they do not change the system policy.
+
+### macOS and Linux
+
+```sh
+chmod +x install.sh start.sh
+./install.sh
+./start.sh
+```
+
+The install script downloads pinned, SHA-256-verified `uv` and Node.js archives,
+uses a project-local Python 3.12 runtime, synchronizes both committed lockfiles,
+and builds the frontend. It is safe to rerun after pulling an update. The start
+script binds the server to `127.0.0.1`, chooses an available port, opens the
+default browser, and keeps terminal logs visible.
+
+The source bootstrap currently supports x64 and ARM64 Windows, macOS, and glibc-
+based Linux. Windows x64 is locally verified; the other paths await CI coverage.
+
+## Manual developer setup (optional)
+
+Developers who prefer their system toolchains can use the commands below.
 
 Prerequisites:
 
@@ -81,8 +112,8 @@ cd frontend
 pnpm dev
 ```
 
-Open `http://127.0.0.1:5173`. The final single-command launcher and automatic
-browser opening belong to Milestone 1.
+Open `http://127.0.0.1:5173`. This two-process mode enables frontend hot reload;
+ordinary use should go through the start script instead.
 
 Run Python checks from the repository root:
 

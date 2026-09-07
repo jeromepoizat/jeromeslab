@@ -6,6 +6,8 @@ __pycache__/
 .mypy_cache/
 .venv/
 .tools/
+.runtime/
+.bootstrap-test/
 dist/
 build/
 *.egg-info/

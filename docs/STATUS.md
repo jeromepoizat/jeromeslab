@@ -4,9 +4,8 @@ Last updated: 2026-09-07
 
 ## Current milestone
 
-**Milestone 0 — Repository foundation.** Dependency locking, local verification,
-and the first runnable smoke-test slice are complete; CI and contributor setup
-remain.
+**Milestone 0 — Repository foundation.** Self-bootstrapping installation works on
+Windows x64; cross-platform CI and contributor setup remain.
 
 ## Implementation state
 
@@ -19,8 +18,13 @@ remain.
 - A minimal FastAPI `/api/health` endpoint, API smoke test, and React application
   shell exist. The Vite development server binds to `127.0.0.1` and proxies the
   API to port 8000.
-- No database schema, migration, launcher, settings persistence, provider adapter,
-  queue, project feature, or scientific workflow code has been implemented.
+- `install.ps1`/`.bat` and `install.sh` download pinned project-local runtimes,
+  verify runtime archive checksums, install both lockfiles, and build the client.
+- `start.ps1`/`.bat` and `start.sh` call a Python launcher that binds to loopback,
+  chooses an available port, waits for health, and opens the default browser. The
+  backend serves the built frontend.
+- No database schema, migration, settings persistence, provider adapter, queue,
+  project feature, or scientific workflow code has been implemented.
 
 ## Recently completed
 
@@ -35,32 +39,34 @@ remain.
   shell as the first runnable integration slice.
 - Verified locked installs, Python lint/type/tests, and frontend lint/build on
   Windows.
+- Added pinned x64/ARM64 runtime metadata for Windows, macOS, and Linux; added
+  checksum-verifying bootstrap and start scripts for Windows and POSIX systems.
+- Completed a clean project-local Windows x64 bootstrap and an idempotent second
+  run without relying on system Python, Node.js, `uv`, or pnpm.
+- Added the canonical browser-opening launcher and static frontend serving.
 
 ## Work in progress
 
-Milestone 0 verification and CI setup.
+Cross-platform bootstrap verification and CI setup.
 
 ## Immediate next tasks
 
-1. Implement idempotent `install.ps1` and `install.sh` bootstrap paths that
-   download pinned, checksum-verified runtimes locally and install from lockfiles.
-2. Add `start.ps1` and `start.sh` wrappers using only project-local assets.
-3. Add CI for bootstrap coverage, locked installs, Python lint/type/tests, and
+1. Add CI for bootstrap coverage, locked installs, Python lint/type/tests, and
    frontend lint/build on Windows, Linux, and macOS.
-4. Add contribution guidance based on the verified bootstrap and check commands.
-5. Begin the remaining Milestone 1 slice: app-data location, SQLite
-   initialization/migration, and local launcher/browser opening.
-6. Add the initial settings/configuration boundary without storing credentials.
-7. Resolve the first schema decisions immediately before their implementation,
+2. Exercise the POSIX installer on Linux/macOS and all declared ARM64 paths;
+   correct any platform-specific archive or shell behavior.
+3. Add contribution guidance based on the verified bootstrap and check commands.
+4. Begin the remaining Milestone 1 slice: app-data location and SQLite
+   initialization/migration.
+5. Add the initial settings/configuration boundary without storing credentials.
+6. Resolve the first schema decisions immediately before their implementation,
    recording an ADR only where the choice is architecturally significant.
 
 ## Known issues and blockers
 
-- The current Codex shell exposes bundled Python, Node, and pnpm by absolute path
-  rather than PATH. A workspace-local ignored `uv` bootstrap was used. Normal
-  contributors should install the documented prerequisites on PATH.
-- Windows with Python 3.12, Node 24, pnpm 11, and uv 0.12 is the only environment
-  verified so far; Linux and macOS still require CI coverage.
+- Windows x64 with the project-local Python 3.12, Node 24, pnpm 11, and uv 0.12
+  bootstrap is the only environment verified so far. Linux, macOS, and ARM64
+  still require CI or hardware coverage.
 
 ## Open design questions and risks
 
@@ -77,5 +83,5 @@ Milestone 0 verification and CI setup.
   and synthesis structure.
 - Localhost security details such as session/CSRF protection before any mutating
   browser API is exposed.
-- Bootstrap supply-chain integrity, supported OS/CPU matrix, disk-space needs,
-  proxy/offline behavior, and the eventual native package/signing format.
+- Bootstrap proxy/offline behavior, disk-space reporting, musl Linux support, and
+  the eventual native package/signing format.

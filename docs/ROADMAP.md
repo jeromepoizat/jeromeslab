@@ -12,7 +12,8 @@ documentation agree.
 - Bootstrap reproducible Python and frontend environments with generated
   lockfiles.
 - Add idempotent Windows and POSIX bootstrap scripts that install pinned runtimes
-  locally without administrator rights or global system changes.
+  locally without administrator rights or global system changes. Windows x64 is
+  verified; macOS, Linux, and ARM64 validation remains.
 - Establish linting, type-checking, and test commands in CI.
 - Add contribution and development setup guidance after commands are verified.
 
@@ -29,7 +30,8 @@ conversation.
 - Python launcher: migration, local port selection, `127.0.0.1` binding, browser
   open, terminal logs.
 - `start.ps1` and `start.sh` wrappers that invoke the project-local runtime after
-  bootstrap.
+  bootstrap. The wrappers and browser-opening launcher are implemented; cross-
+  platform validation remains.
 - Basic settings surface without secret persistence yet.
 
 After the local shell stabilizes, add CI-built OS-specific release packages that

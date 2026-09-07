@@ -24,6 +24,9 @@ dependencies = [
 [project.urls]
 Repository = "https://github.com/jeromepoizat/jeromeslab"
 
+[project.scripts]
+jeromes-laboratory = "jeromes_laboratory.launcher.main:main"
+
 [dependency-groups]
 dev = [
     "mypy>=1.14",

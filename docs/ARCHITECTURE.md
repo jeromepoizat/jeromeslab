@@ -136,7 +136,9 @@ require an explicit future security decision.
 
 ## Launch process
 
-The canonical Python launcher will:
+The canonical Python launcher currently chooses a port, starts the server on
+loopback, opens the browser after the health endpoint responds, and keeps terminal
+logging active. As Milestone 1 continues, it will perform the full sequence:
 
 1. locate platform application data;
 2. initialize configuration and migrate SQLite;
@@ -146,21 +148,24 @@ The canonical Python launcher will:
 6. open the default browser with Python's `webbrowser` module; and
 7. keep terminal logging active without exposing secrets.
 
-Convenience `start.bat` and `start.sh` files may call the launcher, but core logic
-must remain cross-platform Python. Docker may be optional later and is not the
-normal runtime architecture.
+The committed `start.ps1`, `start.bat`, and `start.sh` wrappers call the canonical
+Python launcher through the project-local environment; application logic remains
+cross-platform Python. Docker may be optional later and is not the normal runtime
+architecture.
 
 ## Installation and distribution
 
 Ordinary users must not need Python, Node.js, `uv`, or pnpm preinstalled. Two
 delivery paths serve different audiences:
 
-1. Source-checkout bootstrap scripts (`install.ps1` on Windows and `install.sh`
-   on macOS/Linux) download pinned tool versions into ignored project-local
+1. Source-checkout bootstrap scripts (`install.ps1`/`install.bat` on Windows and
+   `install.sh` on macOS/Linux) download pinned tool versions into ignored local
    storage, use `uv` to install the pinned Python line and locked Python
    dependencies, download a pinned Node.js distribution, install the locked
-   frontend dependencies, and build the static client. Subsequent `start`
-   wrappers use only those local assets.
+   frontend dependencies, and build the static client. Subsequent start wrappers
+   use only those local assets. The Windows x64 path is implemented and verified,
+   including an idempotent second run. The POSIX implementation awaits Linux and
+   macOS CI verification.
 2. Release artifacts will eventually bundle the built frontend, Python runtime,
    backend, and dependencies into OS-specific packages. These are the preferred
    non-developer experience and require neither Git nor a first-run toolchain
