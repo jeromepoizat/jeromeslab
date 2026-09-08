@@ -32,7 +32,9 @@ conversation.
 - `start.ps1` and `start.sh` wrappers that invoke the project-local runtime after
   bootstrap. The wrappers and browser-opening launcher are implemented; cross-
   platform validation remains.
-- Basic settings surface without secret persistence yet.
+- Settings surface with native credential storage, global OpenAI/Anthropic model
+  defaults, and filtered live model discovery. Scientific generation calls remain
+  part of Milestone 5.
 
 After the local shell stabilizes, add CI-built OS-specific release packages that
 bundle the frontend, backend, Python runtime, and dependencies. Validate packaging
@@ -67,7 +69,8 @@ on each target OS rather than treating it as a cross-compiled artifact.
 
 - Provider-independent request/response contracts.
 - OpenAI and Anthropic adapters behind the contract.
-- Native OS credential storage and configuration-state API.
+- Native OS credential storage and configuration-state API (implemented early as
+  a Milestone 1 prerequisite).
 - Persistent `LLMCall` provenance for successful and failed attempts.
 - Exact instruction/input, raw output, and parsed output preservation.
 - Prompt-template identity/version and generation settings.

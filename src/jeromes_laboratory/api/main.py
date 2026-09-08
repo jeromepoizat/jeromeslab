@@ -10,11 +10,17 @@ from fastapi.staticfiles import StaticFiles
 from jeromes_laboratory.api.schemas import (
     ClientStateResponse,
     CreateProjectRequest,
+    FetchLLMModelsRequest,
+    FetchLLMModelsResponse,
     FolderPickerResponse,
     HealthResponse,
+    LLMProviderName,
+    LLMProviderStatus,
+    LLMSettingsResponse,
     ProjectResponse,
     RenameProjectRequest,
     UpdateClientStateRequest,
+    UpdateLLMSettingsRequest,
     UpdateQuestionDetailingPromptRequest,
     UpdateQuestionRequest,
     WorkspaceConfiguredResponse,
@@ -24,6 +30,19 @@ from jeromes_laboratory.api.schemas import (
     WorkspaceSetupStatus,
 )
 from jeromes_laboratory.database.projects import ProjectError, ProjectRecord, ProjectRepository
+from jeromes_laboratory.llm.catalog import (
+    PROVIDER_DISPLAY_NAMES,
+    SUPPORTED_PROVIDERS,
+    ModelCatalogError,
+    ProviderModelCatalog,
+    ProviderName,
+)
+from jeromes_laboratory.llm.settings import LLMSettingsError, LLMSettingsService
+from jeromes_laboratory.security.credentials import (
+    CredentialStore,
+    CredentialStoreError,
+    NativeCredentialStore,
+)
 from jeromes_laboratory.storage.workspace import (
     DATABASE_FILE_NAME,
     FolderPickerUnavailableError,
@@ -37,6 +56,9 @@ DEFAULT_FRONTEND_DIRECTORY = Path(__file__).resolve().parents[3] / "frontend" / 
 def create_app(
     static_directory: Path | None = DEFAULT_FRONTEND_DIRECTORY,
     workspace_service: WorkspaceService | None = None,
+    llm_settings_service: LLMSettingsService | None = None,
+    credential_store: CredentialStore | None = None,
+    model_catalog: ProviderModelCatalog | None = None,
 ) -> FastAPI:
     """Create the local API application."""
     application = FastAPI(
@@ -46,6 +68,15 @@ def create_app(
     )
     application.state.workspace_service = (
         workspace_service if workspace_service is not None else WorkspaceService()
+    )
+    application.state.llm_settings_service = (
+        llm_settings_service if llm_settings_service is not None else LLMSettingsService()
+    )
+    application.state.credential_store = (
+        credential_store if credential_store is not None else NativeCredentialStore()
+    )
+    application.state.model_catalog = (
+        model_catalog if model_catalog is not None else ProviderModelCatalog()
     )
     application.state.setup_token = token_urlsafe(32)
     application.state.instance_id = None
@@ -90,9 +121,142 @@ def create_app(
                 detail="The local setup token is missing or invalid.",
             )
 
+    def llm_settings_response() -> LLMSettingsResponse:
+        """Return global LLM defaults and key presence without exposing secrets."""
+        try:
+            settings = application.state.llm_settings_service.read()
+        except LLMSettingsError as error:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(error),
+            ) from error
+        credential_store_error: str | None = None
+        providers: list[LLMProviderStatus] = []
+        for provider in SUPPORTED_PROVIDERS:
+            try:
+                has_api_key = application.state.credential_store.get_api_key(provider) is not None
+            except CredentialStoreError as error:
+                has_api_key = False
+                credential_store_error = str(error)
+            providers.append(
+                LLMProviderStatus(
+                    id=provider,
+                    display_name=PROVIDER_DISPLAY_NAMES[provider],
+                    api_key_configured=has_api_key,
+                    models=settings.model_cache[provider],
+                )
+            )
+        selected_has_key = any(
+            provider.id == settings.provider and provider.api_key_configured
+            for provider in providers
+        )
+        configured = (
+            settings.provider is not None
+            and settings.model is not None
+            and selected_has_key
+            and settings.model in settings.model_cache[settings.provider]
+        )
+        return LLMSettingsResponse(
+            configured=configured,
+            onboarding_complete=configured or settings.setup_skipped,
+            selected_provider=settings.provider,
+            selected_model=settings.model,
+            providers=providers,
+            credential_store_error=credential_store_error,
+        )
+
     @application.get("/api/health", response_model=HealthResponse, tags=["system"])
     def health() -> HealthResponse:
         return HealthResponse(instance_id=application.state.instance_id)
+
+    @application.get("/api/llm/settings", response_model=LLMSettingsResponse, tags=["llm"])
+    def get_llm_settings() -> LLMSettingsResponse:
+        """Return the device's non-secret global LLM configuration."""
+        return llm_settings_response()
+
+    @application.post(
+        "/api/llm/providers/{provider}/models",
+        response_model=FetchLLMModelsResponse,
+        tags=["llm"],
+    )
+    def fetch_llm_models(
+        provider: LLMProviderName,
+        request: FetchLLMModelsRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> FetchLLMModelsResponse:
+        """Validate a credential, save it securely, and cache compatible models."""
+        typed_provider: ProviderName = provider
+        supplied_key = request.api_key.strip() if request.api_key is not None else None
+        try:
+            api_key = supplied_key or application.state.credential_store.get_api_key(provider)
+            if api_key is None:
+                raise ModelCatalogError(f"Enter an {PROVIDER_DISPLAY_NAMES[typed_provider]} API key.")
+            models = application.state.model_catalog.fetch_models(typed_provider, api_key)
+            if not models:
+                raise ModelCatalogError(
+                    f"No compatible text-generation models were found for this "
+                    f"{PROVIDER_DISPLAY_NAMES[typed_provider]} account."
+                )
+            if supplied_key is not None:
+                application.state.credential_store.set_api_key(provider, supplied_key)
+            application.state.llm_settings_service.cache_models(typed_provider, models)
+        except (CredentialStoreError, LLMSettingsError, ModelCatalogError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(error),
+            ) from error
+        return FetchLLMModelsResponse(provider=provider, models=models)
+
+    @application.put("/api/llm/settings", response_model=LLMSettingsResponse, tags=["llm"])
+    def update_llm_settings(
+        request: UpdateLLMSettingsRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> LLMSettingsResponse:
+        """Change the global provider and model used by future LLM jobs."""
+        try:
+            if application.state.credential_store.get_api_key(request.provider) is None:
+                raise LLMSettingsError("Fetch models with an API key before saving this provider.")
+            application.state.llm_settings_service.select(request.provider, request.model)
+        except (CredentialStoreError, LLMSettingsError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(error),
+            ) from error
+        return llm_settings_response()
+
+    @application.post("/api/llm/settings/skip", response_model=LLMSettingsResponse, tags=["llm"])
+    def skip_llm_setup(
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> LLMSettingsResponse:
+        """Allow local non-LLM use while leaving live jobs unconfigured."""
+        try:
+            application.state.llm_settings_service.skip_setup()
+        except LLMSettingsError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(error),
+            ) from error
+        return llm_settings_response()
+
+    @application.delete(
+        "/api/llm/providers/{provider}/api-key",
+        response_model=LLMSettingsResponse,
+        tags=["llm"],
+    )
+    def forget_llm_api_key(
+        provider: LLMProviderName,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> LLMSettingsResponse:
+        """Forget one provider key without exposing or touching workspace research data."""
+        try:
+            application.state.credential_store.delete_api_key(provider)
+            application.state.llm_settings_service.clear_provider(provider)
+        except (CredentialStoreError, LLMSettingsError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(error),
+            ) from error
+        return llm_settings_response()
 
     @application.get("/api/setup", response_model=WorkspaceSetupStatus, tags=["setup"])
     def get_workspace_setup() -> WorkspaceSetupStatus:

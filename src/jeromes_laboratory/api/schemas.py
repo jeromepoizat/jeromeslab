@@ -56,6 +56,49 @@ class WorkspaceMovedResponse(BaseModel):
     workspace_path: str
 
 
+LLMProviderName = Literal["openai", "anthropic"]
+
+
+class LLMProviderStatus(BaseModel):
+    """Non-secret configuration and cached models for one provider."""
+
+    id: LLMProviderName
+    display_name: str
+    api_key_configured: bool
+    models: list[str]
+
+
+class LLMSettingsResponse(BaseModel):
+    """Global device-level LLM defaults without credential values."""
+
+    configured: bool
+    onboarding_complete: bool
+    selected_provider: LLMProviderName | None
+    selected_model: str | None
+    providers: list[LLMProviderStatus]
+    credential_store_error: str | None = None
+
+
+class FetchLLMModelsRequest(BaseModel):
+    """An optional replacement secret used only at the credential boundary."""
+
+    api_key: str | None = None
+
+
+class FetchLLMModelsResponse(BaseModel):
+    """Compatible account-visible models returned by a provider."""
+
+    provider: LLMProviderName
+    models: list[str]
+
+
+class UpdateLLMSettingsRequest(BaseModel):
+    """Select the global provider and compatible model default."""
+
+    provider: LLMProviderName
+    model: str
+
+
 class ProjectResponse(BaseModel):
     """The initial durable research project state."""
 

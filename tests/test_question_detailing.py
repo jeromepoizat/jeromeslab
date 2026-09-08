@@ -15,14 +15,20 @@ from jeromes_laboratory.workflow.question_detailing import (
 
 
 def test_default_question_detailing_prompt_is_loaded_from_versioned_resource() -> None:
-    assert QUESTION_DETAILING_PROMPT_VERSION == "2"
-    assert DEFAULT_QUESTION_DETAILING_PROMPT == load_question_detailing_prompt("2")
+    assert QUESTION_DETAILING_PROMPT_VERSION == "4"
+    assert DEFAULT_QUESTION_DETAILING_PROMPT == load_question_detailing_prompt("4")
     assert "scientific question below" not in DEFAULT_QUESTION_DETAILING_PROMPT
-    assert "project's scientific question" in DEFAULT_QUESTION_DETAILING_PROMPT
+    assert "project's original scientific question" in DEFAULT_QUESTION_DETAILING_PROMPT
+    assert "Return only the complete developed question as Markdown text" in (
+        DEFAULT_QUESTION_DETAILING_PROMPT
+    )
+    assert "Do not wrap the response in JSON" in DEFAULT_QUESTION_DETAILING_PROMPT
 
 
 def test_historical_question_detailing_prompt_remains_available() -> None:
     assert "scientific question below" in load_question_detailing_prompt("1")
+    assert "structured research plan" in load_question_detailing_prompt("2")
+    assert 'exactly one field named "detailed_question"' in load_question_detailing_prompt("3")
 
 
 def test_v2_migration_updates_only_the_previous_default(tmp_path: Path) -> None:
@@ -71,5 +77,5 @@ def test_v2_migration_updates_only_the_previous_default(tmp_path: Path) -> None:
             )
         )
 
-    assert prompts["default-project"] == f"{load_question_detailing_prompt('2')}|2"
+    assert prompts["default-project"] == f"{load_question_detailing_prompt('4')}|4"
     assert prompts["custom-project"] == "My custom prompt|custom"

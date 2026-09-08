@@ -2,7 +2,7 @@
 
 from importlib.resources import files
 
-QUESTION_DETAILING_PROMPT_VERSION = "2"
+QUESTION_DETAILING_PROMPT_VERSION = "4"
 
 
 def load_question_detailing_prompt(version: str) -> str:

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import type { LLMSettings } from './LLMConfiguration'
 
 type Project = {
   id: string
@@ -11,7 +12,11 @@ type Project = {
 
 type ClientState = { selected_project_id: string | null; scroll_top: number }
 
-type Props = { setupToken: string }
+type Props = {
+  setupToken: string
+  llmSettings: LLMSettings
+  onOpenSettings: () => void
+}
 
 type HelpProps = { children: string }
 
@@ -53,7 +58,7 @@ async function readApiError(response: Response) {
   return body?.detail ?? 'The request could not be completed. Try again.'
 }
 
-export function ProjectShell({ setupToken }: Props) {
+export function ProjectShell({ setupToken, llmSettings, onOpenSettings }: Props) {
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [question, setQuestion] = useState('')
@@ -270,34 +275,16 @@ export function ProjectShell({ setupToken }: Props) {
               editLabel="Edit question-detailing prompt"
               actions={<><button className="primary-button" type="button" onClick={() => void saveQuestionDetailingPrompt(selectedProject.id)} disabled={isSavingPrompt}>{isSavingPrompt ? 'Saving…' : 'Save prompt'}</button><button className="text-button" type="button" onClick={() => setIsEditingPrompt(false)} disabled={isSavingPrompt}>Cancel</button></>}
             />
+            <div className="llm-job-provider">
+              <div><span>Model for this job</span>{llmSettings.configured
+                ? <strong>{llmSettings.providers.find(provider => provider.id === llmSettings.selected_provider)?.display_name} · {llmSettings.selected_model}</strong>
+                : <strong>Not configured</strong>}</div>
+              <button className="text-button" type="button" onClick={onOpenSettings}>{llmSettings.configured ? 'Change' : 'Configure provider'}</button>
+            </div>
           </section>
           {error !== null && <p className="setup-error" role="alert">{error}</p>}
         </article>}
       </section>
     </div>
   )
-}
-
-export function ProjectShellBootstrap() {
-  const [setupToken, setSetupToken] = useState<string | null>(null)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    const loadSetup = () => fetch('/api/setup', { signal: controller.signal })
-      .then(async response => {
-        if (!response.ok) return null
-        return (await response.json()) as { configured: boolean; setup_token: string }
-      })
-      .then(setup => {
-        if (setup?.configured) setSetupToken(setup.setup_token)
-      })
-      .catch(() => undefined)
-    void loadSetup()
-    const intervalId = window.setInterval(() => {
-      if (setupToken === null) void loadSetup()
-    }, 1_000)
-    return () => { controller.abort(); window.clearInterval(intervalId) }
-  }, [setupToken])
-
-  return setupToken === null ? null : <ProjectShell setupToken={setupToken} />
 }

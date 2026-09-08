@@ -40,10 +40,19 @@ effective prompt text; later application versions must never silently replace it
 
 ### Step 1 — Research question decomposition (planned)
 
-An LLM expands the question into structured plain text describing the
-subquestions to investigate. The user may edit the result before continuing.
-Both the exact raw model response and parsed original artifact are preserved; an
-edit creates a separate effective version.
+An LLM expands the question into a flexible researchable thesis or investigation
+brief. The provider returns free-form Markdown and may choose paragraphs,
+headings, lists, hypotheses, caveats, and key notes suited to the particular
+question rather than filling mandatory scientific categories. Application code
+deterministically wraps that text in a versioned JSON artifact containing its
+content type and `detailed_question` value. The UI presents the Markdown in one
+expandable content box. The user may edit the result before continuing. Both the
+exact raw provider response and parsed original artifact are preserved; an edit
+creates a separate effective version.
+
+Enqueueing Step 1 snapshots and locks the exact question, effective prompt,
+provider, model, and generation settings. A pending job can be cancelled and its
+record retained. Once provider dispatch begins, cancellation is unavailable.
 
 The run links to complete `LLMCall` provenance, including prompt version, exact
 input/output, provider/model, usage, timing, errors, and cost status.

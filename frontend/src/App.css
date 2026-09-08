@@ -142,6 +142,12 @@ main {
   padding: clamp(3rem, 10vw, 8rem) clamp(1.25rem, 4vw, 4rem);
 }
 
+main.project-main {
+  margin: 0;
+  max-width: none;
+  padding: 0;
+}
+
 .project-layout {
   background: var(--background);
   border-top: 1px solid var(--header-divider);
@@ -160,11 +166,13 @@ main {
   background: var(--surface-subtle);
   border-right: 1px solid var(--border);
   bottom: 0;
+  display: flex;
+  flex-direction: column;
   left: 0;
   overflow: hidden;
   padding: 1.25rem 0.75rem;
-  position: absolute;
-  top: 0;
+  position: fixed;
+  top: 6.35rem;
   transition: width 240ms ease, box-shadow 240ms ease;
   width: 3.5rem;
   z-index: 2;
@@ -187,6 +195,12 @@ main {
   opacity: 1;
   pointer-events: auto;
   transform: translateX(0);
+}
+
+.project-sidebar > .sidebar-content {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .project-sidebar-header,
@@ -306,6 +320,10 @@ main {
   max-width: 48rem;
 }
 
+.provider-setup {
+  max-width: 42rem;
+}
+
 .workspace-setup form {
   display: grid;
   gap: 0.9rem;
@@ -316,6 +334,119 @@ main {
   color: var(--ink);
   font-size: 0.9rem;
   font-weight: 700;
+}
+
+.llm-configuration {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1.75rem;
+}
+
+.llm-configuration label,
+.provider-options legend {
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.provider-options {
+  border: 0;
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 0 0.35rem;
+  padding: 0;
+}
+
+.provider-options legend {
+  margin-bottom: 0.65rem;
+}
+
+.provider-option {
+  align-items: center;
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  cursor: pointer;
+  display: flex;
+  gap: 0.55rem;
+  padding: 0.8rem;
+}
+
+.provider-option--selected {
+  border-color: var(--focus);
+  box-shadow: inset 0 0 0 1px var(--focus);
+}
+
+.provider-option input {
+  accent-color: var(--focus);
+}
+
+.configuration-input {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  color: var(--ink);
+  min-width: 0;
+  padding: 0.75rem 0.85rem;
+  width: 100%;
+}
+
+.configuration-input:focus-visible {
+  border-color: var(--focus);
+  outline: 2px solid var(--focus);
+  outline-offset: 0.15rem;
+}
+
+.configuration-input:disabled {
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+.configuration-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+}
+
+.configuration-actions--final {
+  border-top: 1px solid var(--border);
+  margin-top: 0.55rem;
+  padding-top: 1rem;
+}
+
+.llm-configuration .setup-notice {
+  margin-top: 0.25rem;
+}
+
+.llm-job-provider {
+  align-items: center;
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1rem;
+  padding: 0.65rem 0.85rem;
+}
+
+.llm-job-provider div {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.llm-job-provider span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.llm-job-provider strong {
+  color: var(--ink);
+  font-size: 0.88rem;
 }
 
 .workspace-path-controls {
@@ -477,6 +608,16 @@ main {
   border-top: 1px solid var(--border);
   margin-top: 1.5rem;
   padding-top: 1.5rem;
+}
+
+.settings-section--first {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
+}
+
+.settings-drawer .llm-configuration {
+  margin-top: 1rem;
 }
 
 .settings-section h3 {

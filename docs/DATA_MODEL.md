@@ -96,12 +96,15 @@ ambiguous reconstruction of structured content.
 
 A persistent unit of queued work linked to its project and usually to a workflow
 step/run. Expected fields include type, status (`pending`, `running`, `completed`,
-`failed`, possibly `cancelled` later), enqueue/start/completion timestamps,
+`failed`, and `cancelled`), enqueue/start/completion timestamps,
 progress numerator/denominator/message, attempt information, error summary, and
 lease/recovery metadata.
 
 Only one job may be running in V1. Database constraints and worker transaction
-design for enforcing this rule remain to be selected.
+design for enforcing this rule remain to be selected. Cancellation is allowed
+only while a job is pending. The atomic transition that commits a worker to
+provider dispatch closes cancellation before the request may leave the process;
+the waiting-for-response state is therefore not cancellable.
 
 ## LLM provenance and cost
 

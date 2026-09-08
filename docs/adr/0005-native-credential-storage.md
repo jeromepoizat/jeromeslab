@@ -19,6 +19,5 @@ records, and artifacts.
 
 Credential behavior varies by platform and may require actionable setup errors or
 a future explicitly designed fallback. Tests must verify non-disclosure across
-success and failure paths. First-start research remains blocked until credentials
-are configured.
-
+success and failure paths. Live LLM operations remain blocked until credentials
+are configured, but users may defer provider setup to use non-LLM functionality.

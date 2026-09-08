@@ -52,6 +52,15 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   first-run screen; it does not delete the workspace database, artifacts, or files.
   Settings open in a dedicated right-side drawer so workspace content remains in
   view.
+- First run now offers OpenAI or Anthropic configuration before workspace
+  selection and can be deferred for non-LLM use. API keys stay in the native OS
+  credential store; `llm-settings.json` contains only the global provider/model,
+  onboarding state, and cached compatible model identifiers.
+- Provider-specific catalog adapters fetch account-visible models and expose only
+  identifiers accepted by the maintained text-generation compatibility filters.
+  Settings can refresh or replace credentials, change the global default, and
+  forget a key. The question-detailing area previews the provider/model that a
+  future job will use.
 - `install.ps1`/`.bat` and `install.sh` download pinned project-local runtimes,
   verify runtime archive checksums, install both lockfiles, and build the client.
 - `start.ps1`/`.bat` and `start.sh` call a Python launcher that binds to loopback,
@@ -62,8 +71,8 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   six jobs passed in workflow run `34131271837` for commit `3a441ec`.
 - `CONTRIBUTING.md` documents source installation, launch, project-local checks,
   pull-request expectations, CI review, and project invariants.
-- No provider adapter, queue, or later scientific workflow execution code has
-  been implemented.
+- No provider generation adapter, queue, or later scientific workflow execution
+  code has been implemented.
 
 ## Recently completed
 
@@ -110,16 +119,24 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   fields, contextual help, stable edit layouts, and expandable prompt content.
 - Moved question-detailing defaults into versioned text resources and corrected
   the active prompt so it no longer implies the question appears below it.
+- Replaced the fixed-section question-detailing default with version 4: an
+  adaptable scientific-development prompt returning only Markdown. Application
+  code will wrap the exact raw text in a deterministic versioned JSON artifact,
+  avoiding model-generated JSON parse failures.
+- Added secure OpenAI/Anthropic setup, live filtered model discovery, global
+  provider defaults, credential forgetting, and reusable pre-job model context.
 
 ## Work in progress
 
-Preparing the next Milestone 1 workflow-entry slice.
+Provider configuration is ready for review before implementing live generation.
 
 ## Immediate next tasks
 
-1. Verify the project-shell slice on the full cross-platform CI matrix.
-2. Add editable project notes without changing scientific workflow inputs.
-3. Design the first research-question decomposition step and its provider setup.
+1. Manually verify native credential behavior and provider model discovery with
+   user-owned OpenAI and Anthropic keys.
+2. Verify the expanded project-shell slice on the full cross-platform CI matrix.
+3. Design and implement immutable LLM-call/job provenance before sending the
+   first research-question decomposition request.
 
 ## Known issues and blockers
 
@@ -137,7 +154,8 @@ Preparing the next Milestone 1 workflow-entry slice.
   mismatch without rewriting history, and require acknowledgement before known-
   mismatched input is used in new downstream work.
 - Project-fork ownership/deletion semantics for shared runs and artifacts.
-- Queue ordering, cancellation, and restart policy for an interrupted running job.
+- Queue ordering and restart policy for an interrupted dispatched job. Pending
+  jobs are cancellable; sending and awaiting-response jobs are not.
 - LLM retry-attempt representation and the source/update process for trustworthy
   pricing snapshots.
 - Publication identity precedence and conflict handling during deduplication.

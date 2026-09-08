@@ -93,7 +93,13 @@ The source bootstrap currently supports x64 and ARM64 Windows, macOS, and glibc-
 verified Windows x64, Linux x64, and macOS ARM64; the expanded matrix subsequently
 verified Windows ARM64, Linux ARM64, and Intel macOS as well.
 
-On first launch, choose a dedicated research workspace. The application suggests
+On first launch, optionally configure OpenAI or Anthropic. Paste an API key,
+fetch the compatible models available to that account, and select the global
+default for future LLM jobs. The key is stored through the operating system
+credential store, not in the workspace or browser. Provider setup can be deferred
+until a live LLM operation is needed.
+
+Next, choose a dedicated research workspace. The application suggests
 `Documents/Jerome's Laboratory`, but you can type or paste another absolute path
 or use the operating system folder picker. The workspace contains the local
 database, artifacts, exports, and backups; the repository itself never stores

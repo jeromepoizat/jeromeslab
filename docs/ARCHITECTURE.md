@@ -94,10 +94,13 @@ must be transactional and tested. The exact recovery policy for a job found in
 ## LLM layer and call accounting
 
 Scientific workflows call a provider-neutral interface such as `LLMProvider`.
-OpenAI and Anthropic are planned adapters, not branches in workflow code. Generic
-requests cover content, operation, template identity, and generation settings;
-adapter results normalize common usage while retaining optional provider-specific
-metadata.
+OpenAI and Anthropic model-catalog adapters are implemented; their generation
+adapters remain planned and will not become branches in workflow code. The
+catalog adapters retrieve account-visible model identifiers and apply an
+application-maintained compatibility filter before exposing selections. Generic
+generation requests will cover content, operation, template identity, and
+generation settings; adapter results normalize common usage while retaining
+optional provider-specific metadata.
 
 Every attempt creates an `LLMCall` record linked where applicable to its project,
 step run, and job. Exact supplied instructions/input, raw output, parsed output,
@@ -142,7 +145,9 @@ API credentials are stored through Python `keyring` in the native OS credential
 store. They are never stored in frontend local storage, plaintext SQLite, logs,
 exceptions returned to the client, prompts, artifacts, or LLM-call provenance.
 The API returns configuration state such as `configured: true`, never a saved
-secret. Redaction and non-persistence require explicit tests.
+secret. The non-secret global provider/model selection, deferred-onboarding flag,
+and filtered model-list cache live in `llm-settings.json` in the platform
+configuration directory. Redaction and non-persistence require explicit tests.
 
 The server binds to `127.0.0.1`, not `0.0.0.0`, by default. Broader binding would
 require an explicit future security decision.
