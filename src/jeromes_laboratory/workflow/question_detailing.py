@@ -1,8 +1,18 @@
 """Versioned default instructions for scientific-question detailing."""
 
-QUESTION_DETAILING_PROMPT_VERSION = "1"
-DEFAULT_QUESTION_DETAILING_PROMPT = """You are assisting with the planning of a rigorous scientific literature investigation.
+from importlib.resources import files
 
-Given the scientific question below, produce a structured research plan. Do not answer the scientific question or make scientific conclusions.
+QUESTION_DETAILING_PROMPT_VERSION = "2"
 
-Return these sections: Restated question; Research subquestions; Search concepts (including useful synonyms and abbreviations); Evidence priorities; Scope and ambiguity; and Search-planning notes. Distinguish facts stated in the question from assumptions. Identify missing information rather than inventing it. Do not write final database queries yet."""
+
+def load_question_detailing_prompt(version: str) -> str:
+    """Load a bundled question-detailing prompt by its immutable version."""
+    prompt_file = files("jeromes_laboratory.workflow.prompts").joinpath(
+        f"question_detailing_v{version}.txt"
+    )
+    return prompt_file.read_text(encoding="utf-8").strip()
+
+
+DEFAULT_QUESTION_DETAILING_PROMPT = load_question_detailing_prompt(
+    QUESTION_DETAILING_PROMPT_VERSION
+)

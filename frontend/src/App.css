@@ -9,6 +9,9 @@
   display: flex;
   justify-content: space-between;
   padding: 1.25rem clamp(1.25rem, 4vw, 4rem);
+  position: relative;
+  z-index: 7;
+  box-shadow: inset 0 -1px 0 var(--header-divider, #435047);
   transition: background-color 180ms ease, border-color 180ms ease;
 }
 
@@ -141,6 +144,7 @@ main {
 
 .project-layout {
   background: var(--background);
+  border-top: 1px solid var(--header-divider);
   bottom: 0;
   left: 0;
   min-height: calc(100vh - 6.25rem);
@@ -149,7 +153,7 @@ main {
   right: 0;
   top: 6.35rem;
   width: auto;
-  z-index: 4;
+  z-index: 8;
 }
 
 .project-sidebar {
@@ -192,6 +196,10 @@ main {
   justify-content: space-between;
 }
 
+.project-list-row {
+  position: relative;
+}
+
 .sidebar-toggle,
 .rename-project {
   background: transparent;
@@ -202,6 +210,7 @@ main {
 }
 
 .sidebar-toggle { font-size: 1.5rem; }
+.sidebar-toggle { position: absolute; right: 0.75rem; top: 1rem; z-index: 3; }
 
 .new-project-button,
 .project-list-item {
@@ -218,37 +227,54 @@ main {
 .new-project-button { font-weight: 700; margin: 1rem 0; width: 100%; }
 .new-project-button:hover, .project-list-item:hover, .project-list-item--selected { background: var(--surface-hover); }
 .project-list { display: grid; gap: 0.2rem; }
-.project-list-item { flex: 1; }
+.project-list-item { flex: 1; padding-right: 2.75rem; width: 100%; }
 .project-list-row input { max-width: 8rem; }
+.rename-project { opacity: 0; pointer-events: none; position: absolute; right: 0.45rem; transition: opacity 140ms ease, color 140ms ease; }
+.project-list-row:hover .rename-project,
+.project-list-row:focus-within .rename-project { opacity: 1; pointer-events: auto; }
+.rename-project:hover { color: var(--ink); }
 
 .project-content { align-items: flex-start; display: flex; justify-content: center; min-width: 0; padding: clamp(3rem, 10vw, 8rem) clamp(1.25rem, 4vw, 4rem); width: 100%; }
 .new-project-card, .project-view { max-width: 48rem; width: min(100%, 48rem); }
+.new-project-card > .step-label { margin-bottom: 1.75rem; }
+.project-view > .step-label { margin-bottom: 1.75rem; }
 .new-project-card h2, .project-view h2 { color: var(--ink); font-family: Georgia, 'Times New Roman', serif; font-size: clamp(1.75rem, 4vw, 2.75rem); font-weight: 500; letter-spacing: -0.035em; }
 .new-project-card input { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; box-sizing: border-box; color: var(--ink); font: inherit; margin: 1rem 0; padding: 0.9rem 1rem; width: 100%; }
 .new-project-card input:focus-visible { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 0.15rem; }
-.scientific-question { color: var(--ink); font-size: 1.2rem; line-height: 1.7; white-space: pre-wrap; }
-.project-input-note { color: var(--muted); line-height: 1.6; }
+.scientific-question { color: var(--ink); font-size: 1rem; line-height: 1.45; margin: 0; overflow: hidden; padding-right: 2.5rem; text-overflow: ellipsis; white-space: nowrap; }
 .project-section { border-top: 1px solid var(--border); margin-top: 2.5rem; padding-top: 1.5rem; }
-.section-title { align-items: center; display: flex; gap: 0.6rem; }
+.section-title { align-items: center; display: flex; gap: 1rem; }
 .section-title h2 { margin: 0; }
 .section-help { align-items: center; border: 1px solid var(--border); border-radius: 50%; color: var(--muted); cursor: help; display: inline-flex; font-size: 0.72rem; font-weight: 700; height: 1.2rem; justify-content: center; position: relative; width: 1.2rem; }
-.section-help-tooltip { background: var(--tooltip-background); border: 1px solid var(--border); border-radius: 0.5rem; color: var(--tooltip-text); font-size: 0.82rem; font-weight: 400; line-height: 1.45; opacity: 0; padding: 0.65rem 0.75rem; pointer-events: none; position: absolute; right: 0; top: calc(100% + 0.55rem); transform: translateY(-0.2rem); transition: opacity 140ms ease, transform 140ms ease; width: min(18rem, 70vw); z-index: 5; }
-.section-help:hover .section-help-tooltip, .section-help:focus .section-help-tooltip { opacity: 1; transform: translateY(0); }
-.edit-icon { background: transparent; border: 0; border-radius: 0.4rem; color: var(--muted); cursor: pointer; font-size: 1.2rem; padding: 0.4rem 0.55rem; }
+.section-help-tooltip { background: var(--tooltip-background); border: 1px solid var(--border); border-radius: 0.5rem; color: var(--tooltip-text); font-size: 0.82rem; font-weight: 400; left: calc(100% + 0.7rem); line-height: 1.45; opacity: 0; padding: 0.65rem 0.75rem; pointer-events: none; position: absolute; top: 50%; transform: translate(-0.2rem, -50%); transition: opacity 140ms ease, transform 140ms ease; width: min(18rem, calc(100vw - 2rem)); z-index: 5; }
+.section-help:hover .section-help-tooltip, .section-help:focus .section-help-tooltip { opacity: 1; transform: translate(0, -50%); }
+.edit-icon { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 0.4rem; bottom: 0; color: var(--ink); cursor: pointer; font-size: 1.1rem; padding: 0.35rem 0.5rem; position: absolute; right: -3rem; }
 .edit-icon:hover { background: var(--surface-hover); color: var(--ink); }
 .edit-icon:focus-visible { outline: 2px solid var(--focus); outline-offset: 0.15rem; }
-.project-input-box { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; margin-top: 1rem; min-height: 7.3rem; padding: 1rem; }
-.project-input-actions { display: flex; justify-content: flex-end; margin-top: 0.5rem; }
-.scientific-question { margin: 0; }
+.editable-field { margin-top: 1rem; }
+.editable-box-row { position: relative; }
+.project-input-box { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; padding: 0.85rem 1rem; position: relative; transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
+.editable-field--single-line .project-input-box { align-items: center; display: flex; height: 3.25rem; }
+.editable-field--multiline .project-input-box { height: 14rem; overflow: auto; padding-right: 1.25rem; scrollbar-color: var(--scrollbar-thumb) transparent; scrollbar-gutter: stable; scrollbar-width: auto; }
+.editable-field--multiline.editable-field--expanded .project-input-box { height: auto; min-height: 14rem; overflow: visible; }
+.project-input-box--editing { background: var(--surface-subtle); border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
+.project-input-box input, .project-input-box textarea { background: transparent; border: 0; color: var(--ink); font: inherit; height: 100%; line-height: inherit; margin: 0; outline: 0; padding: 0; width: 100%; }
+.project-input-box textarea { field-sizing: content; height: auto; line-height: 1.65; min-height: 100%; overflow: hidden; padding-right: 0; resize: none; }
+.editable-field--expanded .project-input-box textarea { min-height: 12.2rem; }
+.project-input-box::-webkit-scrollbar { width: 1.05rem; }
+.project-input-box::-webkit-scrollbar-track { background: transparent; margin-block: 0.8rem; }
+.project-input-box::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); background-clip: padding-box; border-color: transparent; border-radius: 999px; border-style: solid; border-width: 0.15rem 0.35rem 0.15rem 0.05rem; }
+.project-input-box::-webkit-scrollbar-corner { background: transparent; }
 .question-detailing-prompt { color: var(--ink); font: inherit; line-height: 1.65; margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
-.prompt-editor, .question-editor { min-height: 10.6rem; }
-.prompt-editor textarea { background: var(--surface-subtle); border: 2px solid var(--focus); border-radius: 0.65rem; box-sizing: border-box; color: var(--ink); font: inherit; line-height: 1.6; margin: 0; min-height: 7.3rem; padding: 1rem; resize: vertical; width: 100%; }
-.question-editor input { background: var(--surface-subtle); border: 2px solid var(--focus); border-radius: 0.65rem; box-sizing: border-box; color: var(--ink); font: inherit; margin: 0; min-height: 7.3rem; padding: 0.9rem 1rem; width: 100%; }
-.question-editor input:focus-visible { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 0.15rem; }
-.prompt-editor > div, .question-editor > div { display: flex; gap: 1rem; margin-top: 0.8rem; }
-.project-header-context { align-items: center; display: flex; flex-direction: column; gap: 0.15rem; left: 50%; max-width: min(42rem, 46vw); overflow: hidden; pointer-events: none; position: fixed; text-align: center; top: 1.2rem; transform: translateX(-50%); z-index: 6; }
-.project-header-context strong { color: var(--ink); font-size: 0.85rem; letter-spacing: 0.08em; }
-.project-header-context span { color: var(--muted); font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
+.expand-handle { align-items: center; background: var(--surface); border: 1px solid var(--border); border-radius: 0 0 1rem 1rem; border-top: 0; bottom: calc(-1.65rem + 1px); color: var(--muted); cursor: pointer; display: flex; height: 1.65rem; justify-content: center; left: 50%; padding: 0; position: absolute; transform: translateX(-50%); transition: border-color 140ms ease, color 140ms ease, background-color 140ms ease; width: 7rem; z-index: 2; }
+.project-input-box--editing ~ .expand-handle { background: var(--surface-subtle); border-color: var(--focus); color: var(--focus); }
+.expand-handle svg { fill: none; height: 0.65rem; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; width: 1rem; }
+.expand-handle:hover { background: var(--surface-subtle); border-color: var(--focus); color: var(--focus); }
+.expand-handle:focus-visible { border-color: var(--focus); color: var(--focus); outline: 2px solid var(--focus); outline-offset: 0.15rem; }
+.edit-controls { align-items: center; display: flex; gap: 1.5rem; height: 3.5rem; padding-top: 0.7rem; }
+.project-header-context { align-items: center; display: flex; flex-direction: column; gap: 0.15rem; left: 50%; max-width: min(42rem, 46vw); overflow: hidden; pointer-events: none; position: fixed; text-align: center; top: 1.2rem; transform: translateX(-50%); z-index: 8; }
+.project-header-context strong { color: var(--header-context-text); font-size: 1.15rem; letter-spacing: 0.08em; }
+.project-header-context span { color: var(--header-context-text); font-size: 1.05rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
 
 .foundation-card {
   background: var(--surface);
@@ -529,4 +555,18 @@ main {
   }
 
   .project-sidebar { border-bottom: 1px solid var(--border); border-right: 0; }
+}
+
+@media (max-width: 56rem) {
+  .section-help-tooltip {
+    left: auto;
+    right: 0;
+    top: calc(100% + 0.55rem);
+    transform: translateY(-0.2rem);
+  }
+
+  .section-help:hover .section-help-tooltip,
+  .section-help:focus .section-help-tooltip {
+    transform: translateY(0);
+  }
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 
 type Project = {
   id: string
@@ -23,6 +23,31 @@ function SectionTitle({ children, help }: { children: string; help: string }) {
   return <div className="section-title"><h2>{children}</h2><HelpTooltip>{help}</HelpTooltip></div>
 }
 
+type EditableFieldProps = {
+  variant: 'single-line' | 'multiline'
+  isEditing: boolean
+  canEdit?: boolean
+  display: ReactNode
+  editor: ReactNode
+  actions: ReactNode
+  onEdit: () => void
+  editLabel: string
+}
+
+function EditableField({ variant, isEditing, canEdit = true, display, editor, actions, onEdit, editLabel }: EditableFieldProps) {
+  const [isExpanded, setIsExpanded] = useState(false)
+  return <div className={`editable-field editable-field--${variant} ${isExpanded ? 'editable-field--expanded' : ''}`}>
+    <div className="editable-box-row">
+      <div className={`project-input-box ${isEditing ? 'project-input-box--editing' : ''}`}>
+        {isEditing ? editor : display}
+      </div>
+      {!isEditing && canEdit && <button className="edit-icon" type="button" title={editLabel} aria-label={editLabel} onClick={onEdit}>✎</button>}
+      {variant === 'multiline' && <button className="expand-handle" type="button" title={isExpanded ? 'Collapse input' : 'Expand input to show all content'} aria-label={isExpanded ? 'Collapse input' : 'Expand input to show all content'} aria-expanded={isExpanded} onClick={() => setIsExpanded(!isExpanded)}><svg aria-hidden="true" viewBox="0 0 16 10"><path d={isExpanded ? 'M2 8 8 2l6 6' : 'm2 2 6 6 6-6'} /></svg></button>}
+    </div>
+    <div className="edit-controls">{isEditing ? actions : null}</div>
+  </div>
+}
+
 async function readApiError(response: Response) {
   const body = (await response.json().catch(() => null)) as { detail?: string } | null
   return body?.detail ?? 'The request could not be completed. Try again.'
@@ -36,6 +61,7 @@ export function ProjectShell({ setupToken }: Props) {
   const [isCreating, setIsCreating] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [isSidebarHovered, setIsSidebarHovered] = useState(false)
+  const [suppressHoverExpansion, setSuppressHoverExpansion] = useState(false)
   const [editingTagId, setEditingTagId] = useState<string | null>(null)
   const [editingTag, setEditingTag] = useState('')
   const [isEditingQuestion, setIsEditingQuestion] = useState(false)
@@ -181,21 +207,31 @@ export function ProjectShell({ setupToken }: Props) {
   }
 
   const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null
-  const isSidebarExpanded = !isCollapsed || isSidebarHovered
+  const isSidebarExpanded = !isCollapsed || (isSidebarHovered && !suppressHoverExpansion)
+  const toggleSidebar = () => {
+    if (isCollapsed) {
+      setIsCollapsed(false)
+      setSuppressHoverExpansion(false)
+      return
+    }
+    setIsCollapsed(true)
+    setIsSidebarHovered(false)
+    setSuppressHoverExpansion(true)
+  }
   return (
     <div className={`project-layout ${isSidebarExpanded ? 'project-layout--expanded' : ''}`}>
       {selectedProject !== null && <div className="project-header-context"><strong>{selectedProject.tag}</strong><span>{selectedProject.scientific_question}</span></div>}
-      <aside className="project-sidebar" aria-label="Projects" onMouseEnter={() => setIsSidebarHovered(true)} onMouseLeave={() => setIsSidebarHovered(false)}>
+      <aside className="project-sidebar" aria-label="Projects" onMouseEnter={() => setIsSidebarHovered(true)} onMouseLeave={() => { setIsSidebarHovered(false); setSuppressHoverExpansion(false) }}>
         <div className="project-sidebar-header">
           <p className="step-label sidebar-content">Projects</p>
-          <button className="sidebar-toggle" type="button" onClick={() => setIsCollapsed(!isCollapsed)} aria-label={isCollapsed ? 'Expand projects' : 'Collapse projects'}>{isSidebarExpanded ? '‹' : '›'}</button>
+          <button className="sidebar-toggle" type="button" onClick={toggleSidebar} aria-label={isCollapsed ? 'Expand projects' : 'Collapse projects'}>{isCollapsed ? '›' : '‹'}</button>
         </div>
         <div className="sidebar-content">
           <button className="new-project-button" type="button" onClick={() => selectProject(null)}>+ New project</button>
           <nav className="project-list" aria-label="Project list">
             {projects.map(project => <div className="project-list-row" key={project.id}>
               {editingTagId === project.id ? <form onSubmit={event => { event.preventDefault(); void renameProject(project.id) }}><input autoFocus value={editingTag} onChange={event => setEditingTag(event.target.value)} onBlur={() => setEditingTagId(null)} aria-label="Project tag" /></form> : <button className={`project-list-item ${project.id === selectedProjectId ? 'project-list-item--selected' : ''}`} type="button" onClick={() => selectProject(project.id)} onDoubleClick={() => { setEditingTagId(project.id); setEditingTag(project.tag) }}>{project.tag}</button>}
-              {editingTagId !== project.id && <button className="rename-project" type="button" title={`Rename ${project.tag}`} aria-label={`Rename ${project.tag}`} onClick={() => { setEditingTagId(project.id); setEditingTag(project.tag) }}>✎</button>}
+              {editingTagId !== project.id && <button className="rename-project" type="button" title="Rename project tag" aria-label={`Rename project tag ${project.tag}`} onClick={() => { setEditingTagId(project.id); setEditingTag(project.tag) }}>✎</button>}
             </div>)}
           </nav>
         </div>
@@ -203,27 +239,37 @@ export function ProjectShell({ setupToken }: Props) {
       <section className="project-content">
         {selectedProject === null ? <div className="new-project-card">
           <p className="step-label">New project</p>
-          <h2>What scientific question do you want to investigate?</h2>
+          <SectionTitle help="Enter the exact scientific question that will define this project and its later research workflow.">What scientific question do you want to investigate?</SectionTitle>
           <input value={question} onChange={event => setQuestion(event.target.value)} placeholder="Enter the exact scientific question…" aria-label="Scientific question" />
           {error !== null && <p className="setup-error" role="alert">{error}</p>}
           <button className="primary-button" type="button" onClick={() => void createProject()} disabled={isCreating}>{isCreating ? 'Starting…' : 'Start'}</button>
         </div> : <article className="project-view">
           <p className="step-label">{selectedProject.tag}</p>
           <SectionTitle help="The exact question that defines this project and supplies later workflow steps.">Scientific question</SectionTitle>
-          {isEditingQuestion ? <div className="project-input-box question-editor">
-            <input value={editedQuestion} onChange={event => setEditedQuestion(event.target.value)} aria-label="Scientific question" />
-            <div>
+          <EditableField
+            variant="single-line"
+            isEditing={isEditingQuestion}
+            canEdit={selectedProject.question_is_editable}
+            display={<p className="scientific-question">{selectedProject.scientific_question}</p>}
+            editor={<input value={editedQuestion} onChange={event => setEditedQuestion(event.target.value)} aria-label="Scientific question" />}
+            onEdit={() => { setEditedQuestion(selectedProject.scientific_question); setIsEditingQuestion(true) }}
+            editLabel="Edit scientific question"
+            actions={<>
               <button className="primary-button" type="button" onClick={() => void saveScientificQuestion(selectedProject.id)} disabled={isSavingQuestion}>{isSavingQuestion ? 'Saving…' : 'Save question'}</button>
               <button className="text-button" type="button" onClick={() => setIsEditingQuestion(false)} disabled={isSavingQuestion}>Cancel</button>
-            </div>
-          </div> : <div className="project-input-box">
-            <p className="scientific-question">{selectedProject.scientific_question}</p>
-            {selectedProject.question_is_editable && <div className="project-input-actions"><button className="edit-icon" type="button" title="Edit scientific question" aria-label="Edit scientific question" onClick={() => { setEditedQuestion(selectedProject.scientific_question); setIsEditingQuestion(true) }}>✎</button></div>}
-          </div>}
-          <p className="project-input-note">This exact question is the input to later workflow steps. It can only be edited before a workflow job uses it.</p>
+            </>}
+          />
           <section className="project-section">
             <SectionTitle help="Instructions used to turn this question into a structured research plan for later literature searches.">Question-detailing prompt</SectionTitle>
-            {isEditingPrompt ? <div className="project-input-box prompt-editor"><textarea value={editedPrompt} onChange={event => setEditedPrompt(event.target.value)} aria-label="Question-detailing prompt" /><div><button className="primary-button" type="button" onClick={() => void saveQuestionDetailingPrompt(selectedProject.id)} disabled={isSavingPrompt}>{isSavingPrompt ? 'Saving…' : 'Save prompt'}</button><button className="text-button" type="button" onClick={() => setIsEditingPrompt(false)} disabled={isSavingPrompt}>Cancel</button></div></div> : <div className="project-input-box"><pre className="question-detailing-prompt">{selectedProject.question_detailing_prompt}</pre><div className="project-input-actions"><button className="edit-icon" type="button" title="Edit question-detailing prompt" aria-label="Edit question-detailing prompt" onClick={() => { setEditedPrompt(selectedProject.question_detailing_prompt); setIsEditingPrompt(true) }}>✎</button></div></div>}
+            <EditableField
+              variant="multiline"
+              isEditing={isEditingPrompt}
+              display={<pre className="question-detailing-prompt">{selectedProject.question_detailing_prompt}</pre>}
+              editor={<textarea value={editedPrompt} onChange={event => setEditedPrompt(event.target.value)} aria-label="Question-detailing prompt" />}
+              onEdit={() => { setEditedPrompt(selectedProject.question_detailing_prompt); setIsEditingPrompt(true) }}
+              editLabel="Edit question-detailing prompt"
+              actions={<><button className="primary-button" type="button" onClick={() => void saveQuestionDetailingPrompt(selectedProject.id)} disabled={isSavingPrompt}>{isSavingPrompt ? 'Saving…' : 'Save prompt'}</button><button className="text-button" type="button" onClick={() => setIsEditingPrompt(false)} disabled={isSavingPrompt}>Cancel</button></>}
+            />
           </section>
           {error !== null && <p className="setup-error" role="alert">{error}</p>}
         </article>}

@@ -10,15 +10,14 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-from jeromes_laboratory.workflow.question_detailing import (
-    DEFAULT_QUESTION_DETAILING_PROMPT,
-    QUESTION_DETAILING_PROMPT_VERSION,
-)
+from jeromes_laboratory.workflow.question_detailing import load_question_detailing_prompt
 
 revision: str = "0003"
 down_revision: str | None = "0002"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
+
+QUESTION_DETAILING_PROMPT_VERSION = "1"
 
 
 def upgrade() -> None:
@@ -29,7 +28,10 @@ def upgrade() -> None:
         sa.text(
             "UPDATE projects SET question_detailing_prompt = :prompt, "
             "question_detailing_prompt_version = :version"
-        ).bindparams(prompt=DEFAULT_QUESTION_DETAILING_PROMPT, version=QUESTION_DETAILING_PROMPT_VERSION)
+        ).bindparams(
+            prompt=load_question_detailing_prompt(QUESTION_DETAILING_PROMPT_VERSION),
+            version=QUESTION_DETAILING_PROMPT_VERSION,
+        )
     )
     with op.batch_alter_table("projects") as batch:
         batch.alter_column("question_detailing_prompt", nullable=False)

@@ -18,8 +18,11 @@
   --surface-subtle: #202b26;
   --surface-hover: #2a3731;
   --header-background: rgba(16, 22, 19, 0.92);
-  --tooltip-background: #e8f0eb;
-  --tooltip-text: #17221d;
+  --header-divider: #435047;
+  --header-context-text: #f4fbf7;
+  --scrollbar-thumb: #55645c;
+  --tooltip-background: #202b26;
+  --tooltip-text: #e8f0eb;
   --focus: #60c995;
   --card-shadow: 0 1.25rem 4rem rgba(0, 0, 0, 0.24);
 }
@@ -37,6 +40,9 @@
   --surface-subtle: #f6f7f3;
   --surface-hover: #ecefe9;
   --header-background: rgba(255, 255, 255, 0.92);
+  --header-divider: #c5cbc6;
+  --header-context-text: #17221d;
+  --scrollbar-thumb: #a7b0aa;
   --tooltip-background: #17221d;
   --tooltip-text: #ffffff;
   --focus: #27835b;
