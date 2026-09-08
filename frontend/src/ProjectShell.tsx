@@ -13,6 +13,16 @@ type ClientState = { selected_project_id: string | null; scroll_top: number }
 
 type Props = { setupToken: string }
 
+type HelpProps = { children: string }
+
+function HelpTooltip({ children }: HelpProps) {
+  return <span className="section-help" tabIndex={0} aria-label="Section help">?<span className="section-help-tooltip" role="tooltip">{children}</span></span>
+}
+
+function SectionTitle({ children, help }: { children: string; help: string }) {
+  return <div className="section-title"><h2>{children}</h2><HelpTooltip>{help}</HelpTooltip></div>
+}
+
 async function readApiError(response: Response) {
   const body = (await response.json().catch(() => null)) as { detail?: string } | null
   return body?.detail ?? 'The request could not be completed. Try again.'
@@ -25,6 +35,7 @@ export function ProjectShell({ setupToken }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [isCreating, setIsCreating] = useState(false)
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false)
   const [editingTagId, setEditingTagId] = useState<string | null>(null)
   const [editingTag, setEditingTag] = useState('')
   const [isEditingQuestion, setIsEditingQuestion] = useState(false)
@@ -170,14 +181,16 @@ export function ProjectShell({ setupToken }: Props) {
   }
 
   const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null
+  const isSidebarExpanded = !isCollapsed || isSidebarHovered
   return (
-    <div className={`project-layout ${isCollapsed ? 'project-layout--collapsed' : ''}`}>
-      <aside className="project-sidebar" aria-label="Projects">
+    <div className={`project-layout ${isSidebarExpanded ? 'project-layout--expanded' : ''}`}>
+      {selectedProject !== null && <div className="project-header-context"><strong>{selectedProject.tag}</strong><span>{selectedProject.scientific_question}</span></div>}
+      <aside className="project-sidebar" aria-label="Projects" onMouseEnter={() => setIsSidebarHovered(true)} onMouseLeave={() => setIsSidebarHovered(false)}>
         <div className="project-sidebar-header">
-          {!isCollapsed && <p className="step-label">Projects</p>}
-          <button className="sidebar-toggle" type="button" onClick={() => setIsCollapsed(!isCollapsed)} aria-label={isCollapsed ? 'Expand projects' : 'Collapse projects'}>{isCollapsed ? '›' : '‹'}</button>
+          <p className="step-label sidebar-content">Projects</p>
+          <button className="sidebar-toggle" type="button" onClick={() => setIsCollapsed(!isCollapsed)} aria-label={isCollapsed ? 'Expand projects' : 'Collapse projects'}>{isSidebarExpanded ? '‹' : '›'}</button>
         </div>
-        {!isCollapsed && <>
+        <div className="sidebar-content">
           <button className="new-project-button" type="button" onClick={() => selectProject(null)}>+ New project</button>
           <nav className="project-list" aria-label="Project list">
             {projects.map(project => <div className="project-list-row" key={project.id}>
@@ -185,7 +198,7 @@ export function ProjectShell({ setupToken }: Props) {
               {editingTagId !== project.id && <button className="rename-project" type="button" title={`Rename ${project.tag}`} aria-label={`Rename ${project.tag}`} onClick={() => { setEditingTagId(project.id); setEditingTag(project.tag) }}>✎</button>}
             </div>)}
           </nav>
-        </>}
+        </div>
       </aside>
       <section className="project-content">
         {selectedProject === null ? <div className="new-project-card">
@@ -196,8 +209,8 @@ export function ProjectShell({ setupToken }: Props) {
           <button className="primary-button" type="button" onClick={() => void createProject()} disabled={isCreating}>{isCreating ? 'Starting…' : 'Start'}</button>
         </div> : <article className="project-view">
           <p className="step-label">{selectedProject.tag}</p>
-          <h2>Scientific question</h2>
-          {isEditingQuestion ? <div className="question-editor">
+          <SectionTitle help="The exact question that defines this project and supplies later workflow steps.">Scientific question</SectionTitle>
+          {isEditingQuestion ? <div className="project-input-box question-editor">
             <input value={editedQuestion} onChange={event => setEditedQuestion(event.target.value)} aria-label="Scientific question" />
             <div>
               <button className="primary-button" type="button" onClick={() => void saveScientificQuestion(selectedProject.id)} disabled={isSavingQuestion}>{isSavingQuestion ? 'Saving…' : 'Save question'}</button>
@@ -209,8 +222,8 @@ export function ProjectShell({ setupToken }: Props) {
           </div>}
           <p className="project-input-note">This exact question is the input to later workflow steps. It can only be edited before a workflow job uses it.</p>
           <section className="project-section">
-            <h2>Question-detailing prompt</h2>
-            {isEditingPrompt ? <div className="prompt-editor"><textarea value={editedPrompt} onChange={event => setEditedPrompt(event.target.value)} aria-label="Question-detailing prompt" /><div><button className="primary-button" type="button" onClick={() => void saveQuestionDetailingPrompt(selectedProject.id)} disabled={isSavingPrompt}>{isSavingPrompt ? 'Saving…' : 'Save prompt'}</button><button className="text-button" type="button" onClick={() => setIsEditingPrompt(false)} disabled={isSavingPrompt}>Cancel</button></div></div> : <div className="project-input-box"><pre className="question-detailing-prompt">{selectedProject.question_detailing_prompt}</pre><div className="project-input-actions"><button className="edit-icon" type="button" title="Edit question-detailing prompt" aria-label="Edit question-detailing prompt" onClick={() => { setEditedPrompt(selectedProject.question_detailing_prompt); setIsEditingPrompt(true) }}>✎</button></div></div>}
+            <SectionTitle help="Instructions used to turn this question into a structured research plan for later literature searches.">Question-detailing prompt</SectionTitle>
+            {isEditingPrompt ? <div className="project-input-box prompt-editor"><textarea value={editedPrompt} onChange={event => setEditedPrompt(event.target.value)} aria-label="Question-detailing prompt" /><div><button className="primary-button" type="button" onClick={() => void saveQuestionDetailingPrompt(selectedProject.id)} disabled={isSavingPrompt}>{isSavingPrompt ? 'Saving…' : 'Save prompt'}</button><button className="text-button" type="button" onClick={() => setIsEditingPrompt(false)} disabled={isSavingPrompt}>Cancel</button></div></div> : <div className="project-input-box"><pre className="question-detailing-prompt">{selectedProject.question_detailing_prompt}</pre><div className="project-input-actions"><button className="edit-icon" type="button" title="Edit question-detailing prompt" aria-label="Edit question-detailing prompt" onClick={() => { setEditedPrompt(selectedProject.question_detailing_prompt); setIsEditingPrompt(true) }}>✎</button></div></div>}
           </section>
           {error !== null && <p className="setup-error" role="alert">{error}</p>}
         </article>}

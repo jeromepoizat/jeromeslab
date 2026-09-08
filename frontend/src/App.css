@@ -21,6 +21,10 @@
   margin: 0.15rem 0 0;
 }
 
+.app-header > div:first-child { display: flex; flex-direction: column; }
+.app-header > div:first-child h1 { order: 1; }
+.app-header > div:first-child .eyebrow { margin-top: 0.3rem; order: 2; }
+
 .eyebrow,
 .step-label {
   color: var(--muted);
@@ -138,25 +142,47 @@ main {
 .project-layout {
   background: var(--background);
   bottom: 0;
-  display: grid;
-  grid-template-columns: 16rem minmax(0, 1fr);
+  left: 0;
   min-height: calc(100vh - 6.25rem);
   overflow: auto;
   position: fixed;
   right: 0;
   top: 6.35rem;
-  width: 100%;
+  width: auto;
   z-index: 4;
-}
-
-.project-layout--collapsed {
-  grid-template-columns: 3.5rem minmax(0, 1fr);
 }
 
 .project-sidebar {
   background: var(--surface-subtle);
   border-right: 1px solid var(--border);
+  bottom: 0;
+  left: 0;
+  overflow: hidden;
   padding: 1.25rem 0.75rem;
+  position: absolute;
+  top: 0;
+  transition: width 240ms ease, box-shadow 240ms ease;
+  width: 3.5rem;
+  z-index: 2;
+}
+
+.project-layout--expanded .project-sidebar {
+  box-shadow: 0.7rem 0 1.5rem rgba(0, 0, 0, 0.12);
+  width: 16rem;
+}
+
+.sidebar-content {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-0.5rem);
+  transition: opacity 140ms ease, transform 180ms ease;
+  white-space: nowrap;
+}
+
+.project-layout--expanded .sidebar-content {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
 }
 
 .project-sidebar-header,
@@ -195,7 +221,7 @@ main {
 .project-list-item { flex: 1; }
 .project-list-row input { max-width: 8rem; }
 
-.project-content { align-items: flex-start; display: flex; justify-content: center; min-width: 0; padding: clamp(3rem, 10vw, 8rem) clamp(1.25rem, 4vw, 4rem); }
+.project-content { align-items: flex-start; display: flex; justify-content: center; min-width: 0; padding: clamp(3rem, 10vw, 8rem) clamp(1.25rem, 4vw, 4rem); width: 100%; }
 .new-project-card, .project-view { max-width: 48rem; width: min(100%, 48rem); }
 .new-project-card h2, .project-view h2 { color: var(--ink); font-family: Georgia, 'Times New Roman', serif; font-size: clamp(1.75rem, 4vw, 2.75rem); font-weight: 500; letter-spacing: -0.035em; }
 .new-project-card input { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; box-sizing: border-box; color: var(--ink); font: inherit; margin: 1rem 0; padding: 0.9rem 1rem; width: 100%; }
@@ -203,16 +229,26 @@ main {
 .scientific-question { color: var(--ink); font-size: 1.2rem; line-height: 1.7; white-space: pre-wrap; }
 .project-input-note { color: var(--muted); line-height: 1.6; }
 .project-section { border-top: 1px solid var(--border); margin-top: 2.5rem; padding-top: 1.5rem; }
+.section-title { align-items: center; display: flex; gap: 0.6rem; }
+.section-title h2 { margin: 0; }
+.section-help { align-items: center; border: 1px solid var(--border); border-radius: 50%; color: var(--muted); cursor: help; display: inline-flex; font-size: 0.72rem; font-weight: 700; height: 1.2rem; justify-content: center; position: relative; width: 1.2rem; }
+.section-help-tooltip { background: var(--tooltip-background); border: 1px solid var(--border); border-radius: 0.5rem; color: var(--tooltip-text); font-size: 0.82rem; font-weight: 400; line-height: 1.45; opacity: 0; padding: 0.65rem 0.75rem; pointer-events: none; position: absolute; right: 0; top: calc(100% + 0.55rem); transform: translateY(-0.2rem); transition: opacity 140ms ease, transform 140ms ease; width: min(18rem, 70vw); z-index: 5; }
+.section-help:hover .section-help-tooltip, .section-help:focus .section-help-tooltip { opacity: 1; transform: translateY(0); }
 .edit-icon { background: transparent; border: 0; border-radius: 0.4rem; color: var(--muted); cursor: pointer; font-size: 1.2rem; padding: 0.4rem 0.55rem; }
 .edit-icon:hover { background: var(--surface-hover); color: var(--ink); }
 .edit-icon:focus-visible { outline: 2px solid var(--focus); outline-offset: 0.15rem; }
-.project-input-box { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; margin-top: 1rem; padding: 1rem; }
+.project-input-box { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; margin-top: 1rem; min-height: 7.3rem; padding: 1rem; }
 .project-input-actions { display: flex; justify-content: flex-end; margin-top: 0.5rem; }
 .scientific-question { margin: 0; }
 .question-detailing-prompt { color: var(--ink); font: inherit; line-height: 1.65; margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
-.prompt-editor textarea { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; box-sizing: border-box; color: var(--ink); font: inherit; line-height: 1.6; margin: 1rem 0 0.75rem; min-height: 16rem; padding: 1rem; resize: vertical; width: 100%; }
-.question-editor input { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; box-sizing: border-box; color: var(--ink); font: inherit; margin: 0 0 0.75rem; padding: 0.9rem 1rem; width: 100%; }
+.prompt-editor, .question-editor { min-height: 10.6rem; }
+.prompt-editor textarea { background: var(--surface-subtle); border: 2px solid var(--focus); border-radius: 0.65rem; box-sizing: border-box; color: var(--ink); font: inherit; line-height: 1.6; margin: 0; min-height: 7.3rem; padding: 1rem; resize: vertical; width: 100%; }
+.question-editor input { background: var(--surface-subtle); border: 2px solid var(--focus); border-radius: 0.65rem; box-sizing: border-box; color: var(--ink); font: inherit; margin: 0; min-height: 7.3rem; padding: 0.9rem 1rem; width: 100%; }
 .question-editor input:focus-visible { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 0.15rem; }
+.prompt-editor > div, .question-editor > div { display: flex; gap: 1rem; margin-top: 0.8rem; }
+.project-header-context { align-items: center; display: flex; flex-direction: column; gap: 0.15rem; left: 50%; max-width: min(42rem, 46vw); overflow: hidden; pointer-events: none; position: fixed; text-align: center; top: 1.2rem; transform: translateX(-50%); z-index: 6; }
+.project-header-context strong { color: var(--ink); font-size: 0.85rem; letter-spacing: 0.08em; }
+.project-header-context span { color: var(--muted); font-size: 0.78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
 
 .foundation-card {
   background: var(--surface);
@@ -490,11 +526,6 @@ main {
 
   .settings-drawer {
     width: 100vw;
-  }
-
-  .project-layout,
-  .project-layout--collapsed {
-    grid-template-columns: 1fr;
   }
 
   .project-sidebar { border-bottom: 1px solid var(--border); border-right: 0; }
