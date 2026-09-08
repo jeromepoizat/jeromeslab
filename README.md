@@ -99,6 +99,12 @@ default for future LLM jobs. The key is stored through the operating system
 credential store, not in the workspace or browser. Provider setup can be deferred
 until a live LLM operation is needed.
 
+Starting question detailing adds a durable job to the sequential local queue.
+Queued work can be cancelled until provider dispatch begins. The queue continues
+while the browser navigates between projects, and completed output, exact call
+inputs/response, usage, timing, and provider/model provenance are preserved in
+the workspace. API keys and authorization headers are never stored there.
+
 Next, choose a dedicated research workspace. The application suggests
 `Documents/Jerome's Laboratory`, but you can type or paste another absolute path
 or use the operating system folder picker. The workspace contains the local

@@ -1,5 +1,7 @@
 """FastAPI application factory."""
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from secrets import token_urlsafe
 from typing import Annotated
@@ -14,6 +16,7 @@ from jeromes_laboratory.api.schemas import (
     FetchLLMModelsResponse,
     FolderPickerResponse,
     HealthResponse,
+    JobResponse,
     LLMProviderName,
     LLMProviderStatus,
     LLMSettingsResponse,
@@ -29,7 +32,9 @@ from jeromes_laboratory.api.schemas import (
     WorkspacePathRequest,
     WorkspaceSetupStatus,
 )
+from jeromes_laboratory.database.jobs import JobError, JobRecord, JobRepository
 from jeromes_laboratory.database.projects import ProjectError, ProjectRecord, ProjectRepository
+from jeromes_laboratory.jobs.worker import JobWorker
 from jeromes_laboratory.llm.catalog import (
     PROVIDER_DISPLAY_NAMES,
     SUPPORTED_PROVIDERS,
@@ -37,6 +42,7 @@ from jeromes_laboratory.llm.catalog import (
     ProviderModelCatalog,
     ProviderName,
 )
+from jeromes_laboratory.llm.generation import GenerationGateway, ProviderGenerationGateway
 from jeromes_laboratory.llm.settings import LLMSettingsError, LLMSettingsService
 from jeromes_laboratory.security.credentials import (
     CredentialStore,
@@ -59,27 +65,52 @@ def create_app(
     llm_settings_service: LLMSettingsService | None = None,
     credential_store: CredentialStore | None = None,
     model_catalog: ProviderModelCatalog | None = None,
+    generation_gateway: GenerationGateway | None = None,
+    start_job_worker: bool = True,
 ) -> FastAPI:
     """Create the local API application."""
+    selected_workspace_service = (
+        workspace_service if workspace_service is not None else WorkspaceService()
+    )
+    selected_credential_store = (
+        credential_store if credential_store is not None else NativeCredentialStore()
+    )
+    selected_generation_gateway = (
+        generation_gateway if generation_gateway is not None else ProviderGenerationGateway()
+    )
+    worker = JobWorker(
+        selected_workspace_service,
+        selected_credential_store,
+        selected_generation_gateway,
+    )
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if start_job_worker:
+            worker.start()
+        try:
+            yield
+        finally:
+            if start_job_worker:
+                worker.stop()
+
     application = FastAPI(
         title="Jerome's Laboratory",
         description="Local API for a provenance-first scientific research workflow.",
         version="0.0.0",
+        lifespan=lifespan,
     )
-    application.state.workspace_service = (
-        workspace_service if workspace_service is not None else WorkspaceService()
-    )
+    application.state.workspace_service = selected_workspace_service
     application.state.llm_settings_service = (
         llm_settings_service if llm_settings_service is not None else LLMSettingsService()
     )
-    application.state.credential_store = (
-        credential_store if credential_store is not None else NativeCredentialStore()
-    )
+    application.state.credential_store = selected_credential_store
     application.state.model_catalog = (
         model_catalog if model_catalog is not None else ProviderModelCatalog()
     )
     application.state.setup_token = token_urlsafe(32)
     application.state.instance_id = None
+    application.state.job_worker = worker
 
     def project_repository() -> ProjectRepository:
         """Open project storage only after a valid workspace has been selected."""
@@ -107,7 +138,26 @@ def create_app(
             question_is_editable=record.question_is_editable,
             question_detailing_prompt=record.question_detailing_prompt,
             question_detailing_prompt_version=record.question_detailing_prompt_version,
+            question_detailing_prompt_is_editable=record.question_detailing_prompt_is_editable,
         )
+
+    def job_repository() -> JobRepository:
+        try:
+            workspace_path = application.state.workspace_service.initialize_configured_workspace()
+        except WorkspaceLocationError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(error),
+            ) from error
+        if workspace_path is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Choose a workspace before using the research queue.",
+            )
+        return JobRepository(workspace_path / DATABASE_FILE_NAME)
+
+    def job_response(record: JobRecord) -> JobResponse:
+        return JobResponse(**record.__dict__)
 
     def require_setup_token(
         x_jeromes_lab_setup_token: Annotated[
@@ -190,7 +240,9 @@ def create_app(
         try:
             api_key = supplied_key or application.state.credential_store.get_api_key(provider)
             if api_key is None:
-                raise ModelCatalogError(f"Enter an {PROVIDER_DISPLAY_NAMES[typed_provider]} API key.")
+                raise ModelCatalogError(
+                    f"Enter an {PROVIDER_DISPLAY_NAMES[typed_provider]} API key."
+                )
             models = application.state.model_catalog.fetch_models(typed_provider, api_key)
             if not models:
                 raise ModelCatalogError(
@@ -330,7 +382,9 @@ def create_app(
     ) -> WorkspaceConfiguredResponse:
         """Reconnect a moved workspace without copying or deleting its data."""
         try:
-            location = application.state.workspace_service.recover_configured_workspace(request.path)
+            location = application.state.workspace_service.recover_configured_workspace(
+                request.path
+            )
         except WorkspaceLocationError as error:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -367,8 +421,8 @@ def create_app(
     ) -> WorkspaceMovedResponse:
         """Verify a complete copy before changing the one saved workspace location."""
         try:
-            previous_path, workspace_path = application.state.workspace_service.move_configured_workspace(
-                request.path
+            previous_path, workspace_path = (
+                application.state.workspace_service.move_configured_workspace(request.path)
             )
         except WorkspaceLocationError as error:
             raise HTTPException(
@@ -397,11 +451,17 @@ def create_app(
     ) -> ProjectResponse:
         """Create a project from its exact scientific question."""
         try:
-            return project_response(project_repository().create_project(request.scientific_question))
+            return project_response(
+                project_repository().create_project(request.scientific_question)
+            )
         except ProjectError as error:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
 
-    @application.patch("/api/projects/{project_id}/tag", response_model=ProjectResponse, tags=["projects"])
+    @application.patch(
+        "/api/projects/{project_id}/tag", response_model=ProjectResponse, tags=["projects"]
+    )
     def rename_project(
         project_id: str,
         request: RenameProjectRequest,
@@ -411,7 +471,9 @@ def create_app(
         try:
             return project_response(project_repository().rename_project(project_id, request.tag))
         except ProjectError as error:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
 
     @application.patch(
         "/api/projects/{project_id}/scientific-question",
@@ -426,10 +488,14 @@ def create_app(
         """Correct the question only before a future workflow run consumes it."""
         try:
             return project_response(
-                project_repository().update_scientific_question(project_id, request.scientific_question)
+                project_repository().update_scientific_question(
+                    project_id, request.scientific_question
+                )
             )
         except ProjectError as error:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
 
     @application.patch(
         "/api/projects/{project_id}/question-detailing-prompt",
@@ -447,7 +513,61 @@ def create_app(
                 project_repository().update_question_detailing_prompt(project_id, request.prompt)
             )
         except ProjectError as error:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
+
+    @application.get("/api/jobs", response_model=list[JobResponse], tags=["jobs"])
+    def list_jobs() -> list[JobResponse]:
+        """List the persistent queue and completed history for the local interface."""
+        return [job_response(record) for record in job_repository().list_jobs()]
+
+    @application.post(
+        "/api/projects/{project_id}/question-detailing/jobs",
+        response_model=JobResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["jobs"],
+    )
+    def enqueue_question_detailing(
+        project_id: str,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Snapshot inputs and the global provider/model into the sequential queue."""
+        try:
+            settings = application.state.llm_settings_service.read()
+            if settings.provider is None or settings.model is None:
+                raise JobError("Configure an LLM provider and model before starting this job.")
+            if application.state.credential_store.get_api_key(settings.provider) is None:
+                raise JobError("The selected provider API key is no longer available.")
+            record = job_repository().enqueue_question_detailing(
+                project_id,
+                settings.provider,
+                settings.model,
+            )
+        except (CredentialStoreError, LLMSettingsError, JobError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(error),
+            ) from error
+        return job_response(record)
+
+    @application.post(
+        "/api/jobs/{job_id}/cancel",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def cancel_job(
+        job_id: str,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Cancel only while the job remains pending and no request may have left."""
+        try:
+            return job_response(job_repository().cancel(job_id))
+        except JobError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(error),
+            ) from error
 
     @application.get("/api/client-state", response_model=ClientStateResponse, tags=["client"])
     def get_client_state() -> ClientStateResponse:
@@ -456,7 +576,9 @@ def create_app(
         selected_project_id = content.get("selected_project_id")
         scroll_top = content.get("scroll_top")
         return ClientStateResponse(
-            selected_project_id=selected_project_id if isinstance(selected_project_id, str) else None,
+            selected_project_id=selected_project_id
+            if isinstance(selected_project_id, str)
+            else None,
             scroll_top=scroll_top if isinstance(scroll_top, int) and scroll_top >= 0 else 0,
         )
 
@@ -472,7 +594,9 @@ def create_app(
                 request.scroll_top,
             )
         except WorkspaceLocationError as error:
-            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)) from error
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
         return ClientStateResponse(
             selected_project_id=request.selected_project_id,
             scroll_top=request.scroll_top,

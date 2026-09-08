@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { LLMSettings } from './LLMConfiguration'
+import { JobStatusLabel, type Job } from './JobQueue'
 
 type Project = {
   id: string
@@ -8,6 +9,7 @@ type Project = {
   question_is_editable: boolean
   question_detailing_prompt: string
   question_detailing_prompt_version: string
+  question_detailing_prompt_is_editable: boolean
 }
 
 type ClientState = { selected_project_id: string | null; scroll_top: number }
@@ -15,6 +17,8 @@ type ClientState = { selected_project_id: string | null; scroll_top: number }
 type Props = {
   setupToken: string
   llmSettings: LLMSettings
+  jobs: Job[]
+  onJobsChanged: () => Promise<void>
   onOpenSettings: () => void
 }
 
@@ -58,7 +62,7 @@ async function readApiError(response: Response) {
   return body?.detail ?? 'The request could not be completed. Try again.'
 }
 
-export function ProjectShell({ setupToken, llmSettings, onOpenSettings }: Props) {
+export function ProjectShell({ setupToken, llmSettings, jobs, onJobsChanged, onOpenSettings }: Props) {
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [question, setQuestion] = useState('')
@@ -75,6 +79,8 @@ export function ProjectShell({ setupToken, llmSettings, onOpenSettings }: Props)
   const [isEditingPrompt, setIsEditingPrompt] = useState(false)
   const [editedPrompt, setEditedPrompt] = useState('')
   const [isSavingPrompt, setIsSavingPrompt] = useState(false)
+  const [isConfirmingJob, setIsConfirmingJob] = useState(false)
+  const [isStartingJob, setIsStartingJob] = useState(false)
   const restoredScrollTop = useRef(0)
   const saveTimer = useRef<number | null>(null)
 
@@ -211,7 +217,43 @@ export function ProjectShell({ setupToken, llmSettings, onOpenSettings }: Props)
     }
   }
 
+  const startQuestionDetailing = async (projectId: string) => {
+    setIsStartingJob(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/projects/${projectId}/question-detailing/jobs`, {
+        method: 'POST',
+        headers: { 'X-Jeromes-Lab-Setup-Token': setupToken },
+      })
+      if (!response.ok) throw new Error(await readApiError(response))
+      setProjects(previous => previous.map(project => project.id === projectId
+        ? { ...project, question_is_editable: false, question_detailing_prompt_is_editable: false }
+        : project))
+      setIsEditingQuestion(false)
+      setIsEditingPrompt(false)
+      setIsConfirmingJob(false)
+      await onJobsChanged()
+    } catch (startError: unknown) {
+      setError(startError instanceof Error ? startError.message : 'Question detailing could not be queued.')
+    } finally {
+      setIsStartingJob(false)
+    }
+  }
+
+  const cancelQuestionDetailing = async (jobId: string) => {
+    setError(null)
+    const response = await fetch(`/api/jobs/${jobId}/cancel`, {
+      method: 'POST',
+      headers: { 'X-Jeromes-Lab-Setup-Token': setupToken },
+    })
+    if (!response.ok) setError(await readApiError(response))
+    await onJobsChanged()
+  }
+
   const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null
+  const selectedJob = selectedProject === null
+    ? null
+    : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'question_detailing') ?? null
   const isSidebarExpanded = !isCollapsed || (isSidebarHovered && !suppressHoverExpansion)
   const toggleSidebar = () => {
     if (isCollapsed) {
@@ -269,6 +311,7 @@ export function ProjectShell({ setupToken, llmSettings, onOpenSettings }: Props)
             <EditableField
               variant="multiline"
               isEditing={isEditingPrompt}
+              canEdit={selectedProject.question_detailing_prompt_is_editable}
               display={<pre className="question-detailing-prompt">{selectedProject.question_detailing_prompt}</pre>}
               editor={<textarea value={editedPrompt} onChange={event => setEditedPrompt(event.target.value)} aria-label="Question-detailing prompt" />}
               onEdit={() => { setEditedPrompt(selectedProject.question_detailing_prompt); setIsEditingPrompt(true) }}
@@ -281,7 +324,24 @@ export function ProjectShell({ setupToken, llmSettings, onOpenSettings }: Props)
                 : <strong>Not configured</strong>}</div>
               <button className="text-button" type="button" onClick={onOpenSettings}>{llmSettings.configured ? 'Change' : 'Configure provider'}</button>
             </div>
+            {selectedJob === null || selectedJob.status === 'failed' || selectedJob.status === 'cancelled' ? <div className="job-start-area">
+              {isConfirmingJob ? <div className="job-confirmation">
+                <p>This locks the exact scientific question, prompt, provider, and model shown above. The job can be cancelled only while it remains queued.</p>
+                <div><button className="primary-button" type="button" disabled={isStartingJob || !llmSettings.configured} onClick={() => void startQuestionDetailing(selectedProject.id)}>{isStartingJob ? 'Queueing…' : 'Confirm and start'}</button><button className="text-button" type="button" disabled={isStartingJob} onClick={() => setIsConfirmingJob(false)}>Cancel</button></div>
+              </div> : <button className="primary-button" type="button" disabled={!llmSettings.configured || isEditingPrompt || isEditingQuestion} onClick={() => setIsConfirmingJob(true)}>Start question detailing</button>}
+              {selectedJob?.error && <p className="setup-error">Previous attempt: {selectedJob.error}</p>}
+            </div> : <div className="inline-job">
+              <div><span>Question-detailing job</span><JobStatusLabel status={selectedJob.status} /></div>
+              {selectedJob.status === 'pending' && <button className="text-button" type="button" onClick={() => void cancelQuestionDetailing(selectedJob.id)}>Cancel queued job</button>}
+              {selectedJob.status === 'awaiting_response' && <p>The request may already have reached {selectedJob.provider === 'openai' ? 'OpenAI' : 'Anthropic'}, so cancellation is disabled.</p>}
+              {selectedJob.error && <p className="setup-error">{selectedJob.error}</p>}
+            </div>}
           </section>
+          {selectedJob?.status === 'completed' && selectedJob.output_markdown !== null && <section className="project-section">
+            <SectionTitle help="The exact Markdown returned by the configured model and preserved as an immutable, hash-addressed artifact.">Detailed scientific question</SectionTitle>
+            <div className="project-input-box completed-output"><pre>{selectedJob.output_markdown}</pre></div>
+            <div className="llm-call-summary"><span>{selectedJob.provider === 'openai' ? 'OpenAI' : 'Anthropic'} · {selectedJob.model}</span>{selectedJob.total_tokens !== null && <span>{selectedJob.total_tokens.toLocaleString()} tokens</span>}{selectedJob.duration_ms !== null && <span>{(selectedJob.duration_ms / 1000).toFixed(1)} s</span>}<span>Cost unavailable</span></div>
+          </section>}
           {error !== null && <p className="setup-error" role="alert">{error}</p>}
         </article>}
       </section>

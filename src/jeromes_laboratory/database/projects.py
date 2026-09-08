@@ -30,6 +30,7 @@ class ProjectRecord:
     question_is_editable: bool
     question_detailing_prompt: str
     question_detailing_prompt_version: str
+    question_detailing_prompt_is_editable: bool
 
 
 class ProjectRepository:
@@ -42,7 +43,9 @@ class ProjectRepository:
         with self._connect() as connection:
             rows = connection.execute(
                 "SELECT id, tag, scientific_question, created_at, updated_at, "
-                "question_detailing_prompt, question_detailing_prompt_version "
+                "question_detailing_prompt, question_detailing_prompt_version, "
+                "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
+                "AND jobs.kind = 'question_detailing') AS inputs_are_editable "
                 "FROM projects ORDER BY created_at"
             ).fetchall()
         return [self._record_from_row(row) for row in rows]
@@ -51,7 +54,9 @@ class ProjectRepository:
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT id, tag, scientific_question, created_at, updated_at, "
-                "question_detailing_prompt, question_detailing_prompt_version "
+                "question_detailing_prompt, question_detailing_prompt_version, "
+                "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
+                "AND jobs.kind = 'question_detailing') AS inputs_are_editable "
                 "FROM projects WHERE id = ?",
                 (project_id,),
             ).fetchone()
@@ -60,7 +65,9 @@ class ProjectRepository:
         return self._record_from_row(row)
 
     def create_project(self, scientific_question: str) -> ProjectRecord:
-        question = self._required_text(scientific_question, "Enter a scientific question before starting.")
+        question = self._required_text(
+            scientific_question, "Enter a scientific question before starting."
+        )
         now = self._timestamp()
         project_id = str(uuid4())
         with self._connect() as connection:
@@ -94,6 +101,7 @@ class ProjectRepository:
             question_is_editable=True,
             question_detailing_prompt=DEFAULT_QUESTION_DETAILING_PROMPT,
             question_detailing_prompt_version=QUESTION_DETAILING_PROMPT_VERSION,
+            question_detailing_prompt_is_editable=True,
         )
 
     def rename_project(self, project_id: str, tag_value: str) -> ProjectRecord:
@@ -117,12 +125,13 @@ class ProjectRepository:
             question_value,
             "Enter a scientific question before saving.",
         )
-        if not self._question_is_editable(project_id):
-            raise ProjectError(
-                "The scientific question is locked because a workflow job already uses it."
-            )
         now = self._timestamp()
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if not self._question_is_editable(connection, project_id):
+                raise ProjectError(
+                    "The scientific question is locked because a workflow job already uses it."
+                )
             cursor = connection.execute(
                 "UPDATE projects SET scientific_question = ?, updated_at = ? WHERE id = ?",
                 (question, now, project_id),
@@ -136,6 +145,11 @@ class ProjectRepository:
         prompt = self._required_text(prompt_value, "Enter a prompt before saving.")
         now = self._timestamp()
         with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if not self._question_is_editable(connection, project_id):
+                raise ProjectError(
+                    "The question-detailing prompt is locked because a workflow job already uses it."
+                )
             cursor = connection.execute(
                 "UPDATE projects SET question_detailing_prompt = ?, "
                 "question_detailing_prompt_version = 'custom', updated_at = ? WHERE id = ?",
@@ -145,10 +159,14 @@ class ProjectRepository:
             raise ProjectError("The selected project no longer exists.")
         return self.get_project(project_id)
 
-    def _question_is_editable(self, project_id: str) -> bool:
-        """Centralize the future job-input lock rule; no jobs exist in this slice."""
-        del project_id
-        return True
+    @staticmethod
+    def _question_is_editable(connection: sqlite3.Connection, project_id: str) -> bool:
+        """Lock exact scientific inputs from the moment a job is enqueued."""
+        row = connection.execute(
+            "SELECT 1 FROM jobs WHERE project_id = ? AND kind = 'question_detailing'",
+            (project_id,),
+        ).fetchone()
+        return row is None
 
     def _next_tag_number(self, connection: sqlite3.Connection) -> int:
         row = connection.execute(
@@ -174,9 +192,10 @@ class ProjectRepository:
             scientific_question=row["scientific_question"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
-            question_is_editable=True,
+            question_is_editable=bool(row["inputs_are_editable"]),
             question_detailing_prompt=row["question_detailing_prompt"],
             question_detailing_prompt_version=row["question_detailing_prompt_version"],
+            question_detailing_prompt_is_editable=bool(row["inputs_are_editable"]),
         )
 
     @staticmethod

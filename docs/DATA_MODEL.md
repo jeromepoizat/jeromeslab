@@ -95,16 +95,19 @@ ambiguous reconstruction of structured content.
 ### Job
 
 A persistent unit of queued work linked to its project and usually to a workflow
-step/run. Expected fields include type, status (`pending`, `running`, `completed`,
-`failed`, and `cancelled`), enqueue/start/completion timestamps,
-progress numerator/denominator/message, attempt information, error summary, and
-lease/recovery metadata.
+step/run. The first implemented question-detailing record contains type, status
+(`pending`, `awaiting_response`, `completed`, `failed`, or `cancelled`),
+enqueue/start/completion timestamps, immutable input snapshots, provider/model,
+prompt identity/version, and a sanitized error summary. General progress,
+attempt, step-run, and lease fields remain future schema work.
 
-Only one job may be running in V1. Database constraints and worker transaction
-design for enforcing this rule remain to be selected. Cancellation is allowed
-only while a job is pending. The atomic transition that commits a worker to
-provider dispatch closes cancellation before the request may leave the process;
-the waiting-for-response state is therefore not cancellable.
+Only one process and one worker run in V1. That worker claims the oldest pending
+job with a short `BEGIN IMMEDIATE` transaction. Cancellation is allowed only
+while a job is pending. The atomic transition to `awaiting_response` commits the
+worker to provider dispatch before the request may leave the process, so that
+state is not cancellable. An interrupted `awaiting_response` job is marked failed
+on restart and is not automatically retried because the provider may have billed
+the lost request.
 
 ## LLM provenance and cost
 
@@ -157,7 +160,9 @@ input tokens, output tokens, cached input tokens, reasoning tokens, and total
 tokens. Additional provider categories remain in provider metadata with units and
 names preserved. Missing values are null/unknown, never zero by assumption.
 
-Whether this is a separate table or fields plus versioned JSON is unresolved.
+The initial implementation stores normalized nullable fields on `llm_calls` and
+also preserves the complete provider usage object as canonical JSON. This can be
+normalized into related tables later without discarding provider categories.
 
 ### PricingSnapshot
 

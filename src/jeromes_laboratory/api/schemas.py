@@ -110,6 +110,7 @@ class ProjectResponse(BaseModel):
     question_is_editable: bool
     question_detailing_prompt: str
     question_detailing_prompt_version: str
+    question_detailing_prompt_is_editable: bool
 
 
 class CreateProjectRequest(BaseModel):
@@ -134,6 +135,35 @@ class UpdateQuestionDetailingPromptRequest(BaseModel):
     """The exact project prompt for the question-detailing LLM operation."""
 
     prompt: str = Field(min_length=1, max_length=20_000)
+
+
+JobStatus = Literal["pending", "awaiting_response", "completed", "failed", "cancelled"]
+
+
+class JobResponse(BaseModel):
+    """Safe queue, result, and concise call-provenance state for the UI."""
+
+    id: str
+    project_id: str
+    project_tag: str
+    kind: str
+    status: JobStatus
+    created_at: str
+    started_at: str | None
+    completed_at: str | None
+    provider: LLMProviderName
+    model: str
+    scientific_question_snapshot: str
+    prompt_snapshot: str
+    prompt_template_version: str
+    error: str | None
+    output_markdown: str | None
+    llm_call_id: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+    total_tokens: int | None
+    duration_ms: int | None
+    cost_status: str | None
 
 
 class ClientStateResponse(BaseModel):

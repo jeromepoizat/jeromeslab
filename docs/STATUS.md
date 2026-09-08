@@ -71,8 +71,21 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   six jobs passed in workflow run `34131271837` for commit `3a441ec`.
 - `CONTRIBUTING.md` documents source installation, launch, project-local checks,
   pull-request expectations, CI review, and project invariants.
-- No provider generation adapter, queue, or later scientific workflow execution
-  code has been implemented.
+- A persistent single-worker queue now executes the first question-detailing job.
+  Enqueueing snapshots and locks the exact question, prompt/version, provider, and
+  model. Pending jobs can be cancelled; the atomic `awaiting_response` transition
+  closes cancellation before dispatch, and interrupted dispatched jobs fail
+  without an automatic potentially billable retry.
+- OpenAI Responses and Anthropic Messages adapters preserve secret-free request
+  JSON, exact raw response, parsed Markdown, provider metadata, timing, normalized
+  and original usage, and sanitized failures in first-class `LLMCall` records.
+- Completed question-detailing output is deterministically wrapped in JSON and
+  stored as an immutable artifact version with its UTF-8 byte length and SHA-256
+  digest. Cost is explicitly `unavailable` until trustworthy immutable pricing
+  snapshots are implemented.
+- The project page confirms enqueueing, displays live state and completed output,
+  and disables cancellation once provider dispatch begins. A global header badge
+  and right-side queue drawer expose work while navigating between projects.
 
 ## Recently completed
 
@@ -125,18 +138,23 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   avoiding model-generated JSON parse failures.
 - Added secure OpenAI/Anthropic setup, live filtered model discovery, global
   provider defaults, credential forgetting, and reusable pre-job model context.
+- Added the persistent sequential queue and first live OpenAI/Anthropic
+  question-detailing execution path with call provenance, usage normalization,
+  deterministic artifact creation, secret-redaction tests, and queue UI.
 
 ## Work in progress
 
-Provider configuration is ready for review before implementing live generation.
+The first live question-detailing path is implemented and ready for manual
+provider-account verification.
 
 ## Immediate next tasks
 
-1. Manually verify native credential behavior and provider model discovery with
-   user-owned OpenAI and Anthropic keys.
-2. Verify the expanded project-shell slice on the full cross-platform CI matrix.
-3. Design and implement immutable LLM-call/job provenance before sending the
-   first research-question decomposition request.
+1. Manually verify native credentials, model discovery, and one live
+   question-detailing call with user-owned OpenAI and Anthropic accounts.
+2. Add original-versus-user-edited effective artifact versions and explicit
+   downstream selection for the completed question-detailing output.
+3. Add immutable model-pricing snapshots and call/step/project cost aggregation.
+4. Verify the queue and generation slice on the full cross-platform CI matrix.
 
 ## Known issues and blockers
 
@@ -154,8 +172,6 @@ Provider configuration is ready for review before implementing live generation.
   mismatch without rewriting history, and require acknowledgement before known-
   mismatched input is used in new downstream work.
 - Project-fork ownership/deletion semantics for shared runs and artifacts.
-- Queue ordering and restart policy for an interrupted dispatched job. Pending
-  jobs are cancellable; sending and awaiting-response jobs are not.
 - LLM retry-attempt representation and the source/update process for trustworthy
   pricing snapshots.
 - Publication identity precedence and conflict handling during deduplication.

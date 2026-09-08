@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import './App.css'
 import { LLMConfiguration, type LLMSettings } from './LLMConfiguration'
 import { ProjectShell } from './ProjectShell'
+import { JobQueueDrawer, QueueIcon, type Job } from './JobQueue'
 
 type ApiState = 'checking' | 'available' | 'unavailable'
 type Theme = 'dark' | 'light'
@@ -44,6 +45,8 @@ function App() {
   const [isMoving, setIsMoving] = useState(false)
   const [needsMoveConfirmation, setNeedsMoveConfirmation] = useState(false)
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
+  const [isQueueOpen, setIsQueueOpen] = useState(false)
+  const [jobs, setJobs] = useState<Job[]>([])
   const [isForgettingWorkspace, setIsForgettingWorkspace] = useState(false)
   const [needsForgetConfirmation, setNeedsForgetConfirmation] = useState(false)
 
@@ -75,6 +78,21 @@ function App() {
       controller?.abort()
     }
   }, [])
+
+  const refreshJobs = useCallback(async () => {
+    const response = await fetch('/api/jobs')
+    if (response.ok) setJobs((await response.json()) as Job[])
+  }, [])
+
+  useEffect(() => {
+    if (setupStatus !== 'configured') return
+    const initialId = window.setTimeout(() => void refreshJobs(), 0)
+    const intervalId = window.setInterval(() => void refreshJobs(), 1_000)
+    return () => {
+      window.clearTimeout(initialId)
+      window.clearInterval(intervalId)
+    }
+  }, [refreshJobs, setupStatus])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -220,7 +238,17 @@ function App() {
     setNeedsMoveConfirmation(false)
   }
   const openSettings = () => {
+    setIsQueueOpen(false)
     setIsSettingsOpen(true)
+  }
+  const cancelJob = async (jobId: string) => {
+    if (workspaceSetup === null) return
+    const response = await fetch(`/api/jobs/${jobId}/cancel`, {
+      method: 'POST',
+      headers: { 'X-Jeromes-Lab-Setup-Token': workspaceSetup.setup_token },
+    })
+    if (!response.ok) setSetupError(await readApiError(response))
+    await refreshJobs()
   }
   const nextTheme = theme === 'dark' ? 'light' : 'dark'
   const showLLMOnboarding = workspaceSetup !== null && llmSettings !== null && !llmSettings.onboarding_complete
@@ -231,6 +259,7 @@ function App() {
       <div className="header-actions">
         <div className={`api-status api-status--${apiState}`} role="status" aria-label={apiStateLabels[apiState]} tabIndex={0}><span className="api-status-dot" aria-hidden="true" /><span className="api-status-tooltip" role="tooltip">{apiStateLabels[apiState]}</span></div>
         <button className="theme-toggle" type="button" aria-label={`Switch to ${nextTheme} mode`} title={`Switch to ${nextTheme} mode`} onClick={() => setTheme(nextTheme)}>{theme === 'dark' ? <SunIcon /> : <MoonIcon />}</button>
+        {setupStatus === 'configured' && !showLLMOnboarding && <button className="theme-toggle queue-button" type="button" aria-label="Open research job queue" aria-controls="queue-drawer" aria-expanded={isQueueOpen} title="Research job queue" onClick={() => { setIsSettingsOpen(false); setIsQueueOpen(!isQueueOpen) }}><QueueIcon />{jobs.filter(job => job.status === 'pending' || job.status === 'awaiting_response').length > 0 && <span className="queue-count">{jobs.filter(job => job.status === 'pending' || job.status === 'awaiting_response').length}</span>}</button>}
         {setupStatus === 'configured' && !showLLMOnboarding && <button className="theme-toggle" type="button" aria-label="Open settings" aria-controls="settings-drawer" aria-expanded={isSettingsOpen} title="Settings" onClick={() => isSettingsOpen ? closeSettings() : openSettings()}><SettingsIcon /></button>}
       </div>
     </header>
@@ -240,9 +269,11 @@ function App() {
       {showLLMOnboarding && <section className="foundation-card provider-setup"><p className="step-label">First-run setup</p><h2>Configure an LLM provider</h2><p>Choose OpenAI or Anthropic, enter an API key, and fetch the compatible models available to your account. The key is stored by your operating system, never in the research workspace.</p><LLMConfiguration setupToken={workspaceSetup.setup_token} settings={llmSettings} mode="onboarding" onChange={setLLMSettings} /></section>}
       {!showLLMOnboarding && setupStatus === 'needs_workspace' && <section className="foundation-card workspace-setup"><p className="step-label">First-run setup</p><h2>Choose your research workspace</h2><p>Your projects, local database, artifacts, exports, and backups stay together in this folder. You can paste a path or select a folder from your computer.</p>{setupNotice && <p className="setup-notice">{setupNotice}</p>}<form onSubmit={event => { event.preventDefault(); void configureWorkspace(false) }}><label htmlFor="workspace-path">Workspace folder</label><div className="workspace-path-controls"><input id="workspace-path" value={workspacePath} onChange={event => { setWorkspacePath(event.target.value); setNeedsNonemptyConfirmation(false) }} required /><button className="secondary-button" type="button" onClick={() => void selectFolder(setWorkspacePath)} disabled={isSelectingFolder || isConfiguringWorkspace}>{isSelectingFolder ? 'Opening…' : 'Select folder'}</button></div>{setupError && <p className="setup-error">{setupError}</p>}{needsNonemptyConfirmation && <button className="secondary-button" type="button" onClick={() => void configureWorkspace(true)}>Use this folder anyway</button>}<button className="primary-button" type="submit" disabled={isConfiguringWorkspace}>{isConfiguringWorkspace ? 'Preparing workspace…' : 'Continue'}</button></form></section>}
       {!showLLMOnboarding && setupStatus === 'workspace_unavailable' && <section className="foundation-card workspace-setup"><p className="step-label">Workspace recovery</p><h2>Locate your moved workspace</h2><p>{workspaceSetup?.workspace_error ?? 'The saved workspace is unavailable.'}</p><p>Choose the existing Jerome&apos;s Laboratory folder. This reconnects it; it does not create, copy, or delete data.</p><div className="workspace-path-controls"><input value={recoveryPath} onChange={event => setRecoveryPath(event.target.value)} aria-label="Existing workspace folder" required /><button className="secondary-button" type="button" onClick={() => void selectFolder(setRecoveryPath)} disabled={isSelectingFolder || isRecovering}>{isSelectingFolder ? 'Opening…' : 'Select folder'}</button></div>{setupError && <p className="setup-error">{setupError}</p>}<div className="settings-confirmation"><button className="primary-button" type="button" onClick={() => void recoverWorkspace()} disabled={isRecovering}>{isRecovering ? 'Reconnecting…' : 'Locate workspace'}</button><button className="text-button" type="button" onClick={() => void forgetWorkspace()} disabled={isForgettingWorkspace}>{isForgettingWorkspace ? 'Forgetting…' : 'Forget saved location'}</button></div></section>}
-      {!showLLMOnboarding && setupStatus === 'configured' && workspaceSetup !== null && llmSettings !== null && <ProjectShell setupToken={workspaceSetup.setup_token} llmSettings={llmSettings} onOpenSettings={openSettings} />}
+      {!showLLMOnboarding && setupStatus === 'configured' && workspaceSetup !== null && llmSettings !== null && <ProjectShell setupToken={workspaceSetup.setup_token} llmSettings={llmSettings} jobs={jobs} onJobsChanged={refreshJobs} onOpenSettings={openSettings} />}
       {setupStatus === 'unavailable' && <section className="foundation-card"><p className="step-label">Local setup unavailable</p><h2>Reconnect the local application</h2><p>Start Jerome&apos;s Laboratory again, then refresh this page.</p></section>}
     </main>
+
+    {isQueueOpen && setupStatus === 'configured' && <JobQueueDrawer jobs={jobs} onClose={() => setIsQueueOpen(false)} onCancel={jobId => void cancelJob(jobId)} />}
 
     {isSettingsOpen && setupStatus === 'configured' && workspaceSetup !== null && llmSettings !== null && <aside className="settings-drawer" id="settings-drawer" aria-labelledby="settings-title">
       <div className="settings-drawer-header"><div><p className="step-label">Settings</p><h2 id="settings-title">Local configuration</h2></div><button className="settings-close" type="button" aria-label="Close settings" onClick={closeSettings}>×</button></div>

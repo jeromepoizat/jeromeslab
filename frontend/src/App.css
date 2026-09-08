@@ -136,6 +136,9 @@
   width: 1.1rem;
 }
 
+.queue-button { position: relative; }
+.queue-count { align-items: center; background: var(--focus); border: 2px solid var(--header-background); border-radius: 999px; color: #07130d; display: flex; font-size: 0.63rem; font-weight: 800; height: 1.15rem; justify-content: center; min-width: 1.15rem; padding: 0 0.18rem; position: absolute; right: -0.35rem; top: -0.35rem; }
+
 main {
   margin: 0 auto;
   max-width: 72rem;
@@ -289,6 +292,26 @@ main.project-main {
 .project-header-context { align-items: center; display: flex; flex-direction: column; gap: 0.15rem; left: 50%; max-width: min(42rem, 46vw); overflow: hidden; pointer-events: none; position: fixed; text-align: center; top: 1.2rem; transform: translateX(-50%); z-index: 8; }
 .project-header-context strong { color: var(--header-context-text); font-size: 1.15rem; letter-spacing: 0.08em; }
 .project-header-context span { color: var(--header-context-text); font-size: 1.05rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; width: 100%; }
+
+.job-start-area { margin-top: 1.25rem; }
+.job-confirmation { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 0.65rem; padding: 1rem; }
+.job-confirmation p { color: var(--muted); line-height: 1.5; margin: 0 0 0.75rem; }
+.job-confirmation > div { align-items: center; display: flex; gap: 1.25rem; }
+.inline-job { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 0.65rem; margin-top: 1.25rem; padding: 1rem; }
+.inline-job > div { align-items: center; display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: space-between; }
+.inline-job > div > span:first-child { color: var(--ink); font-weight: 700; }
+.inline-job p { color: var(--muted); line-height: 1.5; margin: 0.75rem 0 0; }
+.job-status { align-items: center; color: var(--muted); display: inline-flex; font-size: 0.78rem; font-weight: 700; gap: 0.4rem; }
+.job-status > span { background: var(--muted); border-radius: 50%; height: 0.48rem; width: 0.48rem; }
+.job-status--pending > span { background: #d79b33; }
+.job-status--awaiting_response > span { animation: job-pulse 1.5s ease-in-out infinite; background: var(--focus); }
+.job-status--completed > span { background: #39b87b; }
+.job-status--failed > span { background: #dc6666; }
+.completed-output { margin-top: 1rem; max-height: 28rem; overflow: auto; }
+.completed-output pre { color: var(--ink); font: inherit; line-height: 1.65; margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.llm-call-summary { color: var(--muted); display: flex; flex-wrap: wrap; font-size: 0.78rem; gap: 0.5rem 1.25rem; margin-top: 0.75rem; }
+
+@keyframes job-pulse { 50% { opacity: 0.35; } }
 
 .foundation-card {
   background: var(--surface);
@@ -619,6 +642,15 @@ main.project-main {
 .settings-drawer .llm-configuration {
   margin-top: 1rem;
 }
+
+.queue-empty { color: var(--muted); }
+.queue-list { display: grid; gap: 0.85rem; }
+.queue-job { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 0.65rem; padding: 0.9rem; }
+.queue-job-heading { align-items: center; display: flex; gap: 0.75rem; justify-content: space-between; }
+.queue-job-heading strong { color: var(--ink); }
+.queue-job > p { color: var(--ink); margin: 0.65rem 0 0.25rem; }
+.queue-job small { color: var(--muted); overflow-wrap: anywhere; }
+.queue-job .text-button { display: block; margin-top: 0.45rem; padding-bottom: 0; }
 
 .settings-section h3 {
   color: var(--ink);

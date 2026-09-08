@@ -6,7 +6,8 @@ This is the authoritative workflow description. Status terms mean:
 - **planned**: product behavior is agreed enough to schedule;
 - **design in progress**: goals are known, but schema or method is unresolved.
 
-No scientific workflow step is implemented yet.
+The first question-detailing execution is implemented; later scientific stages
+remain planned or in design.
 
 ## Cross-cutting workflow rules
 
@@ -38,7 +39,7 @@ project snapshots the exact default template text and version at creation, or an
 explicit user edit marked as custom. The eventual LLM call must record that same
 effective prompt text; later application versions must never silently replace it.
 
-### Step 1 — Research question decomposition (planned)
+### Step 1 — Research question decomposition (partially implemented)
 
 An LLM expands the question into a flexible researchable thesis or investigation
 brief. The provider returns free-form Markdown and may choose paragraphs,
@@ -56,6 +57,10 @@ record retained. Once provider dispatch begins, cancellation is unavailable.
 
 The run links to complete `LLMCall` provenance, including prompt version, exact
 input/output, provider/model, usage, timing, errors, and cost status.
+
+The persistent queue, live OpenAI/Anthropic call, original parsed artifact, and
+read-only output display are implemented. User editing into a separate effective
+artifact version and downstream selection remain to be implemented.
 
 ### Step 2 — Literature investigation strategy (planned)
 
