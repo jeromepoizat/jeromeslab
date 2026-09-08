@@ -47,6 +47,9 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   are bundled as plain-text resources rather than Python strings. The project
   page displays the prompt beneath the scientific question and supports an
   explicit edit; custom prompts remain distinct from later app-default changes.
+  Active version 5 prioritizes a focused primary question, critical scope
+  decisions, disconfirming evidence, query vocabulary, and purpose-specific
+  search themes instead of expanding into a generic encyclopedic program.
 - The header includes Settings with a confirmed **Forget workspace on this
   device** action. It removes only the saved workspace pointer and returns to the
   first-run screen; it does not delete the workspace database, artifacts, or files.
@@ -86,6 +89,14 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 - The project page confirms enqueueing, displays live state and completed output,
   and disables cancellation once provider dispatch begins. A global header badge
   and right-side queue drawer expose work while navigating between projects.
+- Completed question detailing reuses the compact job/model card, renders output
+  as Markdown in the same scrollable and expandable field pattern as other
+  project content, and splits provider/model from usage, duration, and cost
+  metadata around the expansion control.
+- Manual output edits create new immutable, hashed artifact versions and move an
+  explicit effective-version selection. The UI toggles between the permanently
+  read-only original provider output and the editable effective version; stale
+  concurrent edits are rejected.
 
 ## Recently completed
 
@@ -136,11 +147,17 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   adaptable scientific-development prompt returning only Markdown. Application
   code will wrap the exact raw text in a deterministic versioned JSON artifact,
   avoiding model-generated JSON parse failures.
+- Added question-detailing prompt version 5 after evaluating the first live
+  Myostatin output. It is designed as better input for later database-query
+  generation and migrates only unused version-4 prompts; prompts already consumed
+  by a retained job remain byte-for-byte unchanged.
 - Added secure OpenAI/Anthropic setup, live filtered model discovery, global
   provider defaults, credential forgetting, and reusable pre-job model context.
 - Added the persistent sequential queue and first live OpenAI/Anthropic
   question-detailing execution path with call provenance, usage normalization,
   deterministic artifact creation, secret-redaction tests, and queue UI.
+- Added rendered Markdown question-detailing results and original-versus-edited
+  artifact versioning with an explicit effective selection.
 
 ## Work in progress
 
@@ -166,8 +183,10 @@ provider-account verification.
 
 ## Open design questions and risks
 
-- Artifact hash algorithm, canonical serialization, filesystem layout, and
-  effective-version selection representation. A proposed integrity policy would
+- General artifact hash scope, filesystem layout, and effective-version selection
+  scope beyond question detailing. The current question-detailing implementation
+  hashes canonical UTF-8 JSON with SHA-256 and selects an effective version per
+  job. The broader integrity policy would
   record a versioned byte hash for every immutable artifact, show a warning on a
   mismatch without rewriting history, and require acknowledgement before known-
   mismatched input is used in new downstream work.

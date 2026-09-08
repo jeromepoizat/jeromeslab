@@ -40,6 +40,10 @@ class JobRecord:
     prompt_template_version: str
     error: str | None
     output_markdown: str | None
+    original_output_markdown: str | None
+    effective_output_markdown: str | None
+    effective_output_version: int | None
+    output_was_edited: bool
     llm_call_id: str | None
     input_tokens: int | None
     output_tokens: int | None
@@ -188,6 +192,7 @@ class JobRepository:
         }
         content_json = _json(artifact_payload)
         content_bytes = content_json.encode("utf-8")
+        artifact_id = str(uuid4())
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             started = connection.execute(
@@ -226,7 +231,7 @@ class JobRepository:
                 "version_number, created_at) SELECT ?, project_id, id, ?, ?, ?, ?, ?, ?, 'llm', 1, ? "
                 "FROM jobs WHERE id = ?",
                 (
-                    str(uuid4()),
+                    artifact_id,
                     call_id,
                     "question_detailing_output",
                     "application/json",
@@ -238,8 +243,75 @@ class JobRepository:
                 ),
             )
             connection.execute(
+                "INSERT INTO artifact_effective_versions "
+                "(job_id, artifact_version_id, selected_at, selection_reason) "
+                "VALUES (?, ?, ?, 'original_output')",
+                (job_id, artifact_id, now),
+            )
+            connection.execute(
                 "UPDATE jobs SET status = 'completed', completed_at = ? WHERE id = ?",
                 (now, job_id),
+            )
+        return self.get_job(job_id)
+
+    def edit_question_detailing_output(
+        self, job_id: str, markdown_value: str, base_version: int
+    ) -> JobRecord:
+        """Create a user version and select it without modifying prior content."""
+        markdown = markdown_value.strip()
+        if not markdown:
+            raise JobError("The detailed scientific question cannot be empty.")
+        if len(markdown) > 100_000:
+            raise JobError("The detailed scientific question is too long.")
+        now = _timestamp()
+        artifact_payload = {
+            "schema_version": 1,
+            "content_type": "text/markdown",
+            "detailed_question": markdown,
+        }
+        content_json = _json(artifact_payload)
+        content_bytes = content_json.encode("utf-8")
+        artifact_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            current = connection.execute(
+                "SELECT effective.version_number, jobs.project_id, llm_calls.id AS llm_call_id "
+                "FROM jobs "
+                "JOIN llm_calls ON llm_calls.job_id = jobs.id "
+                "JOIN artifact_effective_versions selection ON selection.job_id = jobs.id "
+                "JOIN artifact_versions effective ON effective.id = selection.artifact_version_id "
+                "WHERE jobs.id = ? AND jobs.status = 'completed'",
+                (job_id,),
+            ).fetchone()
+            if current is None:
+                raise JobError("Only a completed question-detailing output can be edited.")
+            if current["version_number"] != base_version:
+                raise JobError(
+                    "This output was edited elsewhere. Reload it before making another change."
+                )
+            next_version = base_version + 1
+            connection.execute(
+                "INSERT INTO artifact_versions (id, project_id, job_id, llm_call_id, kind, "
+                "content_type, content_json, content_sha256, byte_size, creator_type, "
+                "version_number, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'user', ?, ?)",
+                (
+                    artifact_id,
+                    current["project_id"],
+                    job_id,
+                    current["llm_call_id"],
+                    "question_detailing_output",
+                    "application/json",
+                    content_json,
+                    hashlib.sha256(content_bytes).hexdigest(),
+                    len(content_bytes),
+                    next_version,
+                    now,
+                ),
+            )
+            connection.execute(
+                "UPDATE artifact_effective_versions SET artifact_version_id = ?, "
+                "selected_at = ?, selection_reason = 'user_edit' WHERE job_id = ?",
+                (artifact_id, now, job_id),
             )
         return self.get_job(job_id)
 
@@ -288,23 +360,24 @@ class JobRepository:
         return (
             "SELECT jobs.*, projects.tag AS project_tag, llm_calls.id AS llm_call_id, "
             "llm_calls.input_tokens, llm_calls.output_tokens, llm_calls.total_tokens, "
-            "llm_calls.duration_ms, llm_calls.cost_status, artifact_versions.content_json "
+            "llm_calls.duration_ms, llm_calls.cost_status, "
+            "original.content_json AS original_content_json, "
+            "effective.content_json AS effective_content_json, "
+            "effective.version_number AS effective_version_number "
             "FROM jobs JOIN projects ON projects.id = jobs.project_id "
             "LEFT JOIN llm_calls ON llm_calls.job_id = jobs.id "
-            "LEFT JOIN artifact_versions ON artifact_versions.job_id = jobs.id "
-            "AND artifact_versions.kind = 'question_detailing_output' "
+            "LEFT JOIN artifact_versions original ON original.job_id = jobs.id "
+            "AND original.kind = 'question_detailing_output' AND original.version_number = 1 "
+            "LEFT JOIN artifact_effective_versions selection ON selection.job_id = jobs.id "
+            "LEFT JOIN artifact_versions effective ON effective.id = selection.artifact_version_id "
         )
 
     @staticmethod
     def _record(row: sqlite3.Row) -> JobRecord:
-        output_markdown: str | None = None
-        if row["content_json"] is not None:
-            try:
-                payload = json.loads(row["content_json"])
-                value = payload.get("detailed_question")
-                output_markdown = value if isinstance(value, str) else None
-            except json.JSONDecodeError:
-                output_markdown = None
+        original_output = _markdown_from_json(row["original_content_json"])
+        effective_output = _markdown_from_json(row["effective_content_json"])
+        output_markdown = effective_output or original_output
+        effective_version = row["effective_version_number"]
         return JobRecord(
             id=row["id"],
             project_id=row["project_id"],
@@ -321,6 +394,10 @@ class JobRepository:
             prompt_template_version=row["prompt_template_version"],
             error=row["error"],
             output_markdown=output_markdown,
+            original_output_markdown=original_output,
+            effective_output_markdown=effective_output or original_output,
+            effective_output_version=effective_version,
+            output_was_edited=isinstance(effective_version, int) and effective_version > 1,
             llm_call_id=row["llm_call_id"],
             input_tokens=row["input_tokens"],
             output_tokens=row["output_tokens"],
@@ -346,6 +423,16 @@ def _provider_input(scientific_question: str) -> str:
 
 def _json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+
+
+def _markdown_from_json(content_json: str | None) -> str | None:
+    if content_json is None:
+        return None
+    try:
+        value = json.loads(content_json).get("detailed_question")
+    except (AttributeError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, str) else None
 
 
 def _timestamp() -> str:

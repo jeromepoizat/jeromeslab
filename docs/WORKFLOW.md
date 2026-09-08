@@ -38,6 +38,10 @@ Before Step 1, the project displays a versioned question-detailing prompt. Each
 project snapshots the exact default template text and version at creation, or an
 explicit user edit marked as custom. The eventual LLM call must record that same
 effective prompt text; later application versions must never silently replace it.
+The active version asks for a focused primary question, only high-value supporting
+questions, unresolved scope decisions, disconfirming evidence, candidate search
+vocabulary, and several purpose-specific search themes without generating
+database syntax prematurely. Its organization remains adaptable to the question.
 
 ### Step 1 — Research question decomposition (partially implemented)
 
@@ -58,9 +62,11 @@ record retained. Once provider dispatch begins, cancellation is unavailable.
 The run links to complete `LLMCall` provenance, including prompt version, exact
 input/output, provider/model, usage, timing, errors, and cost status.
 
-The persistent queue, live OpenAI/Anthropic call, original parsed artifact, and
-read-only output display are implemented. User editing into a separate effective
-artifact version and downstream selection remain to be implemented.
+The persistent queue, live OpenAI/Anthropic call, original parsed artifact,
+rendered Markdown display, and manual output editing are implemented. Each save
+creates another immutable user artifact and advances an explicit effective-version
+selection; the original model output remains inspectable. Downstream consumption
+of that selected version remains to be implemented.
 
 ### Step 2 — Literature investigation strategy (planned)
 

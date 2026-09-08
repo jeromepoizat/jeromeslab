@@ -167,7 +167,7 @@ async def test_projects_have_sequential_default_tags_and_mutable_display_tags(tm
     assert first.json()["tag"] == "PROJ001"
     assert first.json()["scientific_question"] == "What is the evidence for intervention X?"
     assert first.json()["question_is_editable"] is True
-    assert first.json()["question_detailing_prompt_version"] == "4"
+    assert first.json()["question_detailing_prompt_version"] == "5"
     assert "project's original scientific question" in first.json()["question_detailing_prompt"]
     assert second.json()["tag"] == "PROJ002"
     assert renamed.json()["tag"] == "CARDIO"

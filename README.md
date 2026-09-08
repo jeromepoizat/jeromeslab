@@ -104,6 +104,9 @@ Queued work can be cancelled until provider dispatch begins. The queue continues
 while the browser navigates between projects, and completed output, exact call
 inputs/response, usage, timing, and provider/model provenance are preserved in
 the workspace. API keys and authorization headers are never stored there.
+Completed question-detailing output is rendered as Markdown. Manual edits create
+new immutable versions, while the original provider output remains available for
+inspection and provenance.
 
 Next, choose a dedicated research workspace. The application suggests
 `Documents/Jerome's Laboratory`, but you can type or paste another absolute path

@@ -131,3 +131,16 @@ class ArtifactVersion(Base):
     creator_type: Mapped[str] = mapped_column(String(32), nullable=False)
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+class ArtifactEffectiveVersion(Base):
+    """The explicitly selected version consumed by later workflow steps."""
+
+    __tablename__ = "artifact_effective_versions"
+
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), primary_key=True)
+    artifact_version_id: Mapped[str] = mapped_column(
+        ForeignKey("artifact_versions.id"), nullable=False
+    )
+    selected_at: Mapped[str] = mapped_column(String(32), nullable=False)
+    selection_reason: Mapped[str] = mapped_column(String(64), nullable=False)

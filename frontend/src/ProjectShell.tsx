@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import ReactMarkdown from 'react-markdown'
 import type { LLMSettings } from './LLMConfiguration'
-import { JobStatusLabel, type Job } from './JobQueue'
+import { JobElapsedTime, JobStatusLabel, type Job } from './JobQueue'
 
 type Project = {
   id: string
@@ -18,6 +19,8 @@ type Props = {
   setupToken: string
   llmSettings: LLMSettings
   jobs: Job[]
+  nowMilliseconds: number
+  jobNavigation: { projectId: string; jobId: string; requestId: number; target: 'job' | 'output' } | null
   onJobsChanged: () => Promise<void>
   onOpenSettings: () => void
 }
@@ -32,6 +35,10 @@ function SectionTitle({ children, help }: { children: string; help: string }) {
   return <div className="section-title"><h2>{children}</h2><HelpTooltip>{help}</HelpTooltip></div>
 }
 
+function ChangeModelIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 20 20"><path d="M4 5h12M4 10h12M4 15h12" /><circle cx="7" cy="5" r="1.7" /><circle cx="13" cy="10" r="1.7" /><circle cx="8" cy="15" r="1.7" /></svg>
+}
+
 type EditableFieldProps = {
   variant: 'single-line' | 'multiline'
   isEditing: boolean
@@ -39,20 +46,24 @@ type EditableFieldProps = {
   display: ReactNode
   editor: ReactNode
   actions: ReactNode
+  footer?: ReactNode
+  sideActions?: ReactNode
   onEdit: () => void
   editLabel: string
 }
 
-function EditableField({ variant, isEditing, canEdit = true, display, editor, actions, onEdit, editLabel }: EditableFieldProps) {
+function EditableField({ variant, isEditing, canEdit = true, display, editor, actions, footer, sideActions, onEdit, editLabel }: EditableFieldProps) {
   const [isExpanded, setIsExpanded] = useState(false)
   return <div className={`editable-field editable-field--${variant} ${isExpanded ? 'editable-field--expanded' : ''}`}>
     <div className="editable-box-row">
       <div className={`project-input-box ${isEditing ? 'project-input-box--editing' : ''}`}>
         {isEditing ? editor : display}
       </div>
+      {!isEditing && sideActions && <div className="editable-side-actions">{sideActions}</div>}
       {!isEditing && canEdit && <button className="edit-icon" type="button" title={editLabel} aria-label={editLabel} onClick={onEdit}>✎</button>}
       {variant === 'multiline' && <button className="expand-handle" type="button" title={isExpanded ? 'Collapse input' : 'Expand input to show all content'} aria-label={isExpanded ? 'Collapse input' : 'Expand input to show all content'} aria-expanded={isExpanded} onClick={() => setIsExpanded(!isExpanded)}><svg aria-hidden="true" viewBox="0 0 16 10"><path d={isExpanded ? 'M2 8 8 2l6 6' : 'm2 2 6 6 6-6'} /></svg></button>}
     </div>
+    {footer && <div className="editable-footer">{footer}</div>}
     <div className="edit-controls">{isEditing ? actions : null}</div>
   </div>
 }
@@ -62,7 +73,7 @@ async function readApiError(response: Response) {
   return body?.detail ?? 'The request could not be completed. Try again.'
 }
 
-export function ProjectShell({ setupToken, llmSettings, jobs, onJobsChanged, onOpenSettings }: Props) {
+export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, jobNavigation, onJobsChanged, onOpenSettings }: Props) {
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [question, setQuestion] = useState('')
@@ -81,8 +92,14 @@ export function ProjectShell({ setupToken, llmSettings, jobs, onJobsChanged, onO
   const [isSavingPrompt, setIsSavingPrompt] = useState(false)
   const [isConfirmingJob, setIsConfirmingJob] = useState(false)
   const [isStartingJob, setIsStartingJob] = useState(false)
+  const [isEditingOutput, setIsEditingOutput] = useState(false)
+  const [editedOutput, setEditedOutput] = useState('')
+  const [isSavingOutput, setIsSavingOutput] = useState(false)
+  const [isShowingOriginalOutput, setIsShowingOriginalOutput] = useState(false)
   const restoredScrollTop = useRef(0)
   const saveTimer = useRef<number | null>(null)
+  const jobCard = useRef<HTMLDivElement | null>(null)
+  const jobOutput = useRef<HTMLElement | null>(null)
 
   const saveClientState = useCallback((state: ClientState) => {
     void fetch('/api/client-state', {
@@ -119,6 +136,30 @@ export function ProjectShell({ setupToken, llmSettings, jobs, onJobsChanged, onO
   }, [selectedProjectId])
 
   useEffect(() => {
+    if (jobNavigation === null) return
+    let scrollTimer: number | null = null
+    const selectionTimer = window.setTimeout(() => {
+      restoredScrollTop.current = 0
+      setSelectedProjectId(jobNavigation.projectId)
+      setIsEditingQuestion(false)
+      setIsEditingPrompt(false)
+      setIsEditingOutput(false)
+      setIsShowingOriginalOutput(false)
+      setIsConfirmingJob(false)
+      setError(null)
+      saveClientState({ selected_project_id: jobNavigation.projectId, scroll_top: 0 })
+      scrollTimer = window.setTimeout(() => {
+        const target = jobNavigation.target === 'output' ? jobOutput.current : jobCard.current
+        target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 50)
+    }, 0)
+    return () => {
+      window.clearTimeout(selectionTimer)
+      if (scrollTimer !== null) window.clearTimeout(scrollTimer)
+    }
+  }, [jobNavigation, saveClientState])
+
+  useEffect(() => {
     const onScroll = () => {
       if (saveTimer.current !== null) window.clearTimeout(saveTimer.current)
       saveTimer.current = window.setTimeout(() => {
@@ -135,6 +176,8 @@ export function ProjectShell({ setupToken, llmSettings, jobs, onJobsChanged, onO
   const selectProject = (projectId: string | null) => {
     restoredScrollTop.current = 0
     setSelectedProjectId(projectId)
+    setIsEditingOutput(false)
+    setIsShowingOriginalOutput(false)
     setError(null)
     saveClientState({ selected_project_id: projectId, scroll_top: 0 })
   }
@@ -250,10 +293,32 @@ export function ProjectShell({ setupToken, llmSettings, jobs, onJobsChanged, onO
     await onJobsChanged()
   }
 
+  const saveDetailedQuestion = async (job: Job) => {
+    if (job.effective_output_version === null) return
+    setIsSavingOutput(true)
+    setError(null)
+    try {
+      const response = await fetch(`/api/jobs/${job.id}/question-detailing-output`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'X-Jeromes-Lab-Setup-Token': setupToken },
+        body: JSON.stringify({ markdown: editedOutput, base_version: job.effective_output_version }),
+      })
+      if (!response.ok) throw new Error(await readApiError(response))
+      await onJobsChanged()
+      setIsEditingOutput(false)
+      setIsShowingOriginalOutput(false)
+    } catch (saveError: unknown) {
+      setError(saveError instanceof Error ? saveError.message : 'The detailed question could not be saved.')
+    } finally {
+      setIsSavingOutput(false)
+    }
+  }
+
   const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null
   const selectedJob = selectedProject === null
     ? null
     : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'question_detailing') ?? null
+  const activeJob = selectedJob !== null && (selectedJob.status === 'pending' || selectedJob.status === 'awaiting_response') ? selectedJob : null
   const isSidebarExpanded = !isCollapsed || (isSidebarHovered && !suppressHoverExpansion)
   const toggleSidebar = () => {
     if (isCollapsed) {
@@ -318,29 +383,44 @@ export function ProjectShell({ setupToken, llmSettings, jobs, onJobsChanged, onO
               editLabel="Edit question-detailing prompt"
               actions={<><button className="primary-button" type="button" onClick={() => void saveQuestionDetailingPrompt(selectedProject.id)} disabled={isSavingPrompt}>{isSavingPrompt ? 'Saving…' : 'Save prompt'}</button><button className="text-button" type="button" onClick={() => setIsEditingPrompt(false)} disabled={isSavingPrompt}>Cancel</button></>}
             />
-            <div className="llm-job-provider">
-              <div><span>Model for this job</span>{llmSettings.configured
-                ? <strong>{llmSettings.providers.find(provider => provider.id === llmSettings.selected_provider)?.display_name} · {llmSettings.selected_model}</strong>
-                : <strong>Not configured</strong>}</div>
-              <button className="text-button" type="button" onClick={onOpenSettings}>{llmSettings.configured ? 'Change' : 'Configure provider'}</button>
+            <div ref={jobCard} className={`llm-job-provider ${isConfirmingJob ? 'llm-job-provider--confirming' : ''} ${activeJob !== null ? 'llm-job-provider--active' : ''}`}>
+              {selectedJob?.status === 'completed' ? <div className="completed-job-card"><span>Question detailing</span><JobStatusLabel status="completed" /></div> : <>
+                <div className="llm-job-model"><div className="llm-job-model-label"><span>Model for this job</span><button className="model-change-button" type="button" onClick={onOpenSettings} title={llmSettings.configured ? 'Change model' : 'Configure model'} aria-label={llmSettings.configured ? 'Change model for future jobs' : 'Configure a model'}><ChangeModelIcon /></button></div>{activeJob !== null
+                  ? <strong>{activeJob.provider === 'openai' ? 'OpenAI' : 'Anthropic'} · {activeJob.model}</strong>
+                  : llmSettings.configured
+                    ? <strong>{llmSettings.providers.find(provider => provider.id === llmSettings.selected_provider)?.display_name} · {llmSettings.selected_model}</strong>
+                    : <strong>Not configured</strong>}</div>
+                {(selectedJob === null || selectedJob.status === 'failed' || selectedJob.status === 'cancelled') && !isConfirmingJob && <button className="primary-button model-job-start" type="button" disabled={!llmSettings.configured || isEditingPrompt || isEditingQuestion} onClick={() => setIsConfirmingJob(true)}>Start question detailing</button>}
+                {(selectedJob === null || selectedJob.status === 'failed' || selectedJob.status === 'cancelled') && isConfirmingJob && <div className="job-confirmation job-confirmation--inline">
+                  <p>This locks the exact scientific question, prompt, provider, and model shown here. The job can be cancelled only while it remains queued.</p>
+                  <div><button className="primary-button" type="button" disabled={isStartingJob || !llmSettings.configured} onClick={() => void startQuestionDetailing(selectedProject.id)}>{isStartingJob ? 'Queueing…' : 'Confirm and start'}</button><button className="text-button" type="button" disabled={isStartingJob} onClick={() => setIsConfirmingJob(false)}>Cancel</button></div>
+                </div>}
+                {activeJob !== null && <div className="active-job-summary">
+                  <div className="active-job-heading"><strong>Question-detailing job</strong><div><JobStatusLabel status={activeJob.status} /><JobElapsedTime job={activeJob} nowMilliseconds={nowMilliseconds} /></div></div>
+                  {activeJob.status === 'pending' && <button className="text-button" type="button" onClick={() => void cancelQuestionDetailing(activeJob.id)}>Cancel queued job</button>}
+                  {activeJob.status === 'awaiting_response' && <p>The request may already have reached {activeJob.provider === 'openai' ? 'OpenAI' : 'Anthropic'}, so cancellation is disabled.</p>}
+                  {activeJob.error && <p className="setup-error">{activeJob.error}</p>}
+                </div>}
+              </>}
             </div>
-            {selectedJob === null || selectedJob.status === 'failed' || selectedJob.status === 'cancelled' ? <div className="job-start-area">
-              {isConfirmingJob ? <div className="job-confirmation">
-                <p>This locks the exact scientific question, prompt, provider, and model shown above. The job can be cancelled only while it remains queued.</p>
-                <div><button className="primary-button" type="button" disabled={isStartingJob || !llmSettings.configured} onClick={() => void startQuestionDetailing(selectedProject.id)}>{isStartingJob ? 'Queueing…' : 'Confirm and start'}</button><button className="text-button" type="button" disabled={isStartingJob} onClick={() => setIsConfirmingJob(false)}>Cancel</button></div>
-              </div> : <button className="primary-button" type="button" disabled={!llmSettings.configured || isEditingPrompt || isEditingQuestion} onClick={() => setIsConfirmingJob(true)}>Start question detailing</button>}
+            {(selectedJob === null || selectedJob.status === 'failed' || selectedJob.status === 'cancelled') && selectedJob?.error && <div className="job-start-area">
               {selectedJob?.error && <p className="setup-error">Previous attempt: {selectedJob.error}</p>}
-            </div> : <div className="inline-job">
-              <div><span>Question-detailing job</span><JobStatusLabel status={selectedJob.status} /></div>
-              {selectedJob.status === 'pending' && <button className="text-button" type="button" onClick={() => void cancelQuestionDetailing(selectedJob.id)}>Cancel queued job</button>}
-              {selectedJob.status === 'awaiting_response' && <p>The request may already have reached {selectedJob.provider === 'openai' ? 'OpenAI' : 'Anthropic'}, so cancellation is disabled.</p>}
-              {selectedJob.error && <p className="setup-error">{selectedJob.error}</p>}
             </div>}
           </section>
-          {selectedJob?.status === 'completed' && selectedJob.output_markdown !== null && <section className="project-section">
+          {selectedJob?.status === 'completed' && selectedJob.original_output_markdown !== null && selectedJob.effective_output_markdown !== null && <section ref={jobOutput} className="project-section job-output-section">
             <SectionTitle help="The exact Markdown returned by the configured model and preserved as an immutable, hash-addressed artifact.">Detailed scientific question</SectionTitle>
-            <div className="project-input-box completed-output"><pre>{selectedJob.output_markdown}</pre></div>
-            <div className="llm-call-summary"><span>{selectedJob.provider === 'openai' ? 'OpenAI' : 'Anthropic'} · {selectedJob.model}</span>{selectedJob.total_tokens !== null && <span>{selectedJob.total_tokens.toLocaleString()} tokens</span>}{selectedJob.duration_ms !== null && <span>{(selectedJob.duration_ms / 1000).toFixed(1)} s</span>}<span>Cost unavailable</span></div>
+            <EditableField
+              variant="multiline"
+              isEditing={isEditingOutput}
+              canEdit={!isShowingOriginalOutput}
+              display={<div className="markdown-output"><ReactMarkdown>{isShowingOriginalOutput ? selectedJob.original_output_markdown : selectedJob.effective_output_markdown}</ReactMarkdown></div>}
+              editor={<textarea value={editedOutput} onChange={event => setEditedOutput(event.target.value)} aria-label="Detailed scientific question Markdown" />}
+              onEdit={() => { setEditedOutput(selectedJob.effective_output_markdown ?? ''); setIsEditingOutput(true) }}
+              editLabel="Edit detailed scientific question"
+              sideActions={selectedJob.output_was_edited ? <button className="version-toggle-button" type="button" onClick={() => setIsShowingOriginalOutput(!isShowingOriginalOutput)}>{isShowingOriginalOutput ? 'Show edited version' : 'Show original output'}</button> : null}
+              footer={<div className="output-provenance"><span>{selectedJob.provider === 'openai' ? 'OpenAI' : 'Anthropic'} · {selectedJob.model}</span><span>{selectedJob.total_tokens !== null ? `${selectedJob.total_tokens.toLocaleString()} tokens` : 'Tokens unavailable'} · {selectedJob.duration_ms !== null ? `${(selectedJob.duration_ms / 1000).toFixed(1)} s` : 'Time unavailable'} · Cost unavailable</span></div>}
+              actions={<><button className="primary-button" type="button" onClick={() => void saveDetailedQuestion(selectedJob)} disabled={isSavingOutput}>{isSavingOutput ? 'Saving…' : 'Save edited version'}</button><button className="text-button" type="button" onClick={() => setIsEditingOutput(false)} disabled={isSavingOutput}>Cancel</button></>}
+            />
           </section>}
           {error !== null && <p className="setup-error" role="alert">{error}</p>}
         </article>}

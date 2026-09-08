@@ -64,8 +64,10 @@ workflow context. Downstream `StepRun` inputs reference the exact version, not a
 mutable "latest" lookup. Selecting an effective version is allowed only before a
 dependent run exists; otherwise the user forks.
 
-The precise representation of effective-version selection and content hashing is
-unresolved.
+Question-detailing now implements this pattern with immutable numbered
+`artifact_versions`, a mutable `artifact_effective_versions` selection record,
+and SHA-256 over canonical UTF-8 JSON bytes. Generalizing the selection scope and
+hash policy across later artifact kinds remains unresolved.
 
 ### Proposed integrity-verification behavior
 

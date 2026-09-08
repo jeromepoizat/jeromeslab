@@ -9,8 +9,11 @@ from pathlib import Path
 
 import httpx
 import pytest
+from alembic import command
+from alembic.config import Config
 
 from jeromes_laboratory.api.main import create_app
+from jeromes_laboratory.database.initialize import MIGRATIONS_DIRECTORY, database_url
 from jeromes_laboratory.database.jobs import JobRepository
 from jeromes_laboratory.database.projects import ProjectRepository
 from jeromes_laboratory.jobs.worker import JobWorker
@@ -179,6 +182,43 @@ def test_worker_preserves_exact_call_and_hashes_the_parsed_artifact(tmp_path: Pa
     assert b"test-secret-key" not in database_path.read_bytes()
 
 
+def test_manual_output_edits_create_versions_and_preserve_original(tmp_path: Path) -> None:
+    workspace_service, workspace = configured_workspace(tmp_path)
+    database_path = workspace / DATABASE_FILE_NAME
+    project = ProjectRepository(database_path).create_project("Question")
+    repository = JobRepository(database_path)
+    queued = repository.enqueue_question_detailing(project.id, "openai", "gpt-example")
+    JobWorker(workspace_service, MemoryCredentialStore(), SuccessfulGateway()).run_once()
+    original = repository.get_job(queued.id)
+    assert original.effective_output_version == 1
+
+    first_edit = repository.edit_question_detailing_output(
+        queued.id,
+        "## Edited version\n\nClarified text.",
+        1,
+    )
+    second_edit = repository.edit_question_detailing_output(
+        queued.id,
+        "## Edited version\n\nFurther clarification.",
+        2,
+    )
+
+    assert first_edit.output_was_edited is True
+    assert first_edit.effective_output_version == 2
+    assert second_edit.effective_output_version == 3
+    assert second_edit.original_output_markdown == original.original_output_markdown
+    assert second_edit.effective_output_markdown == ("## Edited version\n\nFurther clarification.")
+    with sqlite3.connect(database_path) as connection:
+        versions = connection.execute(
+            "SELECT version_number, creator_type FROM artifact_versions "
+            "WHERE job_id = ? ORDER BY version_number",
+            (queued.id,),
+        ).fetchall()
+    assert versions == [(1, "llm"), (2, "user"), (3, "user")]
+    with pytest.raises(ValueError, match="edited elsewhere"):
+        repository.edit_question_detailing_output(queued.id, "Stale edit", 1)
+
+
 @pytest.mark.asyncio
 async def test_pending_job_can_be_cancelled_and_enqueue_locks_inputs(tmp_path: Path) -> None:
     workspace_service, _ = configured_workspace(tmp_path)
@@ -262,3 +302,25 @@ def test_interrupted_dispatched_job_is_failed_without_retry(tmp_path: Path) -> N
     assert recovered.status == "failed"
     assert recovered.error is not None and "was not retried" in recovered.error
     assert gateway.received_key is None
+
+
+def test_effective_version_migration_backfills_an_existing_completed_output(
+    tmp_path: Path,
+) -> None:
+    workspace_service, workspace = configured_workspace(tmp_path)
+    database_path = workspace / DATABASE_FILE_NAME
+    project = ProjectRepository(database_path).create_project("Question")
+    repository = JobRepository(database_path)
+    job = repository.enqueue_question_detailing(project.id, "openai", "gpt-example")
+    JobWorker(workspace_service, MemoryCredentialStore(), SuccessfulGateway()).run_once()
+    configuration = Config()
+    configuration.set_main_option("script_location", str(MIGRATIONS_DIRECTORY))
+    configuration.set_main_option("sqlalchemy.url", database_url(database_path))
+
+    command.downgrade(configuration, "0008")
+    command.upgrade(configuration, "head")
+
+    migrated = repository.get_job(job.id)
+    assert migrated.effective_output_version == 1
+    assert migrated.output_was_edited is False
+    assert migrated.effective_output_markdown == migrated.original_output_markdown

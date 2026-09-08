@@ -47,6 +47,8 @@ function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isQueueOpen, setIsQueueOpen] = useState(false)
   const [jobs, setJobs] = useState<Job[]>([])
+  const [nowMilliseconds, setNowMilliseconds] = useState(() => Date.now())
+  const [jobNavigation, setJobNavigation] = useState<{ projectId: string; jobId: string; requestId: number; target: 'job' | 'output' } | null>(null)
   const [isForgettingWorkspace, setIsForgettingWorkspace] = useState(false)
   const [needsForgetConfirmation, setNeedsForgetConfirmation] = useState(false)
 
@@ -93,6 +95,17 @@ function App() {
       window.clearInterval(intervalId)
     }
   }, [refreshJobs, setupStatus])
+
+  const hasActiveJobs = jobs.some(job => job.status === 'pending' || job.status === 'awaiting_response')
+  useEffect(() => {
+    if (!hasActiveJobs) return
+    const initialId = window.setTimeout(() => setNowMilliseconds(Date.now()), 0)
+    const intervalId = window.setInterval(() => setNowMilliseconds(Date.now()), 1_000)
+    return () => {
+      window.clearTimeout(initialId)
+      window.clearInterval(intervalId)
+    }
+  }, [hasActiveJobs])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -250,6 +263,10 @@ function App() {
     if (!response.ok) setSetupError(await readApiError(response))
     await refreshJobs()
   }
+  const openJob = (job: Job) => {
+    setIsQueueOpen(false)
+    setJobNavigation({ projectId: job.project_id, jobId: job.id, requestId: Date.now(), target: job.status === 'completed' ? 'output' : 'job' })
+  }
   const nextTheme = theme === 'dark' ? 'light' : 'dark'
   const showLLMOnboarding = workspaceSetup !== null && llmSettings !== null && !llmSettings.onboarding_complete
 
@@ -269,11 +286,11 @@ function App() {
       {showLLMOnboarding && <section className="foundation-card provider-setup"><p className="step-label">First-run setup</p><h2>Configure an LLM provider</h2><p>Choose OpenAI or Anthropic, enter an API key, and fetch the compatible models available to your account. The key is stored by your operating system, never in the research workspace.</p><LLMConfiguration setupToken={workspaceSetup.setup_token} settings={llmSettings} mode="onboarding" onChange={setLLMSettings} /></section>}
       {!showLLMOnboarding && setupStatus === 'needs_workspace' && <section className="foundation-card workspace-setup"><p className="step-label">First-run setup</p><h2>Choose your research workspace</h2><p>Your projects, local database, artifacts, exports, and backups stay together in this folder. You can paste a path or select a folder from your computer.</p>{setupNotice && <p className="setup-notice">{setupNotice}</p>}<form onSubmit={event => { event.preventDefault(); void configureWorkspace(false) }}><label htmlFor="workspace-path">Workspace folder</label><div className="workspace-path-controls"><input id="workspace-path" value={workspacePath} onChange={event => { setWorkspacePath(event.target.value); setNeedsNonemptyConfirmation(false) }} required /><button className="secondary-button" type="button" onClick={() => void selectFolder(setWorkspacePath)} disabled={isSelectingFolder || isConfiguringWorkspace}>{isSelectingFolder ? 'Opening…' : 'Select folder'}</button></div>{setupError && <p className="setup-error">{setupError}</p>}{needsNonemptyConfirmation && <button className="secondary-button" type="button" onClick={() => void configureWorkspace(true)}>Use this folder anyway</button>}<button className="primary-button" type="submit" disabled={isConfiguringWorkspace}>{isConfiguringWorkspace ? 'Preparing workspace…' : 'Continue'}</button></form></section>}
       {!showLLMOnboarding && setupStatus === 'workspace_unavailable' && <section className="foundation-card workspace-setup"><p className="step-label">Workspace recovery</p><h2>Locate your moved workspace</h2><p>{workspaceSetup?.workspace_error ?? 'The saved workspace is unavailable.'}</p><p>Choose the existing Jerome&apos;s Laboratory folder. This reconnects it; it does not create, copy, or delete data.</p><div className="workspace-path-controls"><input value={recoveryPath} onChange={event => setRecoveryPath(event.target.value)} aria-label="Existing workspace folder" required /><button className="secondary-button" type="button" onClick={() => void selectFolder(setRecoveryPath)} disabled={isSelectingFolder || isRecovering}>{isSelectingFolder ? 'Opening…' : 'Select folder'}</button></div>{setupError && <p className="setup-error">{setupError}</p>}<div className="settings-confirmation"><button className="primary-button" type="button" onClick={() => void recoverWorkspace()} disabled={isRecovering}>{isRecovering ? 'Reconnecting…' : 'Locate workspace'}</button><button className="text-button" type="button" onClick={() => void forgetWorkspace()} disabled={isForgettingWorkspace}>{isForgettingWorkspace ? 'Forgetting…' : 'Forget saved location'}</button></div></section>}
-      {!showLLMOnboarding && setupStatus === 'configured' && workspaceSetup !== null && llmSettings !== null && <ProjectShell setupToken={workspaceSetup.setup_token} llmSettings={llmSettings} jobs={jobs} onJobsChanged={refreshJobs} onOpenSettings={openSettings} />}
+      {!showLLMOnboarding && setupStatus === 'configured' && workspaceSetup !== null && llmSettings !== null && <ProjectShell setupToken={workspaceSetup.setup_token} llmSettings={llmSettings} jobs={jobs} nowMilliseconds={nowMilliseconds} jobNavigation={jobNavigation} onJobsChanged={refreshJobs} onOpenSettings={openSettings} />}
       {setupStatus === 'unavailable' && <section className="foundation-card"><p className="step-label">Local setup unavailable</p><h2>Reconnect the local application</h2><p>Start Jerome&apos;s Laboratory again, then refresh this page.</p></section>}
     </main>
 
-    {isQueueOpen && setupStatus === 'configured' && <JobQueueDrawer jobs={jobs} onClose={() => setIsQueueOpen(false)} onCancel={jobId => void cancelJob(jobId)} />}
+    {isQueueOpen && setupStatus === 'configured' && <JobQueueDrawer jobs={jobs} nowMilliseconds={nowMilliseconds} onClose={() => setIsQueueOpen(false)} onCancel={jobId => void cancelJob(jobId)} onOpenJob={openJob} />}
 
     {isSettingsOpen && setupStatus === 'configured' && workspaceSetup !== null && llmSettings !== null && <aside className="settings-drawer" id="settings-drawer" aria-labelledby="settings-title">
       <div className="settings-drawer-header"><div><p className="step-label">Settings</p><h2 id="settings-title">Local configuration</h2></div><button className="settings-close" type="button" aria-label="Close settings" onClick={closeSettings}>×</button></div>

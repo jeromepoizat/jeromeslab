@@ -24,6 +24,7 @@ from jeromes_laboratory.api.schemas import (
     RenameProjectRequest,
     UpdateClientStateRequest,
     UpdateLLMSettingsRequest,
+    UpdateQuestionDetailingOutputRequest,
     UpdateQuestionDetailingPromptRequest,
     UpdateQuestionRequest,
     WorkspaceConfiguredResponse,
@@ -563,6 +564,31 @@ def create_app(
         """Cancel only while the job remains pending and no request may have left."""
         try:
             return job_response(job_repository().cancel(job_id))
+        except JobError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(error),
+            ) from error
+
+    @application.patch(
+        "/api/jobs/{job_id}/question-detailing-output",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def edit_question_detailing_output(
+        job_id: str,
+        request: UpdateQuestionDetailingOutputRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Create and select a manual version while preserving the original output."""
+        try:
+            return job_response(
+                job_repository().edit_question_detailing_output(
+                    job_id,
+                    request.markdown,
+                    request.base_version,
+                )
+            )
         except JobError as error:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,

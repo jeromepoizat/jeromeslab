@@ -137,6 +137,13 @@ class UpdateQuestionDetailingPromptRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=20_000)
 
 
+class UpdateQuestionDetailingOutputRequest(BaseModel):
+    """A manual revision based on the currently effective immutable version."""
+
+    markdown: str = Field(min_length=1, max_length=100_000)
+    base_version: int = Field(ge=1)
+
+
 JobStatus = Literal["pending", "awaiting_response", "completed", "failed", "cancelled"]
 
 
@@ -158,6 +165,10 @@ class JobResponse(BaseModel):
     prompt_template_version: str
     error: str | None
     output_markdown: str | None
+    original_output_markdown: str | None
+    effective_output_markdown: str | None
+    effective_output_version: int | None
+    output_was_edited: bool
     llm_call_id: str | None
     input_tokens: int | None
     output_tokens: int | None
