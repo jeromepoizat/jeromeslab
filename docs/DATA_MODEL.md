@@ -69,6 +69,15 @@ Question-detailing now implements this pattern with immutable numbered
 and SHA-256 over canonical UTF-8 JSON bytes. Generalizing the selection scope and
 hash policy across later artifact kinds remains unresolved.
 
+Intent clarification stores the validated provider questionnaire as an immutable
+`intent_clarification_questions` artifact and the confirmed user decision as a
+separate immutable `intent_clarification_selection` artifact. The selection
+contains the exact questionnaire artifact identifier, one primary option ID,
+zero or more secondary option IDs, and the user's note. It is not represented as
+an edit of the provider output. A correction creates another numbered selection
+artifact and moves the effective-version pointer while no downstream job exists;
+the generated questions and all prior confirmations remain unchanged.
+
 ### Proposed integrity-verification behavior
 
 Each immutable `ArtifactVersion` (including a workflow step or job output) should

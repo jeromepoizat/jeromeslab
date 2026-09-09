@@ -22,7 +22,10 @@ from jeromes_laboratory.api.schemas import (
     LLMSettingsResponse,
     ProjectResponse,
     RenameProjectRequest,
+    SubmitIntentSelectionRequest,
     UpdateClientStateRequest,
+    UpdateIntentClarificationPromptRequest,
+    UpdateIntentSelectionRequest,
     UpdateLLMSettingsRequest,
     UpdateQuestionDetailingOutputRequest,
     UpdateQuestionDetailingPromptRequest,
@@ -140,6 +143,9 @@ def create_app(
             question_detailing_prompt=record.question_detailing_prompt,
             question_detailing_prompt_version=record.question_detailing_prompt_version,
             question_detailing_prompt_is_editable=record.question_detailing_prompt_is_editable,
+            intent_clarification_prompt=record.intent_clarification_prompt,
+            intent_clarification_prompt_version=record.intent_clarification_prompt_version,
+            intent_clarification_prompt_is_editable=record.intent_clarification_prompt_is_editable,
         )
 
     def job_repository() -> JobRepository:
@@ -523,6 +529,54 @@ def create_app(
         """List the persistent queue and completed history for the local interface."""
         return [job_response(record) for record in job_repository().list_jobs()]
 
+    @application.patch(
+        "/api/projects/{project_id}/intent-clarification-prompt",
+        response_model=ProjectResponse,
+        tags=["projects"],
+    )
+    def update_intent_clarification_prompt(
+        project_id: str,
+        request: UpdateIntentClarificationPromptRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> ProjectResponse:
+        """Save the exact prompt before intent clarification is enqueued."""
+        try:
+            return project_response(
+                project_repository().update_intent_clarification_prompt(
+                    project_id, request.prompt
+                )
+            )
+        except ProjectError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
+
+    @application.post(
+        "/api/projects/{project_id}/intent-clarification/jobs",
+        response_model=JobResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["jobs"],
+    )
+    def enqueue_intent_clarification(
+        project_id: str,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Queue generation of dynamic research-intent choices."""
+        try:
+            settings = application.state.llm_settings_service.read()
+            if settings.provider is None or settings.model is None:
+                raise JobError("Configure an LLM provider and model before starting this job.")
+            if application.state.credential_store.get_api_key(settings.provider) is None:
+                raise JobError("The selected provider API key is no longer available.")
+            record = job_repository().enqueue_intent_clarification(
+                project_id, settings.provider, settings.model
+            )
+        except (CredentialStoreError, LLMSettingsError, JobError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
+        return job_response(record)
+
     @application.post(
         "/api/projects/{project_id}/question-detailing/jobs",
         response_model=JobResponse,
@@ -568,6 +622,57 @@ def create_app(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=str(error),
+            ) from error
+
+    @application.post(
+        "/api/jobs/{job_id}/intent-selection",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def submit_intent_selection(
+        job_id: str,
+        request: SubmitIntentSelectionRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Confirm and preserve the user's research-intent decision."""
+        try:
+            return job_response(
+                job_repository().submit_intent_selection(
+                    job_id,
+                    request.primary_intent_id,
+                    request.secondary_intent_ids,
+                    request.note,
+                )
+            )
+        except JobError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(error)
+            ) from error
+
+    @application.patch(
+        "/api/jobs/{job_id}/intent-selection",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def edit_intent_selection(
+        job_id: str,
+        request: UpdateIntentSelectionRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Select a new immutable intent version before downstream work exists."""
+        try:
+            return job_response(
+                job_repository().edit_intent_selection(
+                    job_id,
+                    request.primary_intent_id,
+                    request.secondary_intent_ids,
+                    request.note,
+                    request.base_version,
+                )
+            )
+        except JobError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(error)
             ) from error
 
     @application.patch(

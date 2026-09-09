@@ -509,7 +509,7 @@ main.project-main {
   white-space: nowrap;
 }
 
-.completed-job-card { align-items: center; display: flex; justify-content: space-between; width: 100%; }
+.completed-job-card { align-items: center; display: flex; flex: 1; justify-content: space-between; min-width: 0; }
 .completed-job-card > span:first-child { color: var(--ink); font-weight: 700; }
 .active-job-summary { flex: 1; min-width: 0; padding: 0.25rem 0; }
 .active-job-heading { align-items: center; display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: space-between; }
@@ -518,6 +518,56 @@ main.project-main {
 .active-job-summary > p { color: var(--muted); line-height: 1.5; margin: 0.75rem 0 0; }
 .active-job-summary > .text-button { display: block; margin-top: 0.65rem; padding-bottom: 0; }
 .llm-job-provider, .job-output-section { scroll-margin-top: 8rem; }
+
+.job-prompt-toggle {
+  align-self: center;
+  background: transparent;
+  border: 0;
+  border-radius: 0.35rem;
+  color: var(--muted);
+  cursor: pointer;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin-left: 0.75rem;
+  padding: 0.45rem 0.55rem;
+}
+
+.job-prompt-toggle:hover { background: var(--surface-hover); color: var(--ink); }
+.job-prompt-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 0.12rem; }
+
+.intent-introduction { margin-top: 1rem; }
+.intent-introduction h3, .confirmed-intent h3 { color: var(--ink); font-family: Georgia, 'Times New Roman', serif; font-size: 1.35rem; margin: 0; }
+.intent-introduction p, .confirmed-intent p, .confirmed-intent li { color: var(--muted); line-height: 1.55; }
+.intent-form, .confirmed-intent { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 0.7rem; margin-top: 1rem; padding: 1rem; }
+.confirmed-intent { position: relative; }
+.intent-edit-button { background: transparent; border: 0; border-radius: 0.35rem; color: var(--muted); cursor: pointer; font: inherit; font-size: 1rem; padding: 0.4rem 0.5rem; position: absolute; right: 0.65rem; top: 0.65rem; }
+.intent-edit-button:hover { background: var(--surface-hover); color: var(--ink); }
+.intent-edit-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 0.12rem; }
+.intent-choice-headings, .intent-option { align-items: center; display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr) 5rem 7rem; }
+.intent-choice-headings { color: var(--muted); font-size: 0.68rem; font-weight: 750; letter-spacing: 0.08em; padding: 0 0.8rem 0.55rem; text-transform: uppercase; }
+.intent-choice-headings span:not(:first-child) { text-align: center; }
+.intent-options { display: grid; gap: 0.6rem; }
+.intent-option { background: var(--input-background); border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.85rem; transition: border-color 140ms ease, background-color 140ms ease; }
+.intent-option:hover, .intent-option--primary { border-color: var(--focus); }
+.intent-option--primary { background: var(--surface-hover); }
+.intent-option-copy { cursor: pointer; display: grid; gap: 0.28rem; }
+.intent-option-copy strong { color: var(--ink); }
+.intent-option-copy span, .intent-control span, .intent-submit span { color: var(--muted); font-size: 0.82rem; line-height: 1.45; }
+.intent-control { align-items: center; cursor: pointer; display: flex; flex-direction: column; gap: 0.3rem; justify-content: center; text-align: center; }
+.intent-control:has(input:disabled) { cursor: default; opacity: 0.45; }
+.intent-control input { accent-color: var(--focus); height: 1.05rem; margin: 0; width: 1.05rem; }
+.intent-note { display: grid; gap: 0.55rem; margin-top: 1rem; }
+.intent-note > span { color: var(--ink); font-size: 0.85rem; font-weight: 700; }
+.intent-note textarea { min-height: 6rem; resize: vertical; }
+.intent-submit { align-items: center; display: flex; gap: 1rem; margin-top: 1rem; }
+.confirmed-intent .step-label { margin-bottom: 0.4rem; }
+.confirmed-intent-secondary-label { margin-top: 1.2rem !important; }
+.confirmed-intent ul { margin-bottom: 0; padding-left: 1.2rem; }
+.intent-saved-note { background: var(--input-background); border-left: 3px solid var(--focus); margin-bottom: 0; padding: 0.75rem 0.9rem; white-space: pre-wrap; }
+.intent-next-step { align-items: center; border-top: 1px solid var(--border); color: var(--muted); display: flex; gap: 0.8rem; margin-top: 1.2rem; padding-top: 1rem; }
+.intent-provenance { margin-top: 1rem; }
 
 .model-change-button {
   align-items: center;
@@ -541,10 +591,14 @@ main.project-main {
   .llm-job-provider { align-items: stretch; flex-direction: column; gap: 0.75rem; }
   .llm-job-model { max-width: 100%; }
   .llm-job-provider--confirming .llm-job-model, .llm-job-provider--active .llm-job-model { flex-basis: auto; }
+  .job-prompt-toggle { align-self: flex-end; margin-left: 0; }
   .model-job-start, .model-job-start:hover { align-self: center; position: static; transform: none; }
   .editable-side-actions { bottom: auto; left: auto; margin-bottom: 0.6rem; position: relative; width: 100%; }
   .output-provenance { gap: 3rem; }
   .output-provenance span { max-width: calc(50% - 1.5rem); }
+  .intent-choice-headings { display: none; }
+  .intent-option { grid-template-columns: minmax(0, 1fr) 4.5rem 5.5rem; }
+  .intent-submit { align-items: flex-start; flex-direction: column; }
 }
 
 .workspace-path-controls {

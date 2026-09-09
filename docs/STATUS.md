@@ -1,6 +1,6 @@
 # Current status
 
-Last updated: 2026-09-08
+Last updated: 2026-09-09
 
 ## Current milestone
 
@@ -42,8 +42,8 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   from device-local UI state, or shows a minimal scientific-question/start form.
   Projects receive sequential default tags (`PROJ001`, etc.); tags are mutable,
   while the scientific question is protected as workflow input.
-- Each project snapshots the exact question-detailing prompt and template
-  version that will be supplied to the first LLM operation. Versioned defaults
+- Projects retain the exact legacy question-detailing prompt and template
+  version that was supplied to that workflow. Versioned defaults
   are bundled as plain-text resources rather than Python strings. The project
   page displays the prompt beneath the scientific question and supports an
   explicit edit; custom prompts remain distinct from later app-default changes.
@@ -74,7 +74,8 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   six jobs passed in workflow run `34131271837` for commit `3a441ec`.
 - `CONTRIBUTING.md` documents source installation, launch, project-local checks,
   pull-request expectations, CI review, and project invariants.
-- A persistent single-worker queue now executes the first question-detailing job.
+- A persistent single-worker queue executes intent-clarification and retained
+  legacy question-detailing jobs.
   Enqueueing snapshots and locks the exact question, prompt/version, provider, and
   model. Pending jobs can be cancelled; the atomic `awaiting_response` transition
   closes cancellation before dispatch, and interrupted dispatched jobs fail
@@ -97,6 +98,23 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   explicit effective-version selection. The UI toggles between the permanently
   read-only original provider output and the editable effective version; stale
   concurrent edits are rejected.
+- New and previously unused projects now begin with intent clarification instead
+  of the legacy one-shot decomposition. A versioned, editable prompt asks the
+  selected provider for strictly validated JSON containing three to seven
+  question-specific research purposes. The UI requires one primary intent,
+  permits multiple secondary intents and a free-form qualification, and preserves
+  the generated choices and confirmed decision as separate immutable,
+  SHA-256-addressed artifacts.
+- A confirmed research intent can be edited until downstream work is queued.
+  Corrections create immutable numbered selection versions, preserve the initial
+  confirmation, reject stale saves, and move an explicit effective-version
+  pointer. Migration 0011 selects confirmations created by the initial slice.
+- Job prompts use an advanced disclosure pattern: the prompt is hidden by default
+  and a Show prompt/Hide prompt control in the job card reveals the standard
+  editable field without burdening the normal workflow.
+- Existing projects with question-detailing jobs retain the exact legacy
+  interface and output history; the application does not silently migrate or
+  reinterpret those scientific records.
 
 ## Recently completed
 
@@ -158,20 +176,27 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   deterministic artifact creation, secret-redaction tests, and queue UI.
 - Added rendered Markdown question-detailing results and original-versus-edited
   artifact versioning with an explicit effective selection.
+- Replaced the default one-shot workflow for unused projects with the first
+  intent-clarification slice: versioned prompt, validated structured generation,
+  immutable choices and user selection, queue integration, and interactive UI.
+- Recorded the accepted intent → scope clarification → research charter workflow
+  and explicitly deferred reconnaissance search until after the formal search
+  pipeline is understood.
 
 ## Work in progress
 
-The first live question-detailing path is implemented and ready for manual
-provider-account verification.
+The first live intent-clarification path is implemented and ready for visual and
+provider-account verification. Scope clarification has not started.
 
 ## Immediate next tasks
 
-1. Manually verify native credentials, model discovery, and one live
-   question-detailing call with user-owned OpenAI and Anthropic accounts.
-2. Add original-versus-user-edited effective artifact versions and explicit
-   downstream selection for the completed question-detailing output.
-3. Add immutable model-pricing snapshots and call/step/project cost aggregation.
-4. Verify the queue and generation slice on the full cross-platform CI matrix.
+1. Manually verify one live intent-clarification call and its selection interface
+   with user-owned OpenAI and Anthropic accounts.
+2. Design and implement validated dynamic scope questions, including single- and
+   multiple-choice modes, per-question notes, "not sure," and readiness review.
+3. Implement the optional second scope round and approved research charter.
+4. Add immutable model-pricing snapshots and call/step/project cost aggregation.
+5. Verify the expanded queue and generation slice on the cross-platform CI matrix.
 
 ## Known issues and blockers
 

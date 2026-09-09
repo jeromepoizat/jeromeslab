@@ -111,6 +111,9 @@ class ProjectResponse(BaseModel):
     question_detailing_prompt: str
     question_detailing_prompt_version: str
     question_detailing_prompt_is_editable: bool
+    intent_clarification_prompt: str
+    intent_clarification_prompt_version: str
+    intent_clarification_prompt_is_editable: bool
 
 
 class CreateProjectRequest(BaseModel):
@@ -137,6 +140,12 @@ class UpdateQuestionDetailingPromptRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=20_000)
 
 
+class UpdateIntentClarificationPromptRequest(BaseModel):
+    """The exact project prompt used to generate research-intent choices."""
+
+    prompt: str = Field(min_length=1, max_length=20_000)
+
+
 class UpdateQuestionDetailingOutputRequest(BaseModel):
     """A manual revision based on the currently effective immutable version."""
 
@@ -145,6 +154,47 @@ class UpdateQuestionDetailingOutputRequest(BaseModel):
 
 
 JobStatus = Literal["pending", "awaiting_response", "completed", "failed", "cancelled"]
+
+
+class IntentOptionResponse(BaseModel):
+    """One provider-generated research-intent option."""
+
+    id: str
+    label: str
+    description: str
+
+
+class IntentQuestionsResponse(BaseModel):
+    """Validated intent questionnaire stored as an immutable artifact."""
+
+    schema_version: Literal[1]
+    question: str
+    explanation: str
+    options: list[IntentOptionResponse]
+
+
+class IntentSelectionResponse(BaseModel):
+    """The user's immutable confirmed intent selection."""
+
+    schema_version: Literal[1]
+    questions_artifact_id: str
+    primary_intent_id: str
+    secondary_intent_ids: list[str]
+    note: str
+
+
+class SubmitIntentSelectionRequest(BaseModel):
+    """One primary intent, optional secondary intents, and a qualifying note."""
+
+    primary_intent_id: str = Field(min_length=1, max_length=64)
+    secondary_intent_ids: list[str] = Field(default_factory=list, max_length=7)
+    note: str = Field(default="", max_length=5_000)
+
+
+class UpdateIntentSelectionRequest(SubmitIntentSelectionRequest):
+    """A new effective version based on the currently selected confirmation."""
+
+    base_version: int = Field(ge=1)
 
 
 class JobResponse(BaseModel):
@@ -175,6 +225,10 @@ class JobResponse(BaseModel):
     total_tokens: int | None
     duration_ms: int | None
     cost_status: str | None
+    intent_questions: IntentQuestionsResponse | None
+    intent_selection: IntentSelectionResponse | None
+    intent_selection_version: int | None
+    intent_selection_is_editable: bool
 
 
 class ClientStateResponse(BaseModel):

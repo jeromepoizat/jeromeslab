@@ -1,7 +1,10 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
+import { readApiError } from './apiClient'
+import { IntentClarificationStage } from './IntentClarificationStage'
 import type { LLMSettings } from './LLMConfiguration'
 import { JobElapsedTime, JobStatusLabel, type Job } from './JobQueue'
+import { ChangeModelIcon, EditableField, SectionTitle } from './ProjectElements'
 
 type Project = {
   id: string
@@ -11,6 +14,9 @@ type Project = {
   question_detailing_prompt: string
   question_detailing_prompt_version: string
   question_detailing_prompt_is_editable: boolean
+  intent_clarification_prompt: string
+  intent_clarification_prompt_version: string
+  intent_clarification_prompt_is_editable: boolean
 }
 
 type ClientState = { selected_project_id: string | null; scroll_top: number }
@@ -23,54 +29,6 @@ type Props = {
   jobNavigation: { projectId: string; jobId: string; requestId: number; target: 'job' | 'output' } | null
   onJobsChanged: () => Promise<void>
   onOpenSettings: () => void
-}
-
-type HelpProps = { children: string }
-
-function HelpTooltip({ children }: HelpProps) {
-  return <span className="section-help" tabIndex={0} aria-label="Section help">?<span className="section-help-tooltip" role="tooltip">{children}</span></span>
-}
-
-function SectionTitle({ children, help }: { children: string; help: string }) {
-  return <div className="section-title"><h2>{children}</h2><HelpTooltip>{help}</HelpTooltip></div>
-}
-
-function ChangeModelIcon() {
-  return <svg aria-hidden="true" viewBox="0 0 20 20"><path d="M4 5h12M4 10h12M4 15h12" /><circle cx="7" cy="5" r="1.7" /><circle cx="13" cy="10" r="1.7" /><circle cx="8" cy="15" r="1.7" /></svg>
-}
-
-type EditableFieldProps = {
-  variant: 'single-line' | 'multiline'
-  isEditing: boolean
-  canEdit?: boolean
-  display: ReactNode
-  editor: ReactNode
-  actions: ReactNode
-  footer?: ReactNode
-  sideActions?: ReactNode
-  onEdit: () => void
-  editLabel: string
-}
-
-function EditableField({ variant, isEditing, canEdit = true, display, editor, actions, footer, sideActions, onEdit, editLabel }: EditableFieldProps) {
-  const [isExpanded, setIsExpanded] = useState(false)
-  return <div className={`editable-field editable-field--${variant} ${isExpanded ? 'editable-field--expanded' : ''}`}>
-    <div className="editable-box-row">
-      <div className={`project-input-box ${isEditing ? 'project-input-box--editing' : ''}`}>
-        {isEditing ? editor : display}
-      </div>
-      {!isEditing && sideActions && <div className="editable-side-actions">{sideActions}</div>}
-      {!isEditing && canEdit && <button className="edit-icon" type="button" title={editLabel} aria-label={editLabel} onClick={onEdit}>✎</button>}
-      {variant === 'multiline' && <button className="expand-handle" type="button" title={isExpanded ? 'Collapse input' : 'Expand input to show all content'} aria-label={isExpanded ? 'Collapse input' : 'Expand input to show all content'} aria-expanded={isExpanded} onClick={() => setIsExpanded(!isExpanded)}><svg aria-hidden="true" viewBox="0 0 16 10"><path d={isExpanded ? 'M2 8 8 2l6 6' : 'm2 2 6 6 6-6'} /></svg></button>}
-    </div>
-    {footer && <div className="editable-footer">{footer}</div>}
-    <div className="edit-controls">{isEditing ? actions : null}</div>
-  </div>
-}
-
-async function readApiError(response: Response) {
-  const body = (await response.json().catch(() => null)) as { detail?: string } | null
-  return body?.detail ?? 'The request could not be completed. Try again.'
 }
 
 export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, jobNavigation, onJobsChanged, onOpenSettings }: Props) {
@@ -315,10 +273,14 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
   }
 
   const selectedProject = projects.find(project => project.id === selectedProjectId) ?? null
-  const selectedJob = selectedProject === null
+  const legacyJob = selectedProject === null
     ? null
     : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'question_detailing') ?? null
-  const activeJob = selectedJob !== null && (selectedJob.status === 'pending' || selectedJob.status === 'awaiting_response') ? selectedJob : null
+  const intentJob = selectedProject === null
+    ? null
+    : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'intent_clarification') ?? null
+  const selectedJob = legacyJob
+  const activeJob = legacyJob !== null && (legacyJob.status === 'pending' || legacyJob.status === 'awaiting_response') ? legacyJob : null
   const isSidebarExpanded = !isCollapsed || (isSidebarHovered && !suppressHoverExpansion)
   const toggleSidebar = () => {
     if (isCollapsed) {
@@ -371,6 +333,20 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
               <button className="text-button" type="button" onClick={() => setIsEditingQuestion(false)} disabled={isSavingQuestion}>Cancel</button>
             </>}
           />
+          {legacyJob === null ? <IntentClarificationStage
+            key={`${selectedProject.id}:${intentJob?.id ?? 'new'}:${intentJob?.intent_selection === null ? 'open' : 'selected'}`}
+            project={selectedProject}
+            job={intentJob}
+            setupToken={setupToken}
+            llmSettings={llmSettings}
+            nowMilliseconds={nowMilliseconds}
+            jobCardRef={jobCard}
+            outputRef={jobOutput}
+            onProjectUpdated={updated => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, ...updated } : project))}
+            onProjectLocked={() => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, question_is_editable: false, intent_clarification_prompt_is_editable: false } : project))}
+            onJobsChanged={onJobsChanged}
+            onOpenSettings={onOpenSettings}
+          /> : <>
           <section className="project-section">
             <SectionTitle help="Instructions used to turn this question into a structured research plan for later literature searches.">Question-detailing prompt</SectionTitle>
             <EditableField
@@ -422,6 +398,7 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
               actions={<><button className="primary-button" type="button" onClick={() => void saveDetailedQuestion(selectedJob)} disabled={isSavingOutput}>{isSavingOutput ? 'Saving…' : 'Save edited version'}</button><button className="text-button" type="button" onClick={() => setIsEditingOutput(false)} disabled={isSavingOutput}>Cancel</button></>}
             />
           </section>}
+          </>}
           {error !== null && <p className="setup-error" role="alert">{error}</p>}
         </article>}
       </section>

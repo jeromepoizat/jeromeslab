@@ -84,7 +84,10 @@ class JobWorker:
                     result,
                     raw_response=result.raw_response.replace(api_key, "[REDACTED]"),
                 )
-            repository.complete(job.id, call_id, result)
+            try:
+                repository.complete(job.id, call_id, result)
+            except ValueError as error:
+                repository.fail(job.id, call_id, str(error), result.raw_response)
         return True
 
     def _run(self) -> None:

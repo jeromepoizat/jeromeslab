@@ -13,6 +13,12 @@ from uuid import uuid4
 
 from jeromes_laboratory.llm.catalog import ProviderName
 from jeromes_laboratory.llm.generation import GenerationResult, PreparedGeneration
+from jeromes_laboratory.workflow.intent_clarification import (
+    IntentClarificationError,
+    IntentClarificationOutput,
+    IntentSelection,
+    parse_intent_clarification_output,
+)
 
 JobStatus = Literal["pending", "awaiting_response", "completed", "failed", "cancelled"]
 
@@ -50,6 +56,10 @@ class JobRecord:
     total_tokens: int | None
     duration_ms: int | None
     cost_status: str | None
+    intent_questions: dict[str, object] | None
+    intent_selection: dict[str, object] | None
+    intent_selection_version: int | None
+    intent_selection_is_editable: bool
 
 
 class JobRepository:
@@ -97,6 +107,54 @@ class JobRepository:
                     project["question_detailing_prompt"],
                     "question-detailing",
                     project["question_detailing_prompt_version"],
+                ),
+            )
+        return self.get_job(job_id)
+
+    def enqueue_intent_clarification(
+        self, project_id: str, provider: ProviderName, model: str
+    ) -> JobRecord:
+        """Snapshot the inputs for one intent-clarification attempt."""
+        now = _timestamp()
+        job_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            project = connection.execute(
+                "SELECT scientific_question, intent_clarification_prompt, "
+                "intent_clarification_prompt_version FROM projects WHERE id = ?",
+                (project_id,),
+            ).fetchone()
+            if project is None:
+                raise JobError("The selected project no longer exists.")
+            legacy = connection.execute(
+                "SELECT 1 FROM jobs WHERE project_id = ? AND kind = 'question_detailing'",
+                (project_id,),
+            ).fetchone()
+            if legacy is not None:
+                raise JobError(
+                    "This project already uses the legacy question-detailing workflow."
+                )
+            existing = connection.execute(
+                "SELECT 1 FROM jobs WHERE project_id = ? AND kind = 'intent_clarification' "
+                "AND status IN ('pending', 'awaiting_response', 'completed')",
+                (project_id,),
+            ).fetchone()
+            if existing is not None:
+                raise JobError("Intent clarification has already been started for this project.")
+            connection.execute(
+                "INSERT INTO jobs (id, project_id, kind, status, created_at, provider, model, "
+                "scientific_question_snapshot, prompt_snapshot, prompt_template_id, "
+                "prompt_template_version) VALUES (?, ?, 'intent_clarification', 'pending', "
+                "?, ?, ?, ?, ?, 'intent-clarification', ?)",
+                (
+                    job_id,
+                    project_id,
+                    now,
+                    provider,
+                    model,
+                    project["scientific_question"],
+                    project["intent_clarification_prompt"],
+                    project["intent_clarification_prompt_version"],
                 ),
             )
         return self.get_job(job_id)
@@ -159,12 +217,20 @@ class JobRepository:
     def begin_llm_call(self, job: JobRecord, prepared: PreparedGeneration) -> str:
         call_id = str(uuid4())
         input_content = _provider_input(job.scientific_question_snapshot)
+        if job.kind == "intent_clarification":
+            prompt_template_id = "intent-clarification"
+            purpose = "Generate research-intent choices for user clarification"
+        elif job.kind == "question_detailing":
+            prompt_template_id = "question-detailing"
+            purpose = "Develop the scientific question for literature-search planning"
+        else:
+            raise JobError(f"Unsupported LLM job kind: {job.kind}")
         with self._connect() as connection:
             connection.execute(
                 "INSERT INTO llm_calls (id, project_id, job_id, provider, model, operation, "
                 "purpose, prompt_template_id, prompt_template_version, instructions, input_content, "
                 "request_json, started_at, status, retry_count, generation_settings_json, cost_status) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, 'question-detailing', ?, ?, ?, ?, ?, 'started', 0, ?, 'unavailable')",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'started', 0, ?, 'unavailable')",
                 (
                     call_id,
                     job.project_id,
@@ -172,7 +238,8 @@ class JobRepository:
                     job.provider,
                     job.model,
                     prepared.operation,
-                    "Develop the scientific question for literature-search planning",
+                    purpose,
+                    prompt_template_id,
                     job.prompt_template_version,
                     job.prompt_snapshot,
                     input_content,
@@ -185,11 +252,23 @@ class JobRepository:
 
     def complete(self, job_id: str, call_id: str, result: GenerationResult) -> JobRecord:
         now = _timestamp()
-        artifact_payload = {
-            "schema_version": 1,
-            "content_type": "text/markdown",
-            "detailed_question": result.output_text,
-        }
+        job = self.get_job(job_id)
+        if job.kind == "intent_clarification":
+            try:
+                parsed_intents = parse_intent_clarification_output(result.output_text)
+            except IntentClarificationError as error:
+                raise JobError(str(error)) from error
+            artifact_payload = parsed_intents.model_dump(mode="json")
+            artifact_kind = "intent_clarification_questions"
+        elif job.kind == "question_detailing":
+            artifact_payload = {
+                "schema_version": 1,
+                "content_type": "text/markdown",
+                "detailed_question": result.output_text,
+            }
+            artifact_kind = "question_detailing_output"
+        else:
+            raise JobError(f"Unsupported LLM job kind: {job.kind}")
         content_json = _json(artifact_payload)
         content_bytes = content_json.encode("utf-8")
         artifact_id = str(uuid4())
@@ -233,7 +312,7 @@ class JobRepository:
                 (
                     artifact_id,
                     call_id,
-                    "question_detailing_output",
+                    artifact_kind,
                     "application/json",
                     content_json,
                     hashlib.sha256(content_bytes).hexdigest(),
@@ -242,15 +321,160 @@ class JobRepository:
                     job_id,
                 ),
             )
-            connection.execute(
-                "INSERT INTO artifact_effective_versions "
-                "(job_id, artifact_version_id, selected_at, selection_reason) "
-                "VALUES (?, ?, ?, 'original_output')",
-                (job_id, artifact_id, now),
-            )
+            if job.kind == "question_detailing":
+                connection.execute(
+                    "INSERT INTO artifact_effective_versions "
+                    "(job_id, artifact_version_id, selected_at, selection_reason) "
+                    "VALUES (?, ?, ?, 'original_output')",
+                    (job_id, artifact_id, now),
+                )
             connection.execute(
                 "UPDATE jobs SET status = 'completed', completed_at = ? WHERE id = ?",
                 (now, job_id),
+            )
+        return self.get_job(job_id)
+
+    def submit_intent_selection(
+        self,
+        job_id: str,
+        primary_intent_id: str,
+        secondary_intent_ids: list[str],
+        note: str,
+    ) -> JobRecord:
+        """Persist one immutable user decision over the generated intent choices."""
+        now = _timestamp()
+        artifact_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT jobs.project_id, llm_calls.id AS llm_call_id, "
+                "questions.id AS questions_artifact_id, questions.content_json "
+                "FROM jobs JOIN llm_calls ON llm_calls.job_id = jobs.id "
+                "JOIN artifact_versions questions ON questions.job_id = jobs.id "
+                "AND questions.kind = 'intent_clarification_questions' "
+                "WHERE jobs.id = ? AND jobs.kind = 'intent_clarification' "
+                "AND jobs.status = 'completed'",
+                (job_id,),
+            ).fetchone()
+            if row is None:
+                raise JobError("Intent choices are not ready for this job.")
+            existing = connection.execute(
+                "SELECT 1 FROM artifact_versions WHERE job_id = ? "
+                "AND kind = 'intent_clarification_selection'",
+                (job_id,),
+            ).fetchone()
+            if existing is not None:
+                raise JobError("The research intent has already been confirmed.")
+
+            questions = IntentClarificationOutput.model_validate_json(row["content_json"])
+            selection = _validated_intent_selection(
+                questions,
+                row["questions_artifact_id"],
+                primary_intent_id,
+                secondary_intent_ids,
+                note,
+            )
+            content_json = _json(selection.model_dump(mode="json"))
+            content_bytes = content_json.encode("utf-8")
+            connection.execute(
+                "INSERT INTO artifact_versions (id, project_id, job_id, llm_call_id, kind, "
+                "content_type, content_json, content_sha256, byte_size, creator_type, "
+                "version_number, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'user', 1, ?)",
+                (
+                    artifact_id,
+                    row["project_id"],
+                    job_id,
+                    row["llm_call_id"],
+                    "intent_clarification_selection",
+                    "application/json",
+                    content_json,
+                    hashlib.sha256(content_bytes).hexdigest(),
+                    len(content_bytes),
+                    now,
+                ),
+            )
+            connection.execute(
+                "INSERT INTO artifact_effective_versions "
+                "(job_id, artifact_version_id, selected_at, selection_reason) "
+                "VALUES (?, ?, ?, 'confirmed_intent')",
+                (job_id, artifact_id, now),
+            )
+        return self.get_job(job_id)
+
+    def edit_intent_selection(
+        self,
+        job_id: str,
+        primary_intent_id: str,
+        secondary_intent_ids: list[str],
+        note: str,
+        base_version: int,
+    ) -> JobRecord:
+        """Create a new effective intent version before downstream work is queued."""
+        now = _timestamp()
+        artifact_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT jobs.project_id, jobs.created_at AS job_created_at, "
+                "llm_calls.id AS llm_call_id, questions.id AS questions_artifact_id, "
+                "questions.content_json AS questions_json, current.version_number "
+                "FROM jobs JOIN llm_calls ON llm_calls.job_id = jobs.id "
+                "JOIN artifact_versions questions ON questions.job_id = jobs.id "
+                "AND questions.kind = 'intent_clarification_questions' "
+                "JOIN artifact_effective_versions effective ON effective.job_id = jobs.id "
+                "JOIN artifact_versions current ON current.id = effective.artifact_version_id "
+                "AND current.kind = 'intent_clarification_selection' "
+                "WHERE jobs.id = ? AND jobs.kind = 'intent_clarification' "
+                "AND jobs.status = 'completed'",
+                (job_id,),
+            ).fetchone()
+            if row is None:
+                raise JobError("Only a confirmed research intent can be edited.")
+            downstream = connection.execute(
+                "SELECT 1 FROM jobs WHERE project_id = ? AND id != ? AND created_at > ? LIMIT 1",
+                (row["project_id"], job_id, row["job_created_at"]),
+            ).fetchone()
+            if downstream is not None:
+                raise JobError(
+                    "The research intent is locked because a downstream job has been queued."
+                )
+            if row["version_number"] != base_version:
+                raise JobError(
+                    "This research intent was edited elsewhere. Reload it before saving."
+                )
+            questions = IntentClarificationOutput.model_validate_json(row["questions_json"])
+            selection = _validated_intent_selection(
+                questions,
+                row["questions_artifact_id"],
+                primary_intent_id,
+                secondary_intent_ids,
+                note,
+            )
+            next_version = base_version + 1
+            content_json = _json(selection.model_dump(mode="json"))
+            content_bytes = content_json.encode("utf-8")
+            connection.execute(
+                "INSERT INTO artifact_versions (id, project_id, job_id, llm_call_id, kind, "
+                "content_type, content_json, content_sha256, byte_size, creator_type, "
+                "version_number, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'user', ?, ?)",
+                (
+                    artifact_id,
+                    row["project_id"],
+                    job_id,
+                    row["llm_call_id"],
+                    "intent_clarification_selection",
+                    "application/json",
+                    content_json,
+                    hashlib.sha256(content_bytes).hexdigest(),
+                    len(content_bytes),
+                    next_version,
+                    now,
+                ),
+            )
+            connection.execute(
+                "UPDATE artifact_effective_versions SET artifact_version_id = ?, "
+                "selected_at = ?, selection_reason = 'user_edit' WHERE job_id = ?",
+                (artifact_id, now, job_id),
             )
         return self.get_job(job_id)
 
@@ -363,13 +587,25 @@ class JobRepository:
             "llm_calls.duration_ms, llm_calls.cost_status, "
             "original.content_json AS original_content_json, "
             "effective.content_json AS effective_content_json, "
-            "effective.version_number AS effective_version_number "
+            "effective.version_number AS effective_version_number, "
+            "intent_questions.content_json AS intent_questions_json, "
+            "intent_selection.content_json AS intent_selection_json, "
+            "intent_selection.version_number AS intent_selection_version, "
+            "NOT EXISTS (SELECT 1 FROM jobs downstream WHERE "
+            "downstream.project_id = jobs.project_id AND downstream.id != jobs.id "
+            "AND downstream.created_at > jobs.created_at) AS no_downstream_job "
             "FROM jobs JOIN projects ON projects.id = jobs.project_id "
             "LEFT JOIN llm_calls ON llm_calls.job_id = jobs.id "
             "LEFT JOIN artifact_versions original ON original.job_id = jobs.id "
             "AND original.kind = 'question_detailing_output' AND original.version_number = 1 "
             "LEFT JOIN artifact_effective_versions selection ON selection.job_id = jobs.id "
             "LEFT JOIN artifact_versions effective ON effective.id = selection.artifact_version_id "
+            "LEFT JOIN artifact_versions intent_questions ON intent_questions.job_id = jobs.id "
+            "AND intent_questions.kind = 'intent_clarification_questions' "
+            "AND intent_questions.version_number = 1 "
+            "LEFT JOIN artifact_versions intent_selection "
+            "ON intent_selection.id = selection.artifact_version_id "
+            "AND intent_selection.kind = 'intent_clarification_selection' "
         )
 
     @staticmethod
@@ -404,6 +640,14 @@ class JobRepository:
             total_tokens=row["total_tokens"],
             duration_ms=row["duration_ms"],
             cost_status=row["cost_status"],
+            intent_questions=_object_from_json(row["intent_questions_json"]),
+            intent_selection=_object_from_json(row["intent_selection_json"]),
+            intent_selection_version=row["intent_selection_version"],
+            intent_selection_is_editable=(
+                row["kind"] == "intent_clarification"
+                and row["intent_selection_version"] is not None
+                and bool(row["no_downstream_job"])
+            ),
         )
 
     def _connect(self) -> sqlite3.Connection:
@@ -425,6 +669,31 @@ def _json(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
 
 
+def _validated_intent_selection(
+    questions: IntentClarificationOutput,
+    questions_artifact_id: str,
+    primary_intent_id: str,
+    secondary_intent_ids: list[str],
+    note: str,
+) -> IntentSelection:
+    valid_ids = {option.id for option in questions.options}
+    if primary_intent_id not in valid_ids:
+        raise JobError("Select one of the available primary research intents.")
+    if primary_intent_id in secondary_intent_ids:
+        raise JobError("The primary intent cannot also be a secondary intent.")
+    if any(intent_id not in valid_ids for intent_id in secondary_intent_ids):
+        raise JobError("One or more selected secondary intents are not available.")
+    try:
+        return IntentSelection(
+            questions_artifact_id=questions_artifact_id,
+            primary_intent_id=primary_intent_id,
+            secondary_intent_ids=secondary_intent_ids,
+            note=note,
+        )
+    except ValueError as error:
+        raise JobError("The research-intent selection is not valid.") from error
+
+
 def _markdown_from_json(content_json: str | None) -> str | None:
     if content_json is None:
         return None
@@ -433,6 +702,16 @@ def _markdown_from_json(content_json: str | None) -> str | None:
     except (AttributeError, json.JSONDecodeError):
         return None
     return value if isinstance(value, str) else None
+
+
+def _object_from_json(content_json: str | None) -> dict[str, object] | None:
+    if content_json is None:
+        return None
+    try:
+        value = json.loads(content_json)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) else None
 
 
 def _timestamp() -> str:

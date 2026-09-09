@@ -6,8 +6,8 @@ This is the authoritative workflow description. Status terms mean:
 - **planned**: product behavior is agreed enough to schedule;
 - **design in progress**: goals are known, but schema or method is unresolved.
 
-The first question-detailing execution is implemented; later scientific stages
-remain planned or in design.
+The first intent-clarification execution and user confirmation are implemented;
+scope clarification and later scientific stages remain planned or in design.
 
 ## Cross-cutting workflow rules
 
@@ -34,41 +34,64 @@ place once a started or completed workflow job uses it as input. Project tags
 remain separately mutable display metadata; users can also add notes later
 without altering the question.
 
-Before Step 1, the project displays a versioned question-detailing prompt. Each
-project snapshots the exact default template text and version at creation, or an
-explicit user edit marked as custom. The eventual LLM call must record that same
-effective prompt text; later application versions must never silently replace it.
-The active version asks for a focused primary question, only high-value supporting
-questions, unresolved scope decisions, disconfirming evidence, candidate search
-vocabulary, and several purpose-specific search themes without generating
-database syntax prematurely. Its organization remains adaptable to the question.
+### Step 1 — Research intent clarification (implemented)
 
-### Step 1 — Research question decomposition (partially implemented)
+Each project snapshots a versioned, editable intent-clarification prompt before
+the first call. An LLM reads only the preserved original question and returns a
+strictly validated JSON questionnaire with three to seven distinct, relevant
+research purposes. It does not define detailed scope or generate search queries.
 
-An LLM expands the question into a flexible researchable thesis or investigation
-brief. The provider returns free-form Markdown and may choose paragraphs,
-headings, lists, hypotheses, caveats, and key notes suited to the particular
-question rather than filling mandatory scientific categories. Application code
-deterministically wraps that text in a versioned JSON artifact containing its
-content type and `detailed_question` value. The UI presents the Markdown in one
-expandable content box. The user may edit the result before continuing. Both the
-exact raw provider response and parsed original artifact are preserved; an edit
-creates a separate effective version.
+The user selects exactly one primary intent, may check multiple secondary
+intents, and may add a free-form qualification. Generated choices and the user's
+confirmed decision are separate immutable, SHA-256-addressed JSON artifacts. The
+selection records the exact question artifact it answers and cannot be silently
+rewritten. Enqueueing snapshots the question, prompt/version, provider, model,
+and generation settings. Pending cancellation and dispatched-call behavior follow
+the global queue rules.
 
-Enqueueing Step 1 snapshots and locks the exact question, effective prompt,
-provider, model, and generation settings. A pending job can be cancelled and its
-record retained. Once provider dispatch begins, cancellation is unavailable.
+A confirmed intent remains editable until a downstream job is queued. Each save
+creates another immutable selection artifact and advances an explicit effective
+version; earlier confirmations remain inspectable provenance. Queueing downstream
+work locks the effective intent because that job must retain the exact input it
+consumed.
 
-The run links to complete `LLMCall` provenance, including prompt version, exact
-input/output, provider/model, usage, timing, errors, and cost status.
+Intent clarification is one logical stage. A cancelled or failed call may be
+retried without deleting the retained attempt. The generated questionnaire and
+confirmed decision for a completed attempt are not iteratively regenerated.
 
-The persistent queue, live OpenAI/Anthropic call, original parsed artifact,
-rendered Markdown display, and manual output editing are implemented. Each save
-creates another immutable user artifact and advances an explicit effective-version
-selection; the original model output remains inspectable. Downstream consumption
-of that selected version remains to be implemented.
+### Step 2 — Scope clarification (planned)
 
-### Step 2 — Literature investigation strategy (planned)
+The first LLM round will use the original question and confirmed intent to
+generate three to seven material scope questions as validated JSON. Each question
+declares whether it is single-choice or multiple-choice, explains why the choice
+matters, provides concise options, and accepts a manual note or an exclusive
+"not sure" response.
+
+After the user confirms the first round, a second LLM evaluation either declares
+the scope ready or generates only the remaining material questions. At most one
+automatic follow-up round is planned; the user may accept explicitly recorded
+uncertainties rather than being trapped in an open-ended loop. Reconnaissance
+search is intentionally deferred until formal search/query generation and later
+workflow behavior have been designed and tested.
+
+### Step 3 — Research charter (planned)
+
+The LLM will turn the original question, confirmed intent, scope answers, notes,
+and accepted uncertainties into a readable research charter. The charter will
+state the refined question, primary and secondary goals, inclusions, exclusions,
+target entities or systems, outcomes, desired evidence, terminology, and known
+uncertainties as applicable rather than forcing every project into one scientific
+framework. The user reviews and explicitly approves an effective version before
+downstream work may consume it.
+
+### Legacy question detailing (implemented compatibility path)
+
+Projects that already started the former one-shot question-detailing workflow
+retain that exact interface, prompt, call provenance, Markdown output, and manual
+artifact versions. They are not silently converted to the new workflow. A future
+explicit transition or fork from a legacy output remains to be designed.
+
+### Step 4 — Literature investigation strategy (planned)
 
 The user chooses enabled scientific sources, initially expected to be Europe PMC
 and later PubMed. The LLM generates source-specific queries with an explicit
@@ -76,7 +99,7 @@ purpose. Exact generated queries are stored and can be edited through the same
 original/effective version mechanism. Search execution consumes the effective
 query version.
 
-### Step 3 — Literature retrieval (planned)
+### Step 5 — Literature retrieval (planned)
 
 Each effective query is executed through its source adapter. A `SearchRun`
 preserves source, exact query/version, timestamps, request details, paging state,

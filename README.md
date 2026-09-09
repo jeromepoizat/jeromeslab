@@ -14,18 +14,20 @@ the provenance and cost of every LLM-assisted transformation.
 
 **Milestone 1: local application shell is in progress.** The Python and frontend
 environments are locked, the bootstrap is verified across all six supported
-OS/architecture combinations, and the local application begins by asking where
-to create or open its research workspace. Scientific workflow features have not
-started. See [current status](docs/STATUS.md) before starting work.
+OS/architecture combinations, and the local application includes its first live
+intent-clarification workflow with immutable provenance. See
+[current status](docs/STATUS.md) before starting work.
 
 ## Intended workflow
 
 The agreed early workflow is:
 
 1. preserve the user's exact scientific question;
-2. generate and review a research-question decomposition;
-3. generate and review source-specific literature queries;
-4. retrieve, normalize, and deduplicate literature without discarding records.
+2. generate relevant research intents and confirm one primary intent;
+3. answer dynamic scope questions, with at most one follow-up round;
+4. generate and approve a research charter;
+5. generate and review source-specific literature queries; and
+6. retrieve, normalize, and deduplicate literature without discarding records.
 
 Screening, full-text resolution, evidence extraction, reconciliation, synthesis,
 and downstream computational research are later design areas. They are not yet
@@ -99,14 +101,15 @@ default for future LLM jobs. The key is stored through the operating system
 credential store, not in the workspace or browser. Provider setup can be deferred
 until a live LLM operation is needed.
 
-Starting question detailing adds a durable job to the sequential local queue.
+Starting intent clarification adds a durable job to the sequential local queue.
 Queued work can be cancelled until provider dispatch begins. The queue continues
 while the browser navigates between projects, and completed output, exact call
 inputs/response, usage, timing, and provider/model provenance are preserved in
-the workspace. API keys and authorization headers are never stored there.
-Completed question-detailing output is rendered as Markdown. Manual edits create
-new immutable versions, while the original provider output remains available for
-inspection and provenance.
+the workspace. API keys and authorization headers are never stored there. The
+provider's validated intent choices and the user's primary intent, optional
+secondary intents, and note are stored as separate immutable JSON artifacts.
+Existing projects with completed question-detailing outputs retain their original
+Markdown and manual versions as a compatibility path.
 
 Next, choose a dedicated research workspace. The application suggests
 `Documents/Jerome's Laboratory`, but you can type or paste another absolute path

@@ -8,6 +8,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from jeromes_laboratory.workflow.intent_clarification import (
+    DEFAULT_INTENT_CLARIFICATION_PROMPT,
+    INTENT_CLARIFICATION_PROMPT_VERSION,
+)
 from jeromes_laboratory.workflow.question_detailing import (
     DEFAULT_QUESTION_DETAILING_PROMPT,
     QUESTION_DETAILING_PROMPT_VERSION,
@@ -31,6 +35,9 @@ class ProjectRecord:
     question_detailing_prompt: str
     question_detailing_prompt_version: str
     question_detailing_prompt_is_editable: bool
+    intent_clarification_prompt: str
+    intent_clarification_prompt_version: str
+    intent_clarification_prompt_is_editable: bool
 
 
 class ProjectRepository:
@@ -44,8 +51,13 @@ class ProjectRepository:
             rows = connection.execute(
                 "SELECT id, tag, scientific_question, created_at, updated_at, "
                 "question_detailing_prompt, question_detailing_prompt_version, "
+                "intent_clarification_prompt, intent_clarification_prompt_version, "
+                "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id) "
+                "AS question_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
-                "AND jobs.kind = 'question_detailing') AS inputs_are_editable "
+                "AND jobs.kind = 'question_detailing') AS detailing_prompt_is_editable, "
+                "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
+                "AND jobs.kind = 'intent_clarification') AS intent_prompt_is_editable "
                 "FROM projects ORDER BY created_at"
             ).fetchall()
         return [self._record_from_row(row) for row in rows]
@@ -55,8 +67,13 @@ class ProjectRepository:
             row = connection.execute(
                 "SELECT id, tag, scientific_question, created_at, updated_at, "
                 "question_detailing_prompt, question_detailing_prompt_version, "
+                "intent_clarification_prompt, intent_clarification_prompt_version, "
+                "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id) "
+                "AS question_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
-                "AND jobs.kind = 'question_detailing') AS inputs_are_editable "
+                "AND jobs.kind = 'question_detailing') AS detailing_prompt_is_editable, "
+                "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
+                "AND jobs.kind = 'intent_clarification') AS intent_prompt_is_editable "
                 "FROM projects WHERE id = ?",
                 (project_id,),
             ).fetchone()
@@ -76,7 +93,9 @@ class ProjectRepository:
             tag = f"PROJ{next_tag_number:03d}"
             connection.execute(
                 "INSERT INTO projects (id, tag, scientific_question, created_at, updated_at, "
-                "question_detailing_prompt, question_detailing_prompt_version) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "question_detailing_prompt, question_detailing_prompt_version, "
+                "intent_clarification_prompt, intent_clarification_prompt_version) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     project_id,
                     tag,
@@ -85,6 +104,8 @@ class ProjectRepository:
                     now,
                     DEFAULT_QUESTION_DETAILING_PROMPT,
                     QUESTION_DETAILING_PROMPT_VERSION,
+                    DEFAULT_INTENT_CLARIFICATION_PROMPT,
+                    INTENT_CLARIFICATION_PROMPT_VERSION,
                 ),
             )
             connection.execute(
@@ -102,6 +123,9 @@ class ProjectRepository:
             question_detailing_prompt=DEFAULT_QUESTION_DETAILING_PROMPT,
             question_detailing_prompt_version=QUESTION_DETAILING_PROMPT_VERSION,
             question_detailing_prompt_is_editable=True,
+            intent_clarification_prompt=DEFAULT_INTENT_CLARIFICATION_PROMPT,
+            intent_clarification_prompt_version=INTENT_CLARIFICATION_PROMPT_VERSION,
+            intent_clarification_prompt_is_editable=True,
         )
 
     def rename_project(self, project_id: str, tag_value: str) -> ProjectRecord:
@@ -159,11 +183,36 @@ class ProjectRepository:
             raise ProjectError("The selected project no longer exists.")
         return self.get_project(project_id)
 
+    def update_intent_clarification_prompt(
+        self, project_id: str, prompt_value: str
+    ) -> ProjectRecord:
+        """Save the exact project prompt used to generate research-intent choices."""
+        prompt = self._required_text(prompt_value, "Enter a prompt before saving.")
+        now = self._timestamp()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT 1 FROM jobs WHERE project_id = ? AND kind = 'intent_clarification'",
+                (project_id,),
+            ).fetchone()
+            if row is not None:
+                raise ProjectError(
+                    "The intent-clarification prompt is locked because a workflow job already uses it."
+                )
+            cursor = connection.execute(
+                "UPDATE projects SET intent_clarification_prompt = ?, "
+                "intent_clarification_prompt_version = 'custom', updated_at = ? WHERE id = ?",
+                (prompt, now, project_id),
+            )
+        if cursor.rowcount == 0:
+            raise ProjectError("The selected project no longer exists.")
+        return self.get_project(project_id)
+
     @staticmethod
     def _question_is_editable(connection: sqlite3.Connection, project_id: str) -> bool:
         """Lock exact scientific inputs from the moment a job is enqueued."""
         row = connection.execute(
-            "SELECT 1 FROM jobs WHERE project_id = ? AND kind = 'question_detailing'",
+            "SELECT 1 FROM jobs WHERE project_id = ?",
             (project_id,),
         ).fetchone()
         return row is None
@@ -192,10 +241,13 @@ class ProjectRepository:
             scientific_question=row["scientific_question"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
-            question_is_editable=bool(row["inputs_are_editable"]),
+            question_is_editable=bool(row["question_is_editable"]),
             question_detailing_prompt=row["question_detailing_prompt"],
             question_detailing_prompt_version=row["question_detailing_prompt_version"],
-            question_detailing_prompt_is_editable=bool(row["inputs_are_editable"]),
+            question_detailing_prompt_is_editable=bool(row["detailing_prompt_is_editable"]),
+            intent_clarification_prompt=row["intent_clarification_prompt"],
+            intent_clarification_prompt_version=row["intent_clarification_prompt_version"],
+            intent_clarification_prompt_is_editable=bool(row["intent_prompt_is_editable"]),
         )
 
     @staticmethod

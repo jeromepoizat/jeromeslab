@@ -1,5 +1,20 @@
 export type JobStatus = 'pending' | 'awaiting_response' | 'completed' | 'failed' | 'cancelled'
 
+export type IntentOption = { id: string; label: string; description: string }
+export type IntentQuestions = {
+  schema_version: 1
+  question: string
+  explanation: string
+  options: IntentOption[]
+}
+export type IntentSelection = {
+  schema_version: 1
+  questions_artifact_id: string
+  primary_intent_id: string
+  secondary_intent_ids: string[]
+  note: string
+}
+
 export type Job = {
   id: string
   project_id: string
@@ -26,6 +41,10 @@ export type Job = {
   total_tokens: number | null
   duration_ms: number | null
   cost_status: string | null
+  intent_questions: IntentQuestions | null
+  intent_selection: IntentSelection | null
+  intent_selection_version: number | null
+  intent_selection_is_editable: boolean
 }
 
 const statusLabels: Record<JobStatus, string> = {
@@ -96,9 +115,9 @@ export function JobQueueDrawer({ jobs, nowMilliseconds, onClose, onCancel, onOpe
     <div className="settings-drawer-header"><div><p className="step-label">Research queue</p><h2 id="queue-title">Jobs</h2></div><button className="settings-close" type="button" aria-label="Close job queue" onClick={onClose}>×</button></div>
     {jobs.length === 0 ? <p className="queue-empty">No jobs have been started yet.</p> : <div className="queue-list">
       {jobs.map(job => <article className="queue-job" key={job.id}>
-        <button className="queue-job-open" type="button" onClick={() => onOpenJob(job)} aria-label={`Open ${job.project_tag} question-detailing job`}>
+        <button className="queue-job-open" type="button" onClick={() => onOpenJob(job)} aria-label={`Open ${job.project_tag} ${job.kind === 'intent_clarification' ? 'intent-clarification' : 'question-detailing'} job`}>
           <div className="queue-job-heading"><strong>{job.project_tag}</strong><JobStatusLabel status={job.status} /></div>
-          <p>Question detailing</p>
+          <p>{job.kind === 'intent_clarification' ? 'Intent clarification' : 'Question detailing'}</p>
           <div className="queue-job-details"><small>{job.provider === 'openai' ? 'OpenAI' : 'Anthropic'} · {job.model}</small><JobElapsedTime job={job} nowMilliseconds={nowMilliseconds} /></div>
           {job.error && <p className="setup-error">{job.error}</p>}
         </button>

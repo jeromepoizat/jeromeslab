@@ -86,12 +86,15 @@ on each target OS rather than treating it as a cross-compiled artifact.
 - Strict, deterministic replay-provider fixtures for network-free integration
   tests, with simulated provenance and no fallback to paid APIs.
 
-## Milestone 6 — Research question decomposition
+## Milestone 6 — Intent, scope, and research charter
 
-- Queue an LLM decomposition from the preserved question.
-- Store full call provenance, raw output, and parsed original artifact.
-- Review/edit to an effective artifact without losing the original.
-- Continue only with the exact selected effective version.
+- Generate validated dynamic intent choices from the preserved question and
+  confirm one primary intent, optional secondary intents, and a note.
+- Generate one scope-question round and at most one material follow-up round.
+- Preserve every generated questionnaire, user decision, note, uncertainty,
+  call, and prompt as exact provenance.
+- Generate and approve an effective research charter without losing its original.
+- Continue only with the exact approved charter version.
 - Add a bundled example project once enough end-to-end workflow exists, using
   clearly labelled replayed outputs so it requires no provider key or API cost.
 

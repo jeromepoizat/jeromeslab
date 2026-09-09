@@ -31,6 +31,8 @@ class Project(Base):
     updated_at: Mapped[str] = mapped_column(String(32), nullable=False)
     question_detailing_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     question_detailing_prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    intent_clarification_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    intent_clarification_prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
 
 
 class Job(Base):
