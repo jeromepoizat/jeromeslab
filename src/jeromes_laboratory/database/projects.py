@@ -16,6 +16,14 @@ from jeromes_laboratory.workflow.question_detailing import (
     DEFAULT_QUESTION_DETAILING_PROMPT,
     QUESTION_DETAILING_PROMPT_VERSION,
 )
+from jeromes_laboratory.workflow.scope_clarification import (
+    DEFAULT_SCOPE_CLARIFICATION_PROMPT,
+    SCOPE_CLARIFICATION_PROMPT_VERSION,
+)
+from jeromes_laboratory.workflow.scope_readiness import (
+    DEFAULT_SCOPE_READINESS_PROMPT,
+    SCOPE_READINESS_PROMPT_VERSION,
+)
 
 
 class ProjectError(ValueError):
@@ -38,6 +46,12 @@ class ProjectRecord:
     intent_clarification_prompt: str
     intent_clarification_prompt_version: str
     intent_clarification_prompt_is_editable: bool
+    scope_clarification_prompt: str
+    scope_clarification_prompt_version: str
+    scope_clarification_prompt_is_editable: bool
+    scope_readiness_prompt: str
+    scope_readiness_prompt_version: str
+    scope_readiness_prompt_is_editable: bool
 
 
 class ProjectRepository:
@@ -52,12 +66,18 @@ class ProjectRepository:
                 "SELECT id, tag, scientific_question, created_at, updated_at, "
                 "question_detailing_prompt, question_detailing_prompt_version, "
                 "intent_clarification_prompt, intent_clarification_prompt_version, "
+                "scope_clarification_prompt, scope_clarification_prompt_version, "
+                "scope_readiness_prompt, scope_readiness_prompt_version, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id) "
                 "AS question_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
                 "AND jobs.kind = 'question_detailing') AS detailing_prompt_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
-                "AND jobs.kind = 'intent_clarification') AS intent_prompt_is_editable "
+                "AND jobs.kind = 'intent_clarification') AS intent_prompt_is_editable, "
+                "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
+                "AND jobs.kind = 'scope_clarification_round_1') AS scope_prompt_is_editable, "
+                "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
+                "AND jobs.kind = 'scope_readiness') AS readiness_prompt_is_editable "
                 "FROM projects ORDER BY created_at"
             ).fetchall()
         return [self._record_from_row(row) for row in rows]
@@ -68,12 +88,18 @@ class ProjectRepository:
                 "SELECT id, tag, scientific_question, created_at, updated_at, "
                 "question_detailing_prompt, question_detailing_prompt_version, "
                 "intent_clarification_prompt, intent_clarification_prompt_version, "
+                "scope_clarification_prompt, scope_clarification_prompt_version, "
+                "scope_readiness_prompt, scope_readiness_prompt_version, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id) "
                 "AS question_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
                 "AND jobs.kind = 'question_detailing') AS detailing_prompt_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
-                "AND jobs.kind = 'intent_clarification') AS intent_prompt_is_editable "
+                "AND jobs.kind = 'intent_clarification') AS intent_prompt_is_editable, "
+                "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
+                "AND jobs.kind = 'scope_clarification_round_1') AS scope_prompt_is_editable, "
+                "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
+                "AND jobs.kind = 'scope_readiness') AS readiness_prompt_is_editable "
                 "FROM projects WHERE id = ?",
                 (project_id,),
             ).fetchone()
@@ -94,8 +120,10 @@ class ProjectRepository:
             connection.execute(
                 "INSERT INTO projects (id, tag, scientific_question, created_at, updated_at, "
                 "question_detailing_prompt, question_detailing_prompt_version, "
-                "intent_clarification_prompt, intent_clarification_prompt_version) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "intent_clarification_prompt, intent_clarification_prompt_version, "
+                "scope_clarification_prompt, scope_clarification_prompt_version, "
+                "scope_readiness_prompt, scope_readiness_prompt_version) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     project_id,
                     tag,
@@ -106,6 +134,10 @@ class ProjectRepository:
                     QUESTION_DETAILING_PROMPT_VERSION,
                     DEFAULT_INTENT_CLARIFICATION_PROMPT,
                     INTENT_CLARIFICATION_PROMPT_VERSION,
+                    DEFAULT_SCOPE_CLARIFICATION_PROMPT,
+                    SCOPE_CLARIFICATION_PROMPT_VERSION,
+                    DEFAULT_SCOPE_READINESS_PROMPT,
+                    SCOPE_READINESS_PROMPT_VERSION,
                 ),
             )
             connection.execute(
@@ -126,6 +158,12 @@ class ProjectRepository:
             intent_clarification_prompt=DEFAULT_INTENT_CLARIFICATION_PROMPT,
             intent_clarification_prompt_version=INTENT_CLARIFICATION_PROMPT_VERSION,
             intent_clarification_prompt_is_editable=True,
+            scope_clarification_prompt=DEFAULT_SCOPE_CLARIFICATION_PROMPT,
+            scope_clarification_prompt_version=SCOPE_CLARIFICATION_PROMPT_VERSION,
+            scope_clarification_prompt_is_editable=True,
+            scope_readiness_prompt=DEFAULT_SCOPE_READINESS_PROMPT,
+            scope_readiness_prompt_version=SCOPE_READINESS_PROMPT_VERSION,
+            scope_readiness_prompt_is_editable=True,
         )
 
     def rename_project(self, project_id: str, tag_value: str) -> ProjectRecord:
@@ -208,6 +246,54 @@ class ProjectRepository:
             raise ProjectError("The selected project no longer exists.")
         return self.get_project(project_id)
 
+    def update_scope_clarification_prompt(
+        self, project_id: str, prompt_value: str
+    ) -> ProjectRecord:
+        """Save the exact project prompt used to generate first-round scope questions."""
+        prompt = self._required_text(prompt_value, "Enter a prompt before saving.")
+        now = self._timestamp()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT 1 FROM jobs WHERE project_id = ? AND kind = 'scope_clarification_round_1'",
+                (project_id,),
+            ).fetchone()
+            if row is not None:
+                raise ProjectError(
+                    "The scope-clarification prompt is locked because a workflow job already uses it."
+                )
+            cursor = connection.execute(
+                "UPDATE projects SET scope_clarification_prompt = ?, "
+                "scope_clarification_prompt_version = 'custom', updated_at = ? WHERE id = ?",
+                (prompt, now, project_id),
+            )
+        if cursor.rowcount == 0:
+            raise ProjectError("The selected project no longer exists.")
+        return self.get_project(project_id)
+
+    def update_scope_readiness_prompt(self, project_id: str, prompt_value: str) -> ProjectRecord:
+        """Save the exact prompt used to review the confirmed first scope round."""
+        prompt = self._required_text(prompt_value, "Enter a prompt before saving.")
+        now = self._timestamp()
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT 1 FROM jobs WHERE project_id = ? AND kind = 'scope_readiness'",
+                (project_id,),
+            ).fetchone()
+            if row is not None:
+                raise ProjectError(
+                    "The scope-readiness prompt is locked because a workflow job already uses it."
+                )
+            cursor = connection.execute(
+                "UPDATE projects SET scope_readiness_prompt = ?, "
+                "scope_readiness_prompt_version = 'custom', updated_at = ? WHERE id = ?",
+                (prompt, now, project_id),
+            )
+        if cursor.rowcount == 0:
+            raise ProjectError("The selected project no longer exists.")
+        return self.get_project(project_id)
+
     @staticmethod
     def _question_is_editable(connection: sqlite3.Connection, project_id: str) -> bool:
         """Lock exact scientific inputs from the moment a job is enqueued."""
@@ -248,6 +334,12 @@ class ProjectRepository:
             intent_clarification_prompt=row["intent_clarification_prompt"],
             intent_clarification_prompt_version=row["intent_clarification_prompt_version"],
             intent_clarification_prompt_is_editable=bool(row["intent_prompt_is_editable"]),
+            scope_clarification_prompt=row["scope_clarification_prompt"],
+            scope_clarification_prompt_version=row["scope_clarification_prompt_version"],
+            scope_clarification_prompt_is_editable=bool(row["scope_prompt_is_editable"]),
+            scope_readiness_prompt=row["scope_readiness_prompt"],
+            scope_readiness_prompt_version=row["scope_readiness_prompt_version"],
+            scope_readiness_prompt_is_editable=bool(row["readiness_prompt_is_editable"]),
         )
 
     @staticmethod

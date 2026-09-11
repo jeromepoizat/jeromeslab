@@ -23,6 +23,8 @@ from jeromes_laboratory.api.schemas import (
     ProjectResponse,
     RenameProjectRequest,
     SubmitIntentSelectionRequest,
+    SubmitScopeAnswersRequest,
+    SubmitScopeFollowUpAnswersRequest,
     UpdateClientStateRequest,
     UpdateIntentClarificationPromptRequest,
     UpdateIntentSelectionRequest,
@@ -30,6 +32,10 @@ from jeromes_laboratory.api.schemas import (
     UpdateQuestionDetailingOutputRequest,
     UpdateQuestionDetailingPromptRequest,
     UpdateQuestionRequest,
+    UpdateScopeAnswersRequest,
+    UpdateScopeClarificationPromptRequest,
+    UpdateScopeFollowUpAnswersRequest,
+    UpdateScopeReadinessPromptRequest,
     WorkspaceConfiguredResponse,
     WorkspaceForgottenResponse,
     WorkspaceMovedResponse,
@@ -59,6 +65,7 @@ from jeromes_laboratory.storage.workspace import (
     WorkspaceLocationError,
     WorkspaceService,
 )
+from jeromes_laboratory.workflow.scope_clarification import ScopeAnswer
 
 DEFAULT_FRONTEND_DIRECTORY = Path(__file__).resolve().parents[3] / "frontend" / "dist"
 
@@ -146,6 +153,12 @@ def create_app(
             intent_clarification_prompt=record.intent_clarification_prompt,
             intent_clarification_prompt_version=record.intent_clarification_prompt_version,
             intent_clarification_prompt_is_editable=record.intent_clarification_prompt_is_editable,
+            scope_clarification_prompt=record.scope_clarification_prompt,
+            scope_clarification_prompt_version=record.scope_clarification_prompt_version,
+            scope_clarification_prompt_is_editable=record.scope_clarification_prompt_is_editable,
+            scope_readiness_prompt=record.scope_readiness_prompt,
+            scope_readiness_prompt_version=record.scope_readiness_prompt_version,
+            scope_readiness_prompt_is_editable=record.scope_readiness_prompt_is_editable,
         )
 
     def job_repository() -> JobRepository:
@@ -542,9 +555,47 @@ def create_app(
         """Save the exact prompt before intent clarification is enqueued."""
         try:
             return project_response(
-                project_repository().update_intent_clarification_prompt(
-                    project_id, request.prompt
-                )
+                project_repository().update_intent_clarification_prompt(project_id, request.prompt)
+            )
+        except ProjectError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
+
+    @application.patch(
+        "/api/projects/{project_id}/scope-clarification-prompt",
+        response_model=ProjectResponse,
+        tags=["projects"],
+    )
+    def update_scope_clarification_prompt(
+        project_id: str,
+        request: UpdateScopeClarificationPromptRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> ProjectResponse:
+        """Save the exact prompt before the first scope round is enqueued."""
+        try:
+            return project_response(
+                project_repository().update_scope_clarification_prompt(project_id, request.prompt)
+            )
+        except ProjectError as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
+
+    @application.patch(
+        "/api/projects/{project_id}/scope-readiness-prompt",
+        response_model=ProjectResponse,
+        tags=["projects"],
+    )
+    def update_scope_readiness_prompt(
+        project_id: str,
+        request: UpdateScopeReadinessPromptRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> ProjectResponse:
+        """Save the exact prompt before readiness review is enqueued."""
+        try:
+            return project_response(
+                project_repository().update_scope_readiness_prompt(project_id, request.prompt)
             )
         except ProjectError as error:
             raise HTTPException(
@@ -569,6 +620,58 @@ def create_app(
             if application.state.credential_store.get_api_key(settings.provider) is None:
                 raise JobError("The selected provider API key is no longer available.")
             record = job_repository().enqueue_intent_clarification(
+                project_id, settings.provider, settings.model
+            )
+        except (CredentialStoreError, LLMSettingsError, JobError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
+        return job_response(record)
+
+    @application.post(
+        "/api/projects/{project_id}/scope-clarification/jobs",
+        response_model=JobResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["jobs"],
+    )
+    def enqueue_scope_clarification(
+        project_id: str,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Queue first-round scope questions from the effective research intent."""
+        try:
+            settings = application.state.llm_settings_service.read()
+            if settings.provider is None or settings.model is None:
+                raise JobError("Configure an LLM provider and model before starting this job.")
+            if application.state.credential_store.get_api_key(settings.provider) is None:
+                raise JobError("The selected provider API key is no longer available.")
+            record = job_repository().enqueue_scope_clarification(
+                project_id, settings.provider, settings.model
+            )
+        except (CredentialStoreError, LLMSettingsError, JobError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
+        return job_response(record)
+
+    @application.post(
+        "/api/projects/{project_id}/scope-readiness/jobs",
+        response_model=JobResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["jobs"],
+    )
+    def enqueue_scope_readiness(
+        project_id: str,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Queue the bounded readiness decision and optional follow-up generation."""
+        try:
+            settings = application.state.llm_settings_service.read()
+            if settings.provider is None or settings.model is None:
+                raise JobError("Configure an LLM provider and model before starting this job.")
+            if application.state.credential_store.get_api_key(settings.provider) is None:
+                raise JobError("The selected provider API key is no longer available.")
+            record = job_repository().enqueue_scope_readiness(
                 project_id, settings.provider, settings.model
             )
         except (CredentialStoreError, LLMSettingsError, JobError) as error:
@@ -645,9 +748,7 @@ def create_app(
                 )
             )
         except JobError as error:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, detail=str(error)
-            ) from error
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
 
     @application.patch(
         "/api/jobs/{job_id}/intent-selection",
@@ -671,9 +772,87 @@ def create_app(
                 )
             )
         except JobError as error:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, detail=str(error)
-            ) from error
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+    @application.post(
+        "/api/jobs/{job_id}/scope-answers",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def submit_scope_answers(
+        job_id: str,
+        request: SubmitScopeAnswersRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Confirm and preserve one complete first-round scope response."""
+        try:
+            answers = [
+                ScopeAnswer.model_validate(answer.model_dump()) for answer in request.answers
+            ]
+            return job_response(job_repository().submit_scope_answers(job_id, answers))
+        except (JobError, ValueError) as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+    @application.patch(
+        "/api/jobs/{job_id}/scope-answers",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def edit_scope_answers(
+        job_id: str,
+        request: UpdateScopeAnswersRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Select a new immutable answer version before downstream work exists."""
+        try:
+            answers = [
+                ScopeAnswer.model_validate(answer.model_dump()) for answer in request.answers
+            ]
+            return job_response(
+                job_repository().edit_scope_answers(job_id, answers, request.base_version)
+            )
+        except (JobError, ValueError) as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+    @application.post(
+        "/api/jobs/{job_id}/scope-follow-up-answers",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def submit_scope_follow_up_answers(
+        job_id: str,
+        request: SubmitScopeFollowUpAnswersRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Confirm and preserve the only automatic scope follow-up round."""
+        try:
+            answers = [
+                ScopeAnswer.model_validate(answer.model_dump()) for answer in request.answers
+            ]
+            return job_response(job_repository().submit_scope_follow_up_answers(job_id, answers))
+        except (JobError, ValueError) as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+    @application.patch(
+        "/api/jobs/{job_id}/scope-follow-up-answers",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def edit_scope_follow_up_answers(
+        job_id: str,
+        request: UpdateScopeFollowUpAnswersRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Select a new follow-up answer version before charter work is queued."""
+        try:
+            answers = [
+                ScopeAnswer.model_validate(answer.model_dump()) for answer in request.answers
+            ]
+            return job_response(
+                job_repository().edit_scope_follow_up_answers(job_id, answers, request.base_version)
+            )
+        except (JobError, ValueError) as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
 
     @application.patch(
         "/api/jobs/{job_id}/question-detailing-output",

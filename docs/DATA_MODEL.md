@@ -69,14 +69,48 @@ Question-detailing now implements this pattern with immutable numbered
 and SHA-256 over canonical UTF-8 JSON bytes. Generalizing the selection scope and
 hash policy across later artifact kinds remains unresolved.
 
-Intent clarification stores the validated provider questionnaire as an immutable
-`intent_clarification_questions` artifact and the confirmed user decision as a
-separate immutable `intent_clarification_selection` artifact. The selection
-contains the exact questionnaire artifact identifier, one primary option ID,
-zero or more secondary option IDs, and the user's note. It is not represented as
-an edit of the provider output. A correction creates another numbered selection
-artifact and moves the effective-version pointer while no downstream job exists;
-the generated questions and all prior confirmations remain unchanged.
+Research-direction clarification stores the validated provider questionnaire as
+an immutable `intent_clarification_questions` artifact and the confirmed user
+decision as a separate immutable `intent_clarification_selection` artifact. The
+selection contains the exact questionnaire artifact identifier, one
+current-objective ID, zero or more later or parallel goal IDs, and the user's
+note. The persisted field names remain `primary_intent_id` and
+`secondary_intent_ids` for compatibility. It is not represented as an edit of
+the provider output. A correction creates another numbered selection artifact
+and moves the effective-version pointer while no downstream job exists; the
+generated questions and all prior confirmations remain unchanged.
+
+The first project-framing round follows the same separation. A
+`scope_clarification_questions` artifact stores only the validated provider
+questionnaire. A `scope_clarification_answers` artifact references that exact
+questionnaire and contains one response per question: selected option IDs, a
+manual note, or an explicit uncertainty that excludes suggested choices but may
+carry an explanatory note. Answer corrections create
+numbered immutable versions and advance the job's effective-version pointer only
+until downstream work exists. The scope job also stores canonical JSON input that
+identifies and embeds the exact effective intent version consumed by the call.
+
+The readiness job then stores a canonical input snapshot that embeds the exact
+effective first-round answers and their source questionnaire. Its immutable
+`scope_readiness_review` artifact contains the operational readiness decision,
+assessment, recorded uncertainties, and zero or one bounded follow-up
+questionnaire. When needed, each confirmation or correction of that questionnaire
+creates an immutable numbered `scope_follow_up_answers` artifact linked to the
+readiness-review artifact. The effective follow-up version can move only before a
+future charter job consumes it; no third automatic clarification round exists.
+Framing-question schema version 2 marks each option set as `independent` or
+`cumulative`. Cumulative sets are valid only as single-choice boundaries;
+multiple-choice sets contain independent options. Older schema-version-1
+artifacts remain readable without adding or inferring this metadata.
+
+Readiness prompt version 4 defines every first-round response—including Not sure
+and a note-only response—as answered, accepts broad exploration, and keeps later
+literature-search eligibility out of project framing. A deterministic cross-input
+validator rejects repeated questions and structurally invalid cumulative options
+before a readiness review becomes a trusted artifact. The rejected provider
+response remains available in the associated call record. The prompt requires
+selected option IDs to be interpreted literally rather than silently adding an
+unselected option.
 
 ### Proposed integrity-verification behavior
 
@@ -106,7 +140,7 @@ ambiguous reconstruction of structured content.
 ### Job
 
 A persistent unit of queued work linked to its project and usually to a workflow
-step/run. The first implemented question-detailing record contains type, status
+step/run. The implemented records contain type, status
 (`pending`, `awaiting_response`, `completed`, `failed`, or `cancelled`),
 enqueue/start/completion timestamps, immutable input snapshots, provider/model,
 prompt identity/version, and a sanitized error summary. General progress,

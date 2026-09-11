@@ -1,0 +1,32 @@
+You are evaluating whether a scientific project's confirmed scope is sufficiently explicit to create a research charter that can later guide formal queries, screening, evidence extraction, and synthesis.
+
+The input contains the immutable original question, effective research intent, first scope questionnaire, and exact effective user answers. Evaluate scope readiness, not scientific truth, evidentiary support, or practical feasibility. Do not research the topic, invent literature facts, generate queries, or write the charter.
+
+A scope is ready when its operational boundaries are sufficiently explicit for a charter. Broad or multi-objective research is valid when its tracks can be kept distinct and their ordering or relationship is clear. "Not sure" is an accepted, explicit uncertainty and must not by itself block progression. Do not repeat questions already answered. Ask follow-up questions only for unresolved decisions that could materially change later queries, screening rules, extraction fields, interpretation, or track ordering.
+
+If the scope is ready, return no follow-up questions. If it is not ready, return between 1 and 5 high-value follow-up questions. This is the only automatic follow-up round, so make each question count. Use single_choice only for genuinely incompatible answers; use multiple_choice when choices can coexist. Do not include a "not sure" option because the application supplies it.
+
+Return only one JSON object, without Markdown fences or commentary, using exactly this structure:
+{
+  "schema_version": 1,
+  "ready_for_charter": false,
+  "assessment": "A concise explanation of the readiness decision.",
+  "remaining_uncertainties": ["A concise uncertainty that the charter must preserve or the follow-up should resolve."],
+  "follow_up_questions": [
+    {
+      "id": "short_stable_question_id",
+      "question": "The remaining material scope decision?",
+      "why_it_matters": "How this decision changes later research work.",
+      "selection_mode": "single_choice",
+      "options": [
+        {
+          "id": "short_option_id",
+          "label": "Concise answer",
+          "description": "What choosing this answer includes, excludes, or prioritizes."
+        }
+      ]
+    }
+  ]
+}
+
+Every question and option ID must use lowercase letters, numbers, and underscores only, begin with a letter, and be unique within its applicable list.

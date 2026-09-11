@@ -86,14 +86,18 @@ on each target OS rather than treating it as a cross-compiled artifact.
 - Strict, deterministic replay-provider fixtures for network-free integration
   tests, with simulated provenance and no fallback to paid APIs.
 
-## Milestone 6 — Intent, scope, and research charter
+## Milestone 6 — Research direction, project framing, and charter
 
-- Generate validated dynamic intent choices from the preserved question and
-  confirm one primary intent, optional secondary intents, and a note.
-- Generate one scope-question round and at most one material follow-up round.
+- Generate validated dynamic research-direction choices from the preserved
+  question and confirm one current objective, optional later or parallel goals,
+  and a note.
+- Generate one project-framing round and at most one material follow-up round,
+  without moving literature-search eligibility or evidence-dependent scientific
+  decisions into early clarification.
 - Preserve every generated questionnaire, user decision, note, uncertainty,
   call, and prompt as exact provenance.
-- Generate and approve an effective research charter without losing its original.
+- Generate and approve an effective current-cycle research charter without
+  losing its original.
 - Continue only with the exact approved charter version.
 - Add a bundled example project once enough end-to-end workflow exists, using
   clearly labelled replayed outputs so it requires no provider key or API cost.
@@ -101,7 +105,11 @@ on each target OS rather than treating it as a cross-compiled artifact.
 ## Milestone 7 — Literature query generation
 
 - Source selection, beginning with the source chosen for retrieval prototyping.
+- Explicitly decide data-search and screening scope here, including applicable
+  species or populations, evidence stages, study designs, publication types,
+  dates, languages, outcomes, and inclusion or exclusion rules.
 - Source-specific queries with purpose and exact LLM provenance.
+- Purpose-labelled query families for broad exploratory evidence mapping.
 - Original/effective query versions and pre-execution review.
 
 ## Milestone 8 — Literature retrieval prototype
@@ -120,3 +128,7 @@ evidence extraction, reconciliation/weighting, and synthesis. Each stage needs a
 explicit schema, provenance contract, human-correction behavior, evaluation plan,
 and ADRs where choices affect scientific validity. In-silico research is beyond
 these milestones and has no committed design.
+
+After the first evidence-bearing end-to-end path exists, add research-cycle
+checkpoints that let the user continue exploring, narrow a direction, stop, or
+fork alternatives without rewriting any consumed charter or evidence history.

@@ -188,9 +188,7 @@ async def test_llm_setup_can_be_skipped_and_key_can_be_forgotten(tmp_path: Path)
     ) as client:
         setup_token = (await client.get("/api/setup")).json()["setup_token"]
         headers = {"X-Jeromes-Lab-Setup-Token": setup_token}
-        forgotten = await client.delete(
-            "/api/llm/providers/anthropic/api-key", headers=headers
-        )
+        forgotten = await client.delete("/api/llm/providers/anthropic/api-key", headers=headers)
         skipped = await client.post("/api/llm/settings/skip", headers=headers)
 
     assert forgotten.json()["configured"] is False

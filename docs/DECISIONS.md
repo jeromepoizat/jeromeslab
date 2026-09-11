@@ -16,7 +16,8 @@ unresolved ideas in other documentation are not decisions.
 | [0009](adr/0009-user-selected-research-workspace.md) | User-selected research workspace | Accepted |
 | [0010](adr/0010-single-local-application-instance.md) | One local application instance | Accepted |
 | [0011](adr/0011-global-llm-provider-configuration.md) | Global provider defaults with filtered live model discovery | Accepted |
-| [0012](adr/0012-intent-and-scope-clarification-before-search.md) | Clarify research intent and scope before formal search | Accepted |
+| [0012](adr/0012-intent-and-scope-clarification-before-search.md) | Clarify research intent and scope before formal search | Amended by 0013 |
+| [0013](adr/0013-evidence-led-iterative-research-cycles.md) | Evidence-led iterative research cycles | Accepted |
 
 Routine implementation choices belong in code and tests. Add an ADR when a
 choice constrains future architecture, security, scientific validity, data

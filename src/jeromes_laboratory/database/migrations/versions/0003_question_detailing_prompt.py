@@ -23,7 +23,9 @@ QUESTION_DETAILING_PROMPT_VERSION = "1"
 def upgrade() -> None:
     """Preserve the exact effective prompt despite later application updates."""
     op.add_column("projects", sa.Column("question_detailing_prompt", sa.Text(), nullable=True))
-    op.add_column("projects", sa.Column("question_detailing_prompt_version", sa.String(32), nullable=True))
+    op.add_column(
+        "projects", sa.Column("question_detailing_prompt_version", sa.String(32), nullable=True)
+    )
     op.execute(
         sa.text(
             "UPDATE projects SET question_detailing_prompt = :prompt, "

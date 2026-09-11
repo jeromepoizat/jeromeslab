@@ -89,7 +89,11 @@ class InstanceCoordinator:
             pid = content["pid"]
         except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError):
             return None
-        if not isinstance(instance_id, str) or not isinstance(port, int) or not isinstance(pid, int):
+        if (
+            not isinstance(instance_id, str)
+            or not isinstance(port, int)
+            or not isinstance(pid, int)
+        ):
             return None
         return RunningInstance(instance_id=instance_id, port=port, pid=pid)
 

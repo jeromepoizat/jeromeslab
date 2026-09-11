@@ -6,7 +6,7 @@ import threading
 from dataclasses import replace
 from pathlib import Path
 
-from jeromes_laboratory.database.jobs import JobRepository, provider_input
+from jeromes_laboratory.database.jobs import JobRepository, provider_input_for_job
 from jeromes_laboratory.llm.generation import GenerationError, GenerationGateway
 from jeromes_laboratory.security.credentials import CredentialStore, CredentialStoreError
 from jeromes_laboratory.storage.workspace import (
@@ -57,7 +57,7 @@ class JobWorker:
         job = repository.claim_next()
         if job is None:
             return False
-        input_content = provider_input(job.scientific_question_snapshot)
+        input_content = provider_input_for_job(job)
         prepared = self._generation_gateway.prepare(
             job.provider,
             job.model,

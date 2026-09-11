@@ -15,19 +15,24 @@ the provenance and cost of every LLM-assisted transformation.
 **Milestone 1: local application shell is in progress.** The Python and frontend
 environments are locked, the bootstrap is verified across all six supported
 OS/architecture combinations, and the local application includes its first live
-intent-clarification workflow with immutable provenance. See
-[current status](docs/STATUS.md) before starting work.
+research-direction and bounded project-framing workflow with immutable
+provenance. See [current status](docs/STATUS.md) before starting work.
 
 ## Intended workflow
 
 The agreed early workflow is:
 
 1. preserve the user's exact scientific question;
-2. generate relevant research intents and confirm one primary intent;
-3. answer dynamic scope questions, with at most one follow-up round;
-4. generate and approve a research charter;
-5. generate and review source-specific literature queries; and
-6. retrieve, normalize, and deduplicate literature without discarding records.
+2. choose a current research objective and retain later or parallel goals;
+3. answer only the project-framing questions needed for the next cycle, with at
+   most one follow-up round;
+4. generate and approve a current-cycle research charter;
+5. separately define literature-search and screening scope, then generate and
+   review purpose-labelled, source-specific query families;
+6. retrieve, normalize, and deduplicate literature without discarding records;
+   and
+7. use the resulting evidence to continue broadly, narrow, stop, or fork a new
+   research direction without rewriting prior history.
 
 Screening, full-text resolution, evidence extraction, reconciliation, synthesis,
 and downstream computational research are later design areas. They are not yet
@@ -101,13 +106,32 @@ default for future LLM jobs. The key is stored through the operating system
 credential store, not in the workspace or browser. Provider setup can be deferred
 until a live LLM operation is needed.
 
-Starting intent clarification adds a durable job to the sequential local queue.
-Queued work can be cancelled until provider dispatch begins. The queue continues
-while the browser navigates between projects, and completed output, exact call
-inputs/response, usage, timing, and provider/model provenance are preserved in
-the workspace. API keys and authorization headers are never stored there. The
-provider's validated intent choices and the user's primary intent, optional
-secondary intents, and note are stored as separate immutable JSON artifacts.
+Starting research-direction clarification adds a durable job to the sequential
+local queue. Queued work can be cancelled until provider dispatch begins. The
+queue continues while the browser navigates between projects, and completed
+output, exact call inputs/response, usage, timing, and provider/model provenance
+are preserved in the workspace. API keys and authorization headers are never
+stored there. The
+provider's validated direction choices and the user's current objective,
+optional later or parallel goals, and note are stored as separate immutable JSON
+artifacts. After confirmation, the project-framing round generates one to five
+validated user decisions with single- or multiple-choice answers, a manual note,
+and an explicit Not sure option. It snapshots the exact effective direction
+version it uses and preserves confirmed or edited answer sets as immutable JSON
+artifacts.
+
+Broad exploration is a valid current objective. Framing asks only for the
+project-level purpose, conceptual boundary, or ordering needed for the next
+research cycle. It does not ask the user to predict evidence-dependent scientific
+answers or decide later literature-query and screening scope. An explicit
+readiness job either marks the framing ready for a current-cycle charter or
+generates the only permitted follow-up questionnaire. Unresolved scientific
+questions are retained as investigation objectives or deferred decisions instead
+of causing an indefinite clarification loop. Provider output that repeats an
+answered question is rejected. Generated questions explicitly distinguish
+independent choices from cumulative boundaries, and an invalid cumulative
+multiple-choice question is also rejected. Raw call responses remain preserved.
+Consumed prompts and outputs keep their exact historical versions.
 Existing projects with completed question-detailing outputs retain their original
 Markdown and manual versions as a compatibility path.
 

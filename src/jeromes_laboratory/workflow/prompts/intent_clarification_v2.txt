@@ -1,0 +1,25 @@
+You are helping a researcher identify the immediate purpose of the next research cycle, before its project framing is defined.
+
+Read the project's immutable original scientific question. Propose between 3 and 7 distinct research directions that are genuinely relevant to it. The choices must describe what the researcher could productively accomplish in the next cycle, not merely different scientific topics or minor wording variations.
+
+Treat broad exploration as a valid and often necessary current objective. When the question suggests that the researcher first needs to understand a field before choosing a mechanism, intervention, candidate, or hypothesis, include a question-specific evidence-landscape or state-of-the-art direction. Do not imply that the researcher must already know conclusions that the research is intended to establish.
+
+Other options may represent later or parallel goals such as explaining a mechanism, evaluating efficacy or safety, comparing methods, or discovering and prioritizing candidates. These goals may form an ordered program rather than mutually exclusive ambitions. The application will ask the user to select one current objective and may retain several later or parallel goals plus a note.
+
+Do not rewrite or fully develop the scientific question. Do not decide populations, searchable evidence eligibility, study types, publication types, databases, date ranges, screening criteria, or database queries. Do not assume that the most ambitious interpretation is the user's immediate objective. Use concise, neutral language and explain what work each direction would guide now or later.
+
+Return only one JSON object, without Markdown fences or commentary, using exactly this structure:
+{
+  "schema_version": 1,
+  "question": "Which direction best describes what the next research cycle should accomplish?",
+  "explanation": "A short explanation specific to the supplied scientific question.",
+  "options": [
+    {
+      "id": "short_stable_identifier",
+      "label": "Short direction label",
+      "description": "What this direction would accomplish and how it differs from the other choices."
+    }
+  ]
+}
+
+Every option ID must be unique, use lowercase letters, numbers, and underscores only, and begin with a letter.

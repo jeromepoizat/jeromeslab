@@ -6,8 +6,10 @@ This is the authoritative workflow description. Status terms mean:
 - **planned**: product behavior is agreed enough to schedule;
 - **design in progress**: goals are known, but schema or method is unresolved.
 
-The first intent-clarification execution and user confirmation are implemented;
-scope clarification and later scientific stages remain planned or in design.
+Research-direction clarification, the first project-framing round, and the
+bounded framing-readiness/follow-up stage are implemented. Their internal names
+retain `intent` and `scope` for data compatibility. The current-cycle research
+charter and later scientific stages remain planned or in design.
 
 ## Cross-cutting workflow rules
 
@@ -34,15 +36,19 @@ place once a started or completed workflow job uses it as input. Project tags
 remain separately mutable display metadata; users can also add notes later
 without altering the question.
 
-### Step 1 — Research intent clarification (implemented)
+### Step 1 — Current research direction (implemented)
 
 Each project snapshots a versioned, editable intent-clarification prompt before
 the first call. An LLM reads only the preserved original question and returns a
 strictly validated JSON questionnaire with three to seven distinct, relevant
-research purposes. It does not define detailed scope or generate search queries.
+research directions. The active version 2 treats broad evidence mapping as a
+valid immediate objective and distinguishes the current cycle from later or
+parallel goals. It does not define literature-search scope or generate queries.
 
-The user selects exactly one primary intent, may check multiple secondary
-intents, and may add a free-form qualification. Generated choices and the user's
+The user selects exactly one current objective, may check multiple later or
+parallel goals, and may add a free-form qualification. The persisted version-1
+artifact schema retains the field names `primary_intent_id` and
+`secondary_intent_ids` for compatibility. Generated choices and the user's
 confirmed decision are separate immutable, SHA-256-addressed JSON artifacts. The
 selection records the exact question artifact it answers and cannot be silently
 rewritten. Enqueueing snapshots the question, prompt/version, provider, model,
@@ -59,30 +65,62 @@ Intent clarification is one logical stage. A cancelled or failed call may be
 retried without deleting the retained attempt. The generated questionnaire and
 confirmed decision for a completed attempt are not iteratively regenerated.
 
-### Step 2 — Scope clarification (planned)
+### Step 2 — Project framing (implemented; internally scope clarification)
 
-The first LLM round will use the original question and confirmed intent to
-generate three to seven material scope questions as validated JSON. Each question
+The first LLM round uses the original question and exact effective confirmed
+direction artifact to generate one to five material project-framing questions as
+validated JSON. Each question
 declares whether it is single-choice or multiple-choice, explains why the choice
-matters, provides concise options, and accepts a manual note or an exclusive
-"not sure" response.
+matters, provides concise options, and accepts a manual note or a "not sure"
+response that is exclusive of suggested choices. A manual note may explain that
+uncertainty, qualify selected choices, or serve as the complete answer when the
+generated options do not fit. The active version 4 prompt asks only about the
+purpose, conceptual boundary, user-known constraints, or ordering of the current
+cycle. It explicitly forbids questions that belong to later query and screening
+scope and forbids asking the user to decide scientific unknowns that evidence is
+supposed to resolve. It may return fewer questions rather than manufacture
+search-scope choices. Its version-2 output schema declares options as independent
+or cumulative; cumulative boundaries must be single-choice, while multiple-choice
+options must be independent. Generated questions and
+each confirmed or edited answer set are separate immutable, SHA-256-addressed
+artifacts. Downstream enqueueing locks the effective answer version.
 
-After the user confirms the first round, a second LLM evaluation either declares
-the scope ready or generates only the remaining material questions. At most one
-automatic follow-up round is planned; the user may accept explicitly recorded
-uncertainties rather than being trapped in an open-ended loop. Reconnaissance
+After the user confirms the first round, a separate explicit LLM job evaluates
+whether the project is framed clearly enough to construct a current-cycle
+research charter. It does not judge scientific truth, supporting evidence, or
+feasibility. A broad exploratory project can be ready while retaining unknown
+mechanisms, candidates, outcomes, and validation strategies as investigation
+objectives or deferred decisions. The job
+snapshots the exact effective first-round answer artifact it consumes and returns
+validated JSON containing a readiness decision, concise assessment, remaining or
+accepted uncertainties, and either zero follow-up questions when ready or one to
+five questions when a material ambiguity remains.
+
+Only one follow-up questionnaire is permitted. It reuses the first-round answer
+controls: suggested single- or multiple-choice answers, a manual note, and an
+explicit Not sure response. Its confirmed answers are immutable numbered
+artifacts and remain editable only until the charter job is queued. After this
+round, the workflow advances with unresolved uncertainty recorded rather than
+starting an open-ended clarification loop. Not sure, note-only, broad, and
+inclusive responses are treated as completed answers: the readiness provider
+must preserve their uncertainty rather than ask the same decision again. The
+active version 4 prompt also prohibits follow-ups about study eligibility,
+sources, queries, or screening criteria and requires literal interpretation of
+selected IDs without silently including an unselected option. The application
+rejects structurally inconsistent option sets and any follow-up that repeats an
+answered first-round question by ID or normalized wording.
+First-round answers lock as soon as the readiness job is queued. Reconnaissance
 search is intentionally deferred until formal search/query generation and later
 workflow behavior have been designed and tested.
 
-### Step 3 — Research charter (planned)
+### Step 3 — Current-cycle research charter (planned)
 
-The LLM will turn the original question, confirmed intent, scope answers, notes,
-and accepted uncertainties into a readable research charter. The charter will
-state the refined question, primary and secondary goals, inclusions, exclusions,
-target entities or systems, outcomes, desired evidence, terminology, and known
-uncertainties as applicable rather than forcing every project into one scientific
-framework. The user reviews and explicitly approves an effective version before
-downstream work may consume it.
+The LLM will turn the original question, confirmed direction, project-framing
+answers, notes, investigation objectives, deferred decisions, and accepted
+uncertainties into a readable charter for the next cycle. An exploratory charter
+states the subject and purpose without pretending that evidence-dependent
+mechanisms, candidates, or conclusions are already decided. The user reviews and
+explicitly approves an effective version before downstream work may consume it.
 
 ### Legacy question detailing (implemented compatibility path)
 
@@ -93,11 +131,18 @@ explicit transition or fork from a legacy output remains to be designed.
 
 ### Step 4 — Literature investigation strategy (planned)
 
-The user chooses enabled scientific sources, initially expected to be Europe PMC
-and later PubMed. The LLM generates source-specific queries with an explicit
-purpose. Exact generated queries are stored and can be edited through the same
-original/effective version mechanism. Search execution consumes the effective
-query version.
+This stage, not project framing, owns the scope of literature data acquisition.
+The user chooses enabled scientific sources and decides applicable search and
+screening dimensions such as study populations or species, evidence stages,
+study designs, publication types, dates, languages, outcomes, and inclusion or
+exclusion rules. An intended animal application captured during framing is
+distinct from the later decision to include animal studies as evidence.
+
+The first source is expected to be Europe PMC and later PubMed. The LLM generates
+purpose-labelled, source-specific query families rather than forcing a broad
+exploration into one query. Exact generated queries are stored and can be edited
+through the same original/effective version mechanism. Search execution consumes
+the effective query version.
 
 ### Step 5 — Literature retrieval (planned)
 
@@ -124,6 +169,14 @@ The first implementation will define and report at least:
 
 Identity precedence and treatment of multiple results from the same source remain
 to be specified before implementation.
+
+### Evidence-informed research-cycle iteration (planned)
+
+After enough retrieval, screening, extraction, and synthesis exists for a useful
+decision, the application presents a checkpoint. The user may continue the broad
+exploration, narrow one direction, stop, or fork several directions. A subsequent
+cycle links to the exact prior charter, evidence state, and user decision. It does
+not edit or reinterpret the consumed history of the earlier cycle.
 
 ## Later workflow: design in progress
 

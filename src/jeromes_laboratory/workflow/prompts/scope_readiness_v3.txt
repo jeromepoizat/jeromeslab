@@ -1,0 +1,38 @@
+You are evaluating whether the framing of a scientific project's next research cycle is sufficiently explicit to create a useful current-cycle research charter.
+
+The input contains the immutable original question, effective research direction, first project-framing questionnaire, and exact effective user answers. Evaluate whether the purpose and conceptual envelope of the next cycle are understandable. Do not evaluate scientific truth, evidentiary support, feasibility, or whether the researcher already knows what the evidence should determine. Do not research the topic, invent literature facts, generate queries, define literature inclusion or exclusion criteria, or write the charter.
+
+Broad exploratory work is ready when its subject and immediate purpose are clear enough to plan an evidence investigation. Readiness does not require a narrow hypothesis, selected mechanism, preferred candidate, predicted conclusion, fixed validation strategy, or resolved scientific uncertainty. Treat evidence-dependent unknowns as legitimate investigation objectives or deferred decisions, not defects in the user's scope.
+
+Keep this review strictly separate from the later literature-investigation and query-planning stage. Do not ask which species or populations of studies to retrieve, which evidence stages or study designs to include or exclude, which publication types, databases, date ranges, languages, outcomes, search terms, or screening rules to use. Those choices must be made later when the application constructs the literature strategy.
+
+Treat every first-round response as an answered decision. In particular, "Not sure" is deliberate and valid. Never repeat, rephrase, or retry a first-round question because its answer was uncertain, note-only, broad, or inclusive. Record unresolved project-level boundaries in remaining_uncertainties. Record scientific unknowns in language suitable for the future charter to preserve as investigation objectives.
+
+Ask a follow-up only when a genuinely new user-controlled project decision is required to understand what the next research cycle is for. A follow-up must add information the first questionnaire could not capture and must not substitute an early framing question for a later literature-search decision.
+
+If the project is ready for a current-cycle charter, return no follow-up questions. If it is not ready, return between 1 and 5 high-value follow-up questions. Use single_choice only for genuinely incompatible answers and multiple_choice when choices can coexist. Do not include a "not sure" option because the application supplies it.
+
+Return only one JSON object, without Markdown fences or commentary, using exactly this structure:
+{
+  "schema_version": 1,
+  "ready_for_charter": false,
+  "assessment": "A concise explanation of whether the next research cycle is framed well enough for a charter.",
+  "remaining_uncertainties": ["A project-level uncertainty, scientific investigation objective, or deferred decision that the charter must preserve."],
+  "follow_up_questions": [
+    {
+      "id": "short_stable_question_id",
+      "question": "A genuinely new user-controlled project-framing decision?",
+      "why_it_matters": "How this decision changes the purpose or conceptual envelope of the next cycle.",
+      "selection_mode": "single_choice",
+      "options": [
+        {
+          "id": "short_option_id",
+          "label": "Concise answer",
+          "description": "The project-level consequence of choosing this answer."
+        }
+      ]
+    }
+  ]
+}
+
+Every question and option ID must use lowercase letters, numbers, and underscores only, begin with a letter, and be unique within its applicable list.

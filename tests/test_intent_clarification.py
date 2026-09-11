@@ -26,6 +26,8 @@ from jeromes_laboratory.llm.generation import (
 from jeromes_laboratory.llm.settings import LLMSettingsService
 from jeromes_laboratory.storage.workspace import DATABASE_FILE_NAME, WorkspaceService
 from jeromes_laboratory.workflow.intent_clarification import (
+    DEFAULT_INTENT_CLARIFICATION_PROMPT,
+    INTENT_CLARIFICATION_PROMPT_VERSION,
     IntentClarificationError,
     parse_intent_clarification_output,
 )
@@ -91,6 +93,13 @@ class IntentGateway:
         )
 
 
+def test_default_direction_prompt_supports_evidence_led_exploration() -> None:
+    assert INTENT_CLARIFICATION_PROMPT_VERSION == "2"
+    assert "broad exploration" in DEFAULT_INTENT_CLARIFICATION_PROMPT.casefold()
+    assert "current objective" in DEFAULT_INTENT_CLARIFICATION_PROMPT.casefold()
+    assert "study types" in DEFAULT_INTENT_CLARIFICATION_PROMPT.casefold()
+
+
 def configured_workspace(tmp_path: Path) -> tuple[WorkspaceService, Path]:
     service = WorkspaceService(
         configuration_directory=tmp_path / "workspace-config",
@@ -124,9 +133,7 @@ def test_worker_preserves_validated_intent_questions_and_user_selection(
     repository = JobRepository(database_path)
     queued = repository.enqueue_intent_clarification(project.id, "openai", "gpt-example")
 
-    assert JobWorker(
-        workspace_service, MemoryCredentialStore(), IntentGateway()
-    ).run_once() is True
+    assert JobWorker(workspace_service, MemoryCredentialStore(), IntentGateway()).run_once() is True
 
     completed = repository.get_job(queued.id)
     assert completed.status == "completed"
@@ -288,9 +295,7 @@ def test_confirmed_intent_edits_create_versions_until_downstream_is_queued(
     assert json.loads(versions[0][1])["primary_intent_id"] == "evidence_landscape"
 
     with pytest.raises(ValueError, match="edited elsewhere"):
-        repository.edit_intent_selection(
-            job.id, "mechanism", [], "Stale edit", base_version=1
-        )
+        repository.edit_intent_selection(job.id, "mechanism", [], "Stale edit", base_version=1)
 
     with sqlite3.connect(database_path) as connection:
         connection.execute(
@@ -314,9 +319,7 @@ def test_confirmed_intent_edits_create_versions_until_downstream_is_queued(
     locked = repository.get_job(job.id)
     assert locked.intent_selection_is_editable is False
     with pytest.raises(ValueError, match="downstream job"):
-        repository.edit_intent_selection(
-            job.id, "mechanism", [], "Too late", base_version=2
-        )
+        repository.edit_intent_selection(job.id, "mechanism", [], "Too late", base_version=2)
 
 
 def test_effective_intent_migration_selects_an_existing_confirmation(tmp_path: Path) -> None:

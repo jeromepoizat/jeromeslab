@@ -114,6 +114,12 @@ class ProjectResponse(BaseModel):
     intent_clarification_prompt: str
     intent_clarification_prompt_version: str
     intent_clarification_prompt_is_editable: bool
+    scope_clarification_prompt: str
+    scope_clarification_prompt_version: str
+    scope_clarification_prompt_is_editable: bool
+    scope_readiness_prompt: str
+    scope_readiness_prompt_version: str
+    scope_readiness_prompt_is_editable: bool
 
 
 class CreateProjectRequest(BaseModel):
@@ -142,6 +148,18 @@ class UpdateQuestionDetailingPromptRequest(BaseModel):
 
 class UpdateIntentClarificationPromptRequest(BaseModel):
     """The exact project prompt used to generate research-intent choices."""
+
+    prompt: str = Field(min_length=1, max_length=20_000)
+
+
+class UpdateScopeClarificationPromptRequest(BaseModel):
+    """The exact project prompt used to generate first-round scope questions."""
+
+    prompt: str = Field(min_length=1, max_length=20_000)
+
+
+class UpdateScopeReadinessPromptRequest(BaseModel):
+    """The exact project prompt used for the bounded readiness review."""
 
     prompt: str = Field(min_length=1, max_length=20_000)
 
@@ -197,6 +215,84 @@ class UpdateIntentSelectionRequest(SubmitIntentSelectionRequest):
     base_version: int = Field(ge=1)
 
 
+class ScopeOptionResponse(BaseModel):
+    """One provider-generated answer option for a scope decision."""
+
+    id: str
+    label: str
+    description: str
+
+
+class ScopeQuestionResponse(BaseModel):
+    """One validated decision in a scope-clarification round."""
+
+    id: str
+    question: str
+    why_it_matters: str
+    selection_mode: Literal["single_choice", "multiple_choice"]
+    option_structure: Literal["independent", "cumulative"] | None = None
+    options: list[ScopeOptionResponse]
+
+
+class ScopeQuestionsResponse(BaseModel):
+    """The immutable provider-generated first scope round."""
+
+    schema_version: Literal[1, 2]
+    introduction: str
+    questions: list[ScopeQuestionResponse]
+
+
+class ScopeAnswerRequest(BaseModel):
+    """A flexible answer using suggestions, a manual note, or explicit uncertainty."""
+
+    question_id: str = Field(min_length=1, max_length=64)
+    selected_option_ids: list[str] = Field(default_factory=list, max_length=7)
+    note: str = Field(default="", max_length=5_000)
+    is_unsure: bool = False
+
+
+class ScopeAnswersResponse(BaseModel):
+    """The currently effective immutable answer version."""
+
+    schema_version: Literal[1]
+    questions_artifact_id: str
+    answers: list[ScopeAnswerRequest]
+
+
+class SubmitScopeAnswersRequest(BaseModel):
+    """A complete first-round scope response."""
+
+    answers: list[ScopeAnswerRequest] = Field(min_length=1, max_length=7)
+
+
+class UpdateScopeAnswersRequest(SubmitScopeAnswersRequest):
+    """A new answer version based on the effective version seen by the user."""
+
+    base_version: int = Field(ge=1)
+
+
+class ScopeReadinessResponse(BaseModel):
+    """Validated readiness decision and optional final questionnaire."""
+
+    schema_version: Literal[1, 2]
+    ready_for_charter: bool
+    assessment: str
+    remaining_uncertainties: list[str]
+    follow_up_questions: list[ScopeQuestionResponse]
+
+
+class SubmitScopeFollowUpAnswersRequest(BaseModel):
+    """A complete response to the optional one-to-five-question follow-up."""
+
+    answers: list[ScopeAnswerRequest] = Field(min_length=1, max_length=5)
+
+
+class UpdateScopeFollowUpAnswersRequest(SubmitScopeFollowUpAnswersRequest):
+    """A new follow-up version based on the effective version shown."""
+
+    base_version: int = Field(ge=1)
+
+
 class JobResponse(BaseModel):
     """Safe queue, result, and concise call-provenance state for the UI."""
 
@@ -213,6 +309,7 @@ class JobResponse(BaseModel):
     scientific_question_snapshot: str
     prompt_snapshot: str
     prompt_template_version: str
+    workflow_input_snapshot_json: str | None
     error: str | None
     output_markdown: str | None
     original_output_markdown: str | None
@@ -229,6 +326,14 @@ class JobResponse(BaseModel):
     intent_selection: IntentSelectionResponse | None
     intent_selection_version: int | None
     intent_selection_is_editable: bool
+    scope_questions: ScopeQuestionsResponse | None
+    scope_answers: ScopeAnswersResponse | None
+    scope_answers_version: int | None
+    scope_answers_is_editable: bool
+    scope_readiness_review: ScopeReadinessResponse | None
+    scope_follow_up_answers: ScopeAnswersResponse | None
+    scope_follow_up_answers_version: int | None
+    scope_follow_up_answers_is_editable: bool
 
 
 class ClientStateResponse(BaseModel):

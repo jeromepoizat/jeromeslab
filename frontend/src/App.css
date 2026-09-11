@@ -542,7 +542,7 @@ main.project-main {
 .intent-introduction p, .confirmed-intent p, .confirmed-intent li { color: var(--muted); line-height: 1.55; }
 .intent-form, .confirmed-intent { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 0.7rem; margin-top: 1rem; padding: 1rem; }
 .confirmed-intent { position: relative; }
-.intent-edit-button { background: transparent; border: 0; border-radius: 0.35rem; color: var(--muted); cursor: pointer; font: inherit; font-size: 1rem; padding: 0.4rem 0.5rem; position: absolute; right: 0.65rem; top: 0.65rem; }
+.intent-edit-button { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 0.4rem; bottom: 0; color: var(--ink); cursor: pointer; font: inherit; font-size: 1.1rem; padding: 0.35rem 0.5rem; position: absolute; right: -3rem; }
 .intent-edit-button:hover { background: var(--surface-hover); color: var(--ink); }
 .intent-edit-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 0.12rem; }
 .intent-choice-headings, .intent-option { align-items: center; display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr) 5rem 7rem; }
@@ -568,6 +568,30 @@ main.project-main {
 .intent-saved-note { background: var(--input-background); border-left: 3px solid var(--focus); margin-bottom: 0; padding: 0.75rem 0.9rem; white-space: pre-wrap; }
 .intent-next-step { align-items: center; border-top: 1px solid var(--border); color: var(--muted); display: flex; gap: 0.8rem; margin-top: 1.2rem; padding-top: 1rem; }
 .intent-provenance { margin-top: 1rem; }
+
+.scope-introduction { color: var(--muted); line-height: 1.55; margin: 1rem 0; }
+.scope-form { display: grid; gap: 1rem; }
+.scope-question { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 0.7rem; margin: 0; min-width: 0; padding: 1rem; }
+.scope-question-heading { align-items: flex-start; color: var(--ink); display: flex; gap: 0.65rem; }
+.scope-question-heading > span { align-items: center; background: var(--surface-hover); border: 1px solid var(--border); border-radius: 50%; display: inline-flex; flex: 0 0 1.7rem; font-size: 0.72rem; height: 1.7rem; justify-content: center; }
+.scope-question-heading h3 { color: var(--ink); font-family: Georgia, 'Times New Roman', serif; font-size: 1.2rem; line-height: 1.3; margin: 0.08rem 0 0; }
+.scope-question > p { color: var(--muted); line-height: 1.5; margin: 0.75rem 0 0.85rem; }
+.scope-options { display: grid; gap: 0.55rem; }
+.scope-option { align-items: flex-start; background: var(--input-background); border: 1px solid var(--border); border-radius: 0.6rem; cursor: pointer; display: flex; gap: 0.75rem; padding: 0.8rem; }
+.scope-option:hover, .scope-option:has(input:checked) { border-color: var(--focus); }
+.scope-option:has(input:checked) { background: var(--surface-hover); }
+.scope-option input { accent-color: var(--focus); flex: 0 0 auto; height: 1.05rem; margin: 0.16rem 0 0; width: 1.05rem; }
+.scope-option > span { display: grid; gap: 0.2rem; }
+.scope-option strong { color: var(--ink); }
+.scope-option small { color: var(--muted); font-size: 0.8rem; line-height: 1.45; }
+.scope-option--unsure { border-style: dashed; }
+.scope-clear-options { margin-top: 0.55rem; }
+.scope-note { display: grid; gap: 0.45rem; margin-top: 0.8rem; }
+.scope-note > span { color: var(--ink); font-size: 0.82rem; font-weight: 700; }
+.scope-note textarea { min-height: 4rem; resize: vertical; }
+.confirmed-scope-answer { border-bottom: 1px solid var(--border); padding: 0.4rem 2.6rem 1rem 0; }
+.confirmed-scope-answer:last-child { border-bottom: 0; padding-bottom: 0.4rem; }
+.confirmed-scope-answer ul { margin-bottom: 0; padding-left: 1.3rem; }
 
 .model-change-button {
   align-items: center;

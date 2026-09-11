@@ -1,6 +1,6 @@
 # Current status
 
-Last updated: 2026-09-09
+Last updated: 2026-09-11
 
 ## Current milestone
 
@@ -37,6 +37,10 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   SHA-256/size verification, then pointer switch; it never deletes the source.
 - The launcher coordinates one loopback backend process per user. A second start
   opens the existing healthy or starting instance and exits; stale records recover.
+- Workspace schema initialization is process-cached and protected by a lock.
+  Concurrent browser startup requests cannot enter Alembic simultaneously, which
+  previously produced an intermittent `/api/jobs` 500 response with Alembic's
+  process-global proxy state and appeared as a blank page in Opera.
 - The application now has a projects-only left navigation panel, expanded by
   default. The central area restores the last valid project and scroll position
   from device-local UI state, or shows a minimal scientific-question/start form.
@@ -98,20 +102,69 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   explicit effective-version selection. The UI toggles between the permanently
   read-only original provider output and the editable effective version; stale
   concurrent edits are rejected.
-- New and previously unused projects now begin with intent clarification instead
+- New and previously unused projects now begin with research-direction clarification instead
   of the legacy one-shot decomposition. A versioned, editable prompt asks the
   selected provider for strictly validated JSON containing three to seven
-  question-specific research purposes. The UI requires one primary intent,
-  permits multiple secondary intents and a free-form qualification, and preserves
-  the generated choices and confirmed decision as separate immutable,
-  SHA-256-addressed artifacts.
-- A confirmed research intent can be edited until downstream work is queued.
+  question-specific directions. Active version 2 treats broad evidence mapping as
+  a valid current objective and distinguishes later or parallel goals without
+  entering literature-search scope. The UI uses the same terms while the persisted
+  schema retains its version-1 field names. Generated choices and the confirmed
+  decision remain separate immutable, SHA-256-addressed artifacts.
+- A confirmed research direction can be edited until downstream work is queued.
   Corrections create immutable numbered selection versions, preserve the initial
   confirmation, reject stale saves, and move an explicit effective-version
   pointer. Migration 0011 selects confirmations created by the initial slice.
 - Job prompts use an advanced disclosure pattern: the prompt is hidden by default
   and a Show prompt/Hide prompt control in the job card reveals the standard
   editable field without burdening the normal workflow.
+- The first project-framing round is implemented for projects with a confirmed
+  direction. Its versioned prompt and queued job consume a canonical JSON
+  snapshot of the original question and exact effective intent artifact version.
+  Provider output is accepted only as validated JSON containing project-level
+  single- or multiple-choice questions.
+- Every scope question supports suggested choices, **Not sure** with an optional
+  explanatory note, or a manual note that may stand alone as the answer. Not sure
+  remains exclusive of suggested choices. Confirmed answer
+  sets are immutable, SHA-256-addressed artifacts; edits create numbered effective
+  versions until downstream work is queued. The project page and global queue
+  display the scope job with the same hidden-prompt, model, status, timer, and
+  navigation patterns as intent clarification. Migration 0012 backfills the
+  versioned default prompt for existing projects and adds the immutable structured
+  job-input snapshot field.
+- Scope-readiness review is implemented as an explicit queued LLM job after the
+  first answer set is confirmed. It snapshots that exact effective version and
+  accepts only validated JSON containing an operational readiness decision,
+  assessment, recorded uncertainties, and zero follow-up questions when ready or
+  one to five when clarification is still material. It does not claim to assess
+  scientific truth, evidence, or feasibility.
+- At most one follow-up questionnaire is allowed. It reuses the shared scope
+  answer interface and immutable versioning; accepted uncertainty never traps the
+  user in another automatic loop. First-round answers lock when readiness is
+  queued, and follow-up answers remain editable until the future charter job
+  consumes them. Migration 0013 adds the readiness prompt and upgrades only
+  unused version-1 scope prompts to the improved version 2, preserving consumed
+  prompts such as `PROJ007` byte-for-byte.
+- Readiness prompt version 2 treats Not sure, note-only, broad, and inclusive
+  first-round responses as completed decisions whose uncertainty is carried into
+  the charter. It forbids retrying them. A backend cross-input validator rejects
+  repeated follow-ups by question ID or normalized text while preserving the
+  rejected raw provider response. Migration
+  0014 updates only readiness prompts that no readiness job has consumed.
+- Prompt migration 0015 adopts evidence-led framing for future and unused
+  projects. Intent version 2 and framing/readiness version 3 established broad
+  exploratory cycles, evidence-dependent unknowns as investigation objectives,
+  and the prohibition on early query, retrieval, or screening-scope questions.
+  Consumed prompt snapshots such as `PROJ008` remain unchanged.
+- After `PROJ009` exposed a cumulative multiple-choice ambiguity, framing and
+  readiness prompt version 4 use structured-output schema version 2. Every
+  question declares independent or cumulative option semantics; cumulative sets
+  are rejected unless single-choice, and readiness must interpret selected IDs
+  literally. Migration 0016 updates only unconsumed version-3 defaults, so
+  `PROJ009` remains unchanged as the exact record that revealed the problem.
+- ADR 0013 records iterative research cycles: evidence can inform later narrowing,
+  continuation, stopping, or checkpoint forks without rewriting prior inputs or
+  outputs. A project application such as animal production remains distinct from
+  the later literature decision to retrieve or exclude animal studies.
 - Existing projects with question-detailing jobs retain the exact legacy
   interface and output history; the application does not silently migrate or
   reinterpret those scientific records.
@@ -182,19 +235,38 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 - Recorded the accepted intent → scope clarification → research charter workflow
   and explicitly deferred reconnaissance search until after the formal search
   pipeline is understood.
+- Implemented the first scope-question round with exact effective-intent input
+  snapshots, strict provider-output validation, flexible per-question responses,
+  immutable answer versioning, and the full project/queue interface.
+- Added the explicit scope-readiness job, strict ready-versus-follow-up output,
+  the single optional follow-up questionnaire, shared questionnaire UI, exact
+  answer-version snapshots, and immutable follow-up answer corrections.
+- Refined the default first-round scope prompt to version 2 while migration tests
+  prove already-consumed version-1 project history is not changed.
+- Prevented the readiness stage from asking an answered first-round question
+  again, including when the prior answer was Not sure, without modifying the
+  already-completed `PROJ007` record that revealed the issue.
+- Serialized and cached per-process workspace migration initialization after
+  Opera exposed a concurrent-request race; an eight-thread regression test proves
+  all callers receive the workspace while Alembic runs only once.
 
 ## Work in progress
 
-The first live intent-clarification path is implemented and ready for visual and
-provider-account verification. Scope clarification has not started.
+Research-direction clarification, project framing, and bounded
+readiness/follow-up are implemented. New evidence-led prompt defaults and
+user-facing terminology are ready for live provider-account evaluation before
+current-cycle charter implementation.
 
 ## Immediate next tasks
 
-1. Manually verify one live intent-clarification call and its selection interface
-   with user-owned OpenAI and Anthropic accounts.
-2. Design and implement validated dynamic scope questions, including single- and
-   multiple-choice modes, per-question notes, "not sure," and readiness review.
-3. Implement the optional second scope round and approved research charter.
+1. Run a new exploratory project through direction, framing, and readiness with a
+   user-owned provider account; verify that scientific unknowns and literature
+   eligibility choices are not asked prematurely.
+2. Design and implement the current-cycle research charter from the exact
+   clarified inputs, investigation objectives, deferred decisions, and recorded
+   uncertainties.
+3. Define charter approval/editing and downstream-lock behavior consistently with
+   existing immutable effective versions.
 4. Add immutable model-pricing snapshots and call/step/project cost aggregation.
 5. Verify the expanded queue and generation slice on the cross-platform CI matrix.
 

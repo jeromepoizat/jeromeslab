@@ -13,9 +13,7 @@ MIGRATIONS_DIRECTORY = Path(__file__).with_name("migrations")
 
 def database_url(database_path: Path) -> str:
     """Return a SQLite URL that correctly preserves platform-specific paths."""
-    return URL.create("sqlite", database=str(database_path)).render_as_string(
-        hide_password=False
-    )
+    return URL.create("sqlite", database=str(database_path)).render_as_string(hide_password=False)
 
 
 def upgrade_database(database_path: Path) -> None:

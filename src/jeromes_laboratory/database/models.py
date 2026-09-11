@@ -33,6 +33,10 @@ class Project(Base):
     question_detailing_prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
     intent_clarification_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     intent_clarification_prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    scope_clarification_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    scope_clarification_prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    scope_readiness_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    scope_readiness_prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
 
 
 class Job(Base):
@@ -61,6 +65,7 @@ class Job(Base):
     prompt_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
     prompt_template_id: Mapped[str] = mapped_column(String(128), nullable=False)
     prompt_template_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    workflow_input_snapshot_json: Mapped[str | None] = mapped_column(Text)
     error: Mapped[str | None] = mapped_column(Text)
 
 

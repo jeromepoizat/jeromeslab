@@ -50,7 +50,9 @@ class LLMSettingsService:
     def read(self) -> LLMSettings:
         try:
             if not self.settings_file.is_file():
-                return LLMSettings(None, None, False, {provider: [] for provider in SUPPORTED_PROVIDERS})
+                return LLMSettings(
+                    None, None, False, {provider: [] for provider in SUPPORTED_PROVIDERS}
+                )
             payload = json.loads(self.settings_file.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
             raise LLMSettingsError("The saved LLM settings could not be read.") from error
@@ -73,8 +75,7 @@ class LLMSettingsService:
                 [
                     item
                     for item in cached_models
-                    if isinstance(item, str)
-                    and is_compatible_model(supported_provider, item)
+                    if isinstance(item, str) and is_compatible_model(supported_provider, item)
                 ]
                 if isinstance(cached_models, list)
                 else []

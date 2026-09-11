@@ -8,6 +8,7 @@ import shutil
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 from typing import Literal
 from uuid import uuid4
 
@@ -67,6 +68,8 @@ class WorkspaceService:
         self._documents_directory = (
             documents_directory if documents_directory is not None else user_documents_path()
         )
+        self._initialization_lock = Lock()
+        self._initialized_workspace_path: Path | None = None
 
     @property
     def configuration_file(self) -> Path:
@@ -180,7 +183,7 @@ class WorkspaceService:
             location.path.mkdir(parents=True, exist_ok=True)
             for directory_name in ("artifacts", "exports", "backups"):
                 (location.path / directory_name).mkdir(exist_ok=True)
-            upgrade_database(location.path / DATABASE_FILE_NAME)
+            self._upgrade_database_once(location.path)
             self._write_workspace_marker(location.path)
             self._write_configuration(location.path)
         except OSError as error:
@@ -214,7 +217,7 @@ class WorkspaceService:
         self._validate_existing_workspace(workspace_path)
 
         try:
-            upgrade_database(workspace_path / DATABASE_FILE_NAME)
+            self._upgrade_database_once(workspace_path)
         except OSError as error:
             raise WorkspaceLocationError(
                 f"Jerome's Laboratory could not open '{workspace_path}'."
@@ -225,7 +228,9 @@ class WorkspaceService:
         """Point the device at a moved, recognized workspace without copying data."""
         availability = self.workspace_availability()
         if availability.kind != "unavailable":
-            raise WorkspaceLocationError("Workspace recovery is only needed when the saved folder is unavailable.")
+            raise WorkspaceLocationError(
+                "Workspace recovery is only needed when the saved folder is unavailable."
+            )
 
         location = self.inspect_path(path_value)
         if location.kind != "existing_workspace":
@@ -234,7 +239,7 @@ class WorkspaceService:
             )
         self._validate_existing_workspace(location.path)
         try:
-            upgrade_database(location.path / DATABASE_FILE_NAME)
+            self._upgrade_database_once(location.path)
             self._write_configuration(location.path)
         except OSError as error:
             raise WorkspaceLocationError(
@@ -246,15 +251,25 @@ class WorkspaceService:
         """Copy, byte-verify, then repoint one workspace; never remove its source."""
         availability = self.workspace_availability()
         if availability.kind != "available" or availability.path is None:
-            raise WorkspaceLocationError("The current workspace must be available before it can be moved.")
+            raise WorkspaceLocationError(
+                "The current workspace must be available before it can be moved."
+            )
         source_path = availability.path
         destination = self._normalize_path(destination_value)
-        if destination == source_path or self._is_within(destination, source_path) or self._is_within(source_path, destination):
-            raise WorkspaceLocationError("Choose a separate destination folder outside the current workspace.")
+        if (
+            destination == source_path
+            or self._is_within(destination, source_path)
+            or self._is_within(source_path, destination)
+        ):
+            raise WorkspaceLocationError(
+                "Choose a separate destination folder outside the current workspace."
+            )
 
         destination_location = self.inspect_path(str(destination))
         if destination_location.kind not in ("new", "empty"):
-            raise WorkspaceLocationError("Choose a new or empty destination folder for the workspace move.")
+            raise WorkspaceLocationError(
+                "Choose a new or empty destination folder for the workspace move."
+            )
 
         try:
             self._checkpoint_database(source_path / DATABASE_FILE_NAME)
@@ -263,7 +278,9 @@ class WorkspaceService:
             destination_parent = destination.parent
             destination_parent.mkdir(parents=True, exist_ok=True)
             if shutil.disk_usage(destination_parent).free < required_bytes:
-                raise WorkspaceLocationError("The destination drive does not have enough free space.")
+                raise WorkspaceLocationError(
+                    "The destination drive does not have enough free space."
+                )
 
             staging_path = destination_parent / f".{destination.name}.moving-{uuid4().hex}"
             shutil.copytree(source_path, staging_path, copy_function=shutil.copy2)
@@ -273,6 +290,8 @@ class WorkspaceService:
                 )
             staging_path.replace(destination)
             self._write_configuration(destination)
+            with self._initialization_lock:
+                self._initialized_workspace_path = destination
         except WorkspaceLocationError:
             raise
         except OSError as error:
@@ -290,6 +309,8 @@ class WorkspaceService:
 
         try:
             self.configuration_file.unlink()
+            with self._initialization_lock:
+                self._initialized_workspace_path = None
         except OSError as error:
             raise WorkspaceLocationError(
                 "Jerome's Laboratory could not forget the saved workspace location."
@@ -335,15 +356,24 @@ class WorkspaceService:
             raise WorkspaceLocationError("Choose a dedicated folder, not a drive root.")
         return normalized_path
 
+    def _upgrade_database_once(self, workspace_path: Path) -> None:
+        """Serialize Alembic and skip repeat upgrades for this process and workspace."""
+        with self._initialization_lock:
+            if self._initialized_workspace_path == workspace_path:
+                return
+            upgrade_database(workspace_path / DATABASE_FILE_NAME)
+            self._initialized_workspace_path = workspace_path
+
     def _validate_existing_workspace(self, workspace_path: Path) -> None:
         try:
             if not workspace_path.is_dir():
                 raise WorkspaceLocationError(
                     f"The configured workspace '{workspace_path}' could not be found. Locate its new folder or forget this saved location."
                 )
-            if not (workspace_path / WORKSPACE_MARKER_NAME).is_file() or not (
-                workspace_path / DATABASE_FILE_NAME
-            ).is_file():
+            if (
+                not (workspace_path / WORKSPACE_MARKER_NAME).is_file()
+                or not (workspace_path / DATABASE_FILE_NAME).is_file()
+            ):
                 raise WorkspaceLocationError(
                     f"The configured workspace '{workspace_path}' is incomplete or cannot be recognized. Locate its intact folder or forget this saved location."
                 )
@@ -370,13 +400,18 @@ class WorkspaceService:
         manifest: dict[str, tuple[int, str]] = {}
         for entry in workspace_path.rglob("*"):
             if entry.is_symlink():
-                raise WorkspaceLocationError("A workspace containing symbolic links cannot be moved yet.")
+                raise WorkspaceLocationError(
+                    "A workspace containing symbolic links cannot be moved yet."
+                )
             if entry.is_file():
                 digest = hashlib.sha256()
                 with entry.open("rb") as artifact:
                     for chunk in iter(lambda: artifact.read(1024 * 1024), b""):
                         digest.update(chunk)
-                manifest[str(entry.relative_to(workspace_path))] = (entry.stat().st_size, digest.hexdigest())
+                manifest[str(entry.relative_to(workspace_path))] = (
+                    entry.stat().st_size,
+                    digest.hexdigest(),
+                )
         return manifest
 
     def _write_configuration(self, workspace_path: Path) -> None:

@@ -5,6 +5,8 @@ import { IntentClarificationStage } from './IntentClarificationStage'
 import type { LLMSettings } from './LLMConfiguration'
 import { JobElapsedTime, JobStatusLabel, type Job } from './JobQueue'
 import { ChangeModelIcon, EditableField, SectionTitle } from './ProjectElements'
+import { ScopeClarificationStage } from './ScopeClarificationStage'
+import { ScopeReadinessStage } from './ScopeReadinessStage'
 
 type Project = {
   id: string
@@ -17,6 +19,12 @@ type Project = {
   intent_clarification_prompt: string
   intent_clarification_prompt_version: string
   intent_clarification_prompt_is_editable: boolean
+  scope_clarification_prompt: string
+  scope_clarification_prompt_version: string
+  scope_clarification_prompt_is_editable: boolean
+  scope_readiness_prompt: string
+  scope_readiness_prompt_version: string
+  scope_readiness_prompt_is_editable: boolean
 }
 
 type ClientState = { selected_project_id: string | null; scroll_top: number }
@@ -58,6 +66,10 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
   const saveTimer = useRef<number | null>(null)
   const jobCard = useRef<HTMLDivElement | null>(null)
   const jobOutput = useRef<HTMLElement | null>(null)
+  const scopeJobCard = useRef<HTMLDivElement | null>(null)
+  const scopeJobOutput = useRef<HTMLElement | null>(null)
+  const readinessJobCard = useRef<HTMLDivElement | null>(null)
+  const readinessJobOutput = useRef<HTMLElement | null>(null)
 
   const saveClientState = useCallback((state: ClientState) => {
     void fetch('/api/client-state', {
@@ -107,7 +119,8 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
       setError(null)
       saveClientState({ selected_project_id: jobNavigation.projectId, scroll_top: 0 })
       scrollTimer = window.setTimeout(() => {
-        const target = jobNavigation.target === 'output' ? jobOutput.current : jobCard.current
+        const target = document.getElementById(`${jobNavigation.target === 'output' ? 'job-output' : 'job-card'}-${jobNavigation.jobId}`)
+          ?? (jobNavigation.target === 'output' ? jobOutput.current : jobCard.current)
         target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 50)
     }, 0)
@@ -279,6 +292,12 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
   const intentJob = selectedProject === null
     ? null
     : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'intent_clarification') ?? null
+  const scopeJob = selectedProject === null
+    ? null
+    : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'scope_clarification_round_1') ?? null
+  const readinessJob = selectedProject === null
+    ? null
+    : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'scope_readiness') ?? null
   const selectedJob = legacyJob
   const activeJob = legacyJob !== null && (legacyJob.status === 'pending' || legacyJob.status === 'awaiting_response') ? legacyJob : null
   const isSidebarExpanded = !isCollapsed || (isSidebarHovered && !suppressHoverExpansion)
@@ -333,7 +352,7 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
               <button className="text-button" type="button" onClick={() => setIsEditingQuestion(false)} disabled={isSavingQuestion}>Cancel</button>
             </>}
           />
-          {legacyJob === null ? <IntentClarificationStage
+          {legacyJob === null ? <><IntentClarificationStage
             key={`${selectedProject.id}:${intentJob?.id ?? 'new'}:${intentJob?.intent_selection === null ? 'open' : 'selected'}`}
             project={selectedProject}
             job={intentJob}
@@ -346,7 +365,35 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
             onProjectLocked={() => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, question_is_editable: false, intent_clarification_prompt_is_editable: false } : project))}
             onJobsChanged={onJobsChanged}
             onOpenSettings={onOpenSettings}
-          /> : <>
+          />
+          {intentJob?.intent_selection !== null && intentJob?.intent_selection !== undefined && <ScopeClarificationStage
+            key={`${selectedProject.id}:${scopeJob?.id ?? 'new'}:${scopeJob?.scope_answers_version ?? 'open'}`}
+            project={selectedProject}
+            job={scopeJob}
+            setupToken={setupToken}
+            llmSettings={llmSettings}
+            nowMilliseconds={nowMilliseconds}
+            jobCardRef={scopeJobCard}
+            outputRef={scopeJobOutput}
+            onProjectUpdated={updated => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, ...updated } : project))}
+            onProjectLocked={() => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, scope_clarification_prompt_is_editable: false } : project))}
+            onJobsChanged={onJobsChanged}
+            onOpenSettings={onOpenSettings}
+          />}
+          {scopeJob?.scope_answers !== null && scopeJob?.scope_answers !== undefined && <ScopeReadinessStage
+            key={`${selectedProject.id}:${readinessJob?.id ?? 'new'}:${readinessJob?.scope_follow_up_answers_version ?? 'open'}`}
+            project={selectedProject}
+            job={readinessJob}
+            setupToken={setupToken}
+            llmSettings={llmSettings}
+            nowMilliseconds={nowMilliseconds}
+            jobCardRef={readinessJobCard}
+            outputRef={readinessJobOutput}
+            onProjectUpdated={updated => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, ...updated } : project))}
+            onProjectLocked={() => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, scope_readiness_prompt_is_editable: false } : project))}
+            onJobsChanged={onJobsChanged}
+            onOpenSettings={onOpenSettings}
+          />}</> : <>
           <section className="project-section">
             <SectionTitle help="Instructions used to turn this question into a structured research plan for later literature searches.">Question-detailing prompt</SectionTitle>
             <EditableField
@@ -359,7 +406,7 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
               editLabel="Edit question-detailing prompt"
               actions={<><button className="primary-button" type="button" onClick={() => void saveQuestionDetailingPrompt(selectedProject.id)} disabled={isSavingPrompt}>{isSavingPrompt ? 'Saving…' : 'Save prompt'}</button><button className="text-button" type="button" onClick={() => setIsEditingPrompt(false)} disabled={isSavingPrompt}>Cancel</button></>}
             />
-            <div ref={jobCard} className={`llm-job-provider ${isConfirmingJob ? 'llm-job-provider--confirming' : ''} ${activeJob !== null ? 'llm-job-provider--active' : ''}`}>
+            <div id={selectedJob === null ? undefined : `job-card-${selectedJob.id}`} ref={jobCard} className={`llm-job-provider ${isConfirmingJob ? 'llm-job-provider--confirming' : ''} ${activeJob !== null ? 'llm-job-provider--active' : ''}`}>
               {selectedJob?.status === 'completed' ? <div className="completed-job-card"><span>Question detailing</span><JobStatusLabel status="completed" /></div> : <>
                 <div className="llm-job-model"><div className="llm-job-model-label"><span>Model for this job</span><button className="model-change-button" type="button" onClick={onOpenSettings} title={llmSettings.configured ? 'Change model' : 'Configure model'} aria-label={llmSettings.configured ? 'Change model for future jobs' : 'Configure a model'}><ChangeModelIcon /></button></div>{activeJob !== null
                   ? <strong>{activeJob.provider === 'openai' ? 'OpenAI' : 'Anthropic'} · {activeJob.model}</strong>
@@ -383,7 +430,7 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
               {selectedJob?.error && <p className="setup-error">Previous attempt: {selectedJob.error}</p>}
             </div>}
           </section>
-          {selectedJob?.status === 'completed' && selectedJob.original_output_markdown !== null && selectedJob.effective_output_markdown !== null && <section ref={jobOutput} className="project-section job-output-section">
+          {selectedJob?.status === 'completed' && selectedJob.original_output_markdown !== null && selectedJob.effective_output_markdown !== null && <section id={`job-output-${selectedJob.id}`} ref={jobOutput} className="project-section job-output-section">
             <SectionTitle help="The exact Markdown returned by the configured model and preserved as an immutable, hash-addressed artifact.">Detailed scientific question</SectionTitle>
             <EditableField
               variant="multiline"

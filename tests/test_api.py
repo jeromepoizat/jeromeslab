@@ -59,7 +59,9 @@ async def test_workspace_setup_requires_token_and_initializes_selected_path(tmp_
 
     assert setup_response.status_code == 200
     assert setup["configured"] is False
-    assert setup["recommended_workspace_path"] == str(tmp_path / "Documents" / "Jerome's Laboratory")
+    assert setup["recommended_workspace_path"] == str(
+        tmp_path / "Documents" / "Jerome's Laboratory"
+    )
     assert unauthorized_response.status_code == 403
     assert configured_response.status_code == 200
     assert configured_response.json() == {"workspace_path": str(tmp_path / "research")}
@@ -123,7 +125,9 @@ async def test_move_workspace_api_keeps_original_data(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_projects_have_sequential_default_tags_and_mutable_display_tags(tmp_path: Path) -> None:
+async def test_projects_have_sequential_default_tags_and_mutable_display_tags(
+    tmp_path: Path,
+) -> None:
     workspace_service = WorkspaceService(
         configuration_directory=tmp_path / "config",
         documents_directory=tmp_path / "Documents",

@@ -5,4 +5,3 @@ now so that the repository layout and Python project metadata have a stable home
 """
 
 __version__ = "0.0.0"
-

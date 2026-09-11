@@ -44,7 +44,9 @@ def is_compatible_model(provider: ProviderName, model_id: str) -> bool:
 class ProviderModelCatalog:
     """Retrieve account-visible models through provider HTTP APIs."""
 
-    def __init__(self, *, timeout_seconds: float = 15.0, transport: httpx.BaseTransport | None = None):
+    def __init__(
+        self, *, timeout_seconds: float = 15.0, transport: httpx.BaseTransport | None = None
+    ):
         self._timeout_seconds = timeout_seconds
         self._transport = transport
 
@@ -54,7 +56,9 @@ class ProviderModelCatalog:
             models = self._fetch_openai_models(api_key)
         else:
             models = self._fetch_anthropic_models(api_key)
-        return list(dict.fromkeys(model for model in models if is_compatible_model(provider, model)))
+        return list(
+            dict.fromkeys(model for model in models if is_compatible_model(provider, model))
+        )
 
     def _fetch_openai_models(self, api_key: str) -> list[str]:
         response = self._get(
@@ -108,13 +112,9 @@ class ProviderModelCatalog:
                 f"{provider} temporarily limited the request. Wait briefly and try again."
             )
         if response.status_code >= 500:
-            raise ModelCatalogError(
-                f"{provider} is temporarily unavailable. Try again later."
-            )
+            raise ModelCatalogError(f"{provider} is temporarily unavailable. Try again later.")
         if not response.is_success:
-            raise ModelCatalogError(
-                f"{provider} could not list models available to this account."
-            )
+            raise ModelCatalogError(f"{provider} could not list models available to this account.")
         return response
 
     @staticmethod

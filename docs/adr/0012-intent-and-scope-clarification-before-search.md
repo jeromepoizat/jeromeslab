@@ -1,6 +1,6 @@
 # ADR 0012: Clarify intent and scope before formal search
 
-- Status: Accepted
+- Status: Amended by ADR 0013
 - Date: 2026-09-09
 
 ## Context
@@ -42,6 +42,11 @@ version until a downstream job is queued; it is never overwritten in place.
 Reconnaissance literature search is not part of these clarification stages yet.
 It is deferred until the formal query-generation and later literature workflow
 have been implemented and evaluated.
+
+ADR 0013 retains the provenance-bearing clarification checkpoints but changes
+their scientific purpose. Early clarification now frames the next research cycle
+without deciding literature-search eligibility or forcing evidence-dependent
+scientific unknowns into user preferences.
 
 ## Consequences
 

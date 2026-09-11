@@ -14,6 +14,34 @@ export type IntentSelection = {
   secondary_intent_ids: string[]
   note: string
 }
+export type ScopeOption = { id: string; label: string; description: string }
+export type ScopeQuestion = {
+  id: string
+  question: string
+  why_it_matters: string
+  selection_mode: 'single_choice' | 'multiple_choice'
+  option_structure?: 'independent' | 'cumulative' | null
+  options: ScopeOption[]
+}
+export type ScopeQuestions = { schema_version: 1 | 2; introduction: string; questions: ScopeQuestion[] }
+export type ScopeAnswer = {
+  question_id: string
+  selected_option_ids: string[]
+  note: string
+  is_unsure: boolean
+}
+export type ScopeAnswers = {
+  schema_version: 1
+  questions_artifact_id: string
+  answers: ScopeAnswer[]
+}
+export type ScopeReadinessReview = {
+  schema_version: 1 | 2
+  ready_for_charter: boolean
+  assessment: string
+  remaining_uncertainties: string[]
+  follow_up_questions: ScopeQuestion[]
+}
 
 export type Job = {
   id: string
@@ -29,6 +57,7 @@ export type Job = {
   scientific_question_snapshot: string
   prompt_snapshot: string
   prompt_template_version: string
+  workflow_input_snapshot_json: string | null
   error: string | null
   output_markdown: string | null
   original_output_markdown: string | null
@@ -45,6 +74,21 @@ export type Job = {
   intent_selection: IntentSelection | null
   intent_selection_version: number | null
   intent_selection_is_editable: boolean
+  scope_questions: ScopeQuestions | null
+  scope_answers: ScopeAnswers | null
+  scope_answers_version: number | null
+  scope_answers_is_editable: boolean
+  scope_readiness_review: ScopeReadinessReview | null
+  scope_follow_up_answers: ScopeAnswers | null
+  scope_follow_up_answers_version: number | null
+  scope_follow_up_answers_is_editable: boolean
+}
+
+function jobKindLabel(job: Job) {
+  if (job.kind === 'intent_clarification') return job.prompt_template_version === '2' ? 'Research direction' : 'Intent clarification'
+  if (job.kind === 'scope_clarification_round_1') return Number.parseInt(job.prompt_template_version, 10) >= 3 ? 'Project framing' : 'Scope clarification'
+  if (job.kind === 'scope_readiness') return Number.parseInt(job.prompt_template_version, 10) >= 3 ? 'Framing readiness review' : 'Scope readiness review'
+  return 'Question detailing'
 }
 
 const statusLabels: Record<JobStatus, string> = {
@@ -115,9 +159,9 @@ export function JobQueueDrawer({ jobs, nowMilliseconds, onClose, onCancel, onOpe
     <div className="settings-drawer-header"><div><p className="step-label">Research queue</p><h2 id="queue-title">Jobs</h2></div><button className="settings-close" type="button" aria-label="Close job queue" onClick={onClose}>×</button></div>
     {jobs.length === 0 ? <p className="queue-empty">No jobs have been started yet.</p> : <div className="queue-list">
       {jobs.map(job => <article className="queue-job" key={job.id}>
-        <button className="queue-job-open" type="button" onClick={() => onOpenJob(job)} aria-label={`Open ${job.project_tag} ${job.kind === 'intent_clarification' ? 'intent-clarification' : 'question-detailing'} job`}>
+        <button className="queue-job-open" type="button" onClick={() => onOpenJob(job)} aria-label={`Open ${job.project_tag} ${jobKindLabel(job)} job`}>
           <div className="queue-job-heading"><strong>{job.project_tag}</strong><JobStatusLabel status={job.status} /></div>
-          <p>{job.kind === 'intent_clarification' ? 'Intent clarification' : 'Question detailing'}</p>
+          <p>{jobKindLabel(job)}</p>
           <div className="queue-job-details"><small>{job.provider === 'openai' ? 'OpenAI' : 'Anthropic'} · {job.model}</small><JobElapsedTime job={job} nowMilliseconds={nowMilliseconds} /></div>
           {job.error && <p className="setup-error">{job.error}</p>}
         </button>
