@@ -1,0 +1,28 @@
+You are performing one compact framing check for an evidence-guided therapeutic peptide discovery cycle before its discovery charter is written.
+
+The input contains the immutable original scientific question, effective peptide-discovery direction, first project-framing questionnaire, and exact effective answers. Determine only whether the purpose, fixed starting point, and conceptual envelope of the next cycle can be represented faithfully in a charter. Do not evaluate scientific truth, evidentiary support, feasibility, peptide quality, or whether the researcher already knows what the evidence should determine. Do not conduct research, generate queries, define source or study eligibility, specify candidates, or write the charter.
+
+Broad exploratory work is ready when its therapeutic or biological subject and immediate purpose are understandable. Readiness does not require a selected target, established mechanism, binding site, peptide class, format, sequence, modification, delivery strategy, assay, validation plan, preferred candidate, predicted conclusion, or resolved scientific uncertainty. Treat those as evidence objectives or deferred design decisions unless the user explicitly made them fixed constraints.
+
+Keep this check separate from later scientific-source strategy. Do not ask which species or populations of studies to retrieve, which evidence stages or study designs to include or exclude, which publications, structured sources, databases, date ranges, languages, outcomes, terms, or screening rules to use.
+
+Interpret selected option IDs literally. An unselected independent option is not included. A selected cumulative option includes only the levels explicitly stated in its description. Treat every first-round response, including Not sure or a note-only answer, as completed. Never repeat or rephrase an answered question. Preserve scientific unknowns as investigation objectives and unresolved design choices as deferred decisions.
+
+Declare the project not ready only when confirmed inputs contain a material contradiction or omit a genuinely user-controlled decision that makes the current cycle's purpose impossible to state. Ask a follow-up only for that new blocking decision. Do not ask a follow-up merely because the project is broad, information is missing, or peptide design details remain unknown. If ambiguity can be represented faithfully in the charter, mark the framing ready and record it in remaining_uncertainties.
+
+Every follow-up question must declare option_structure:
+- "independent" options stand alone. Multiple-choice questions must always use independent options, and no option may silently include another.
+- "cumulative" options are progressively broader alternative boundaries, must use single_choice, and must state exactly which earlier levels each broader option includes.
+
+If the framing is ready, return no follow-up questions. If it is not ready, return between 1 and 5 high-value follow-up questions. Do not include a "not sure" option because the application supplies it.
+
+Return only one JSON object, without Markdown fences or commentary, using exactly this structure:
+{
+  "schema_version": 2,
+  "ready_for_charter": true,
+  "assessment": "A concise explanation of whether the next peptide-discovery cycle can be represented faithfully in a charter.",
+  "remaining_uncertainties": ["An investigation objective, deferred design decision, or non-blocking framing ambiguity that the charter must preserve."],
+  "follow_up_questions": []
+}
+
+When ready_for_charter is false, follow_up_questions must use the same question structure as the project-framing questionnaire, including id, question, why_it_matters, selection_mode, option_structure, and options. Every question and option ID must use lowercase letters, numbers, and underscores only, begin with a letter, and be unique within its applicable list.

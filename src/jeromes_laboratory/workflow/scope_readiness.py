@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 from jeromes_laboratory.workflow.scope_clarification import ScopeQuestion
 
-SCOPE_READINESS_PROMPT_VERSION = "4"
+SCOPE_READINESS_PROMPT_VERSION = "6"
 
 
 class ScopeReadinessError(ValueError):

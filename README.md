@@ -1,10 +1,14 @@
 # Jerome's Laboratory
 
-Jerome's Laboratory is an open-source, local, LLM-assisted scientific research
-application. It is intended to make a research process reproducible and
-inspectable: a scientific conclusion should be traceable through structured
-claims and evidence to publications, screening decisions, search runs, exact
-queries, and the original question.
+Jerome's Laboratory is an open-source, local, LLM-assisted therapeutic peptide
+discovery application. It is intended to make the path from an initial scientific
+question to evidence, peptide design requirements, candidates, and in-silico
+evaluation reproducible and inspectable.
+
+A candidate or design decision should ultimately be traceable through its exact
+computational method and inputs, approved peptide design brief, scientific claims
+and evidence, source records, screening decisions, searches, discovery charter,
+and original question.
 
 It is not intended to be an opaque scientific chatbot. The product will expose
 the workflow, preserve machine-generated and human-edited material, and record
@@ -12,31 +16,35 @@ the provenance and cost of every LLM-assisted transformation.
 
 ## Current status
 
-**Milestone 1: local application shell is in progress.** The Python and frontend
-environments are locked, the bootstrap is verified across all six supported
-OS/architecture combinations, and the local application includes its first live
-research-direction and bounded project-framing workflow with immutable
-provenance. See [current status](docs/STATUS.md) before starting work.
+**The product is now specialized in evidence-guided therapeutic peptide
+discovery.** The local application already implements research-direction and
+project-framing through charter approval with immutable provenance. New and
+unused stages now use peptide-specific direction, framing, framing-check, and
+charter prompts; consumed prompts and historical projects remain unchanged.
+Later evidence, design, and in-silico stages remain planned. See
+[current status](docs/STATUS.md) before starting work.
 
 ## Intended workflow
 
 The agreed early workflow is:
 
 1. preserve the user's exact scientific question;
-2. choose a current research objective and retain later or parallel goals;
-3. answer only the project-framing questions needed for the next cycle, with at
-   most one follow-up round;
-4. generate and approve a current-cycle research charter;
-5. separately define literature-search and screening scope, then generate and
-   review purpose-labelled, source-specific query families;
-6. retrieve, normalize, and deduplicate literature without discarding records;
-   and
-7. use the resulting evidence to continue broadly, narrow, stop, or fork a new
-   research direction without rewriting prior history.
+2. clarify the current peptide-discovery objective and later or parallel goals;
+3. frame only the user-controlled boundaries needed for the next investigation;
+4. generate and approve a peptide-discovery charter;
+5. plan and execute purpose-labelled searches across publications and relevant
+   structured scientific sources;
+6. screen records and extract traceable peptide-relevant evidence;
+7. synthesize the evidence into a human-approved peptide design brief;
+8. generate, adapt, or prioritize peptide candidates from that brief;
+9. run modular, provenance-bearing in-silico evaluations; and
+10. continue, narrow, stop, or fork without rewriting prior history.
 
-Screening, full-text resolution, evidence extraction, reconciliation, synthesis,
-and downstream computational research are later design areas. They are not yet
-finalized.
+The product can begin with broad target or disease exploration. It must not ask
+the user to guess evidence-dependent targets, mechanisms, sequences, formats, or
+development strategies simply to make the first investigation narrower. Screening,
+structured evidence extraction, the design brief, candidate generation, and
+in-silico evaluation still require explicit design before implementation.
 
 ## Architecture at a glance
 
@@ -122,16 +130,26 @@ artifacts.
 
 Broad exploration is a valid current objective. Framing asks only for the
 project-level purpose, conceptual boundary, or ordering needed for the next
-research cycle. It does not ask the user to predict evidence-dependent scientific
-answers or decide later literature-query and screening scope. An explicit
-readiness job either marks the framing ready for a current-cycle charter or
-generates the only permitted follow-up questionnaire. Unresolved scientific
+investigation. It does not ask the user to predict evidence-dependent scientific
+answers or decide later literature-query and screening scope. When framing
+produces questions, one explicit check either marks the framing ready for an
+investigation charter or generates the only permitted follow-up questionnaire.
+When no genuine user-controlled question remains, that separate LLM check is
+skipped and the deterministic reason is preserved in the charter input.
+Unresolved scientific
 questions are retained as investigation objectives or deferred decisions instead
 of causing an indefinite clarification loop. Provider output that repeats an
 answered question is rejected. Generated questions explicitly distinguish
 independent choices from cumulative boundaries, and an invalid cumulative
 multiple-choice question is also rejected. Raw call responses remain preserved.
 Consumed prompts and outputs keep their exact historical versions.
+Once framing is complete, generate a peptide-discovery charter, review its
+Markdown draft, and optionally edit it before choosing **Approve charter**.
+Edits need fresh approval. The completed charter card does not offer a
+regeneration action. The retained replacement-attempt lifecycle remains a
+backend capability so any future regeneration interface cannot overwrite prior
+attempts. Approval prepares the exact charter version for the later
+scientific-source investigation stage, which is not implemented yet.
 Existing projects with completed question-detailing outputs retain their original
 Markdown and manual versions as a compatibility path.
 
@@ -218,7 +236,7 @@ can still contain useful green results for the other systems.
 - [Contributing](CONTRIBUTING.md)
 - [Product vision](docs/PROJECT.md)
 - [Architecture](docs/ARCHITECTURE.md)
-- [Scientific workflow](docs/WORKFLOW.md)
+- [Therapeutic peptide discovery workflow](docs/WORKFLOW.md)
 - [Data model](docs/DATA_MODEL.md)
 - [Roadmap](docs/ROADMAP.md)
 - [Current status](docs/STATUS.md)

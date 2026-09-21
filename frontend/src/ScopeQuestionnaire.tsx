@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { JobStatusLabel, type ScopeAnswer, type ScopeAnswers, type ScopeQuestion } from './JobQueue'
+import { type ScopeAnswer, type ScopeAnswers, type ScopeQuestion } from './JobQueue'
 
 type Props = {
   questions: ScopeQuestion[]
@@ -55,7 +55,6 @@ export function ScopeQuestionnaire({ questions, savedAnswers, canEdit, confirmLa
         const selected = question.options.filter(option => answer?.selected_option_ids.includes(option.id))
         return <div className="confirmed-scope-answer" key={question.id}><p className="step-label">Question {index + 1}</p><h3>{question.question}</h3>{answer?.is_unsure && <p>Not sure</p>}{!answer?.is_unsure && selected.length > 0 && <ul>{selected.map(option => <li key={option.id}><strong>{option.label}</strong> — {option.description}</li>)}</ul>}{answer?.note && <p className="intent-saved-note">{answer.note}</p>}</div>
       })}
-      <div className="intent-next-step"><JobStatusLabel status="completed" /></div>
     </div>
   }
 

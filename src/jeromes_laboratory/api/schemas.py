@@ -120,6 +120,9 @@ class ProjectResponse(BaseModel):
     scope_readiness_prompt: str
     scope_readiness_prompt_version: str
     scope_readiness_prompt_is_editable: bool
+    research_charter_prompt: str
+    research_charter_prompt_version: str
+    research_charter_prompt_is_editable: bool
 
 
 class CreateProjectRequest(BaseModel):
@@ -168,6 +171,32 @@ class UpdateQuestionDetailingOutputRequest(BaseModel):
     """A manual revision based on the currently effective immutable version."""
 
     markdown: str = Field(min_length=1, max_length=100_000)
+    base_version: int = Field(ge=1)
+
+
+class UpdateResearchCharterPromptRequest(BaseModel):
+    """Instructions saved for the next explicit charter-generation attempt."""
+
+    prompt: str = Field(min_length=1, max_length=20_000)
+
+
+class EnqueueResearchCharterRequest(BaseModel):
+    """An initial attempt or an explicit replacement of the visible charter."""
+
+    previous_job_id: str | None = Field(default=None, min_length=1, max_length=64)
+    base_version: int | None = Field(default=None, ge=1)
+
+
+class UpdateResearchCharterOutputRequest(BaseModel):
+    """A manual charter revision that will require fresh approval."""
+
+    markdown: str = Field(min_length=1, max_length=100_000)
+    base_version: int = Field(ge=1)
+
+
+class ApproveResearchCharterRequest(BaseModel):
+    """Approve precisely the effective charter version reviewed by the user."""
+
     base_version: int = Field(ge=1)
 
 
@@ -237,7 +266,7 @@ class ScopeQuestionResponse(BaseModel):
 class ScopeQuestionsResponse(BaseModel):
     """The immutable provider-generated first scope round."""
 
-    schema_version: Literal[1, 2]
+    schema_version: Literal[1, 2, 3]
     introduction: str
     questions: list[ScopeQuestionResponse]
 
@@ -334,6 +363,9 @@ class JobResponse(BaseModel):
     scope_follow_up_answers: ScopeAnswersResponse | None
     scope_follow_up_answers_version: int | None
     scope_follow_up_answers_is_editable: bool
+    charter_approved_at: str | None
+    charter_is_editable: bool
+    charter_can_regenerate: bool
 
 
 class ClientStateResponse(BaseModel):

@@ -256,9 +256,10 @@ main.project-main {
 .new-project-card > .step-label { margin-bottom: 1.75rem; }
 .project-view > .step-label { margin-bottom: 1.75rem; }
 .new-project-card h2, .project-view h2 { color: var(--ink); font-family: Georgia, 'Times New Roman', serif; font-size: clamp(1.75rem, 4vw, 2.75rem); font-weight: 500; letter-spacing: -0.035em; }
-.new-project-card input { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; box-sizing: border-box; color: var(--ink); font: inherit; margin: 1rem 0; padding: 0.9rem 1rem; width: 100%; }
-.new-project-card input:focus-visible { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 0.15rem; }
-.scientific-question { color: var(--ink); font-size: 1rem; line-height: 1.45; margin: 0; overflow: hidden; padding-right: 2.5rem; text-overflow: ellipsis; white-space: nowrap; }
+.new-project-card input, .new-project-card textarea { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; box-sizing: border-box; color: var(--ink); font: inherit; margin: 1rem 0; padding: 0.9rem 1rem; width: 100%; }
+.new-project-card input:focus-visible, .new-project-card textarea:focus-visible { border-color: var(--focus); outline: 2px solid var(--focus); outline-offset: 0.15rem; }
+.adaptive-question-entry { field-sizing: content; line-height: 1.45; max-height: 14rem; min-height: 3.25rem; overflow: auto; resize: none; }
+.scientific-question { color: var(--ink); font-size: 1rem; line-height: 1.45; margin: 0; overflow-wrap: anywhere; padding-right: 2.5rem; white-space: pre-wrap; }
 .project-section { border-top: 1px solid var(--border); margin-top: 2.5rem; padding-top: 1.5rem; }
 .section-title { align-items: center; display: flex; gap: 1rem; }
 .section-title h2 { margin: 0; }
@@ -276,11 +277,13 @@ main.project-main {
 .version-toggle-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 0.15rem; }
 .project-input-box { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; padding: 0.85rem 1rem; position: relative; transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
 .editable-field--single-line .project-input-box { align-items: center; display: flex; height: 3.25rem; }
+.editable-field--adaptive .project-input-box { box-sizing: border-box; max-height: 14rem; min-height: 3.25rem; overflow: auto; }
 .editable-field--multiline .project-input-box { height: 14rem; overflow: auto; padding-right: 1.25rem; scrollbar-color: var(--scrollbar-thumb) transparent; scrollbar-gutter: stable; scrollbar-width: auto; }
 .editable-field--multiline.editable-field--expanded .project-input-box { height: auto; min-height: 14rem; overflow: visible; }
 .project-input-box--editing { background: var(--surface-subtle); border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
 .project-input-box input, .project-input-box textarea { background: transparent; border: 0; color: var(--ink); font: inherit; height: 100%; line-height: inherit; margin: 0; outline: 0; padding: 0; width: 100%; }
 .project-input-box textarea { field-sizing: content; height: auto; line-height: 1.65; min-height: 100%; overflow: hidden; padding-right: 0; resize: none; }
+.editable-field--adaptive .project-input-box textarea { line-height: 1.45; min-height: 1.45rem; }
 .editable-field--expanded .project-input-box textarea { min-height: 12.2rem; }
 .project-input-box::-webkit-scrollbar { width: 1.05rem; }
 .project-input-box::-webkit-scrollbar-track { background: transparent; margin-block: 0.8rem; }
@@ -518,6 +521,7 @@ main.project-main {
 .active-job-summary > p { color: var(--muted); line-height: 1.5; margin: 0.75rem 0 0; }
 .active-job-summary > .text-button { display: block; margin-top: 0.65rem; padding-bottom: 0; }
 .llm-job-provider, .job-output-section { scroll-margin-top: 8rem; }
+.workflow-stage-output { margin-top: 1.25rem; }
 
 .job-prompt-toggle {
   align-self: center;
@@ -566,7 +570,6 @@ main.project-main {
 .confirmed-intent-secondary-label { margin-top: 1.2rem !important; }
 .confirmed-intent ul { margin-bottom: 0; padding-left: 1.2rem; }
 .intent-saved-note { background: var(--input-background); border-left: 3px solid var(--focus); margin-bottom: 0; padding: 0.75rem 0.9rem; white-space: pre-wrap; }
-.intent-next-step { align-items: center; border-top: 1px solid var(--border); color: var(--muted); display: flex; gap: 0.8rem; margin-top: 1.2rem; padding-top: 1rem; }
 .intent-provenance { margin-top: 1rem; }
 
 .scope-introduction { color: var(--muted); line-height: 1.55; margin: 1rem 0; }
@@ -593,6 +596,47 @@ main.project-main {
 .confirmed-scope-answer:last-child { border-bottom: 0; padding-bottom: 0.4rem; }
 .confirmed-scope-answer ul { margin-bottom: 0; padding-left: 1.3rem; }
 
+.readiness-card {
+  background: var(--surface-subtle);
+  border: 1px solid var(--border);
+  border-radius: 0.7rem;
+  overflow: hidden;
+}
+
+.readiness-card--complete { border-color: color-mix(in srgb, var(--focus) 55%, var(--border)); }
+.readiness-card-toggle, .readiness-card-heading { align-items: center; box-sizing: border-box; display: flex; gap: 0.75rem; min-height: 3.65rem; padding: 0.85rem 1rem; width: 100%; }
+.readiness-card-toggle { background: transparent; border: 0; color: var(--ink); cursor: pointer; font: inherit; text-align: left; }
+.readiness-card-toggle:hover { background: var(--surface-hover); }
+.readiness-card-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: -0.2rem; }
+.readiness-card-toggle strong, .readiness-card-heading strong { color: var(--ink); flex: 1; font-size: 0.92rem; line-height: 1.45; }
+.readiness-card-toggle strong span { color: var(--muted); font-weight: 600; }
+.readiness-card-indicator { background: var(--focus); border-radius: 50%; box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--focus) 16%, transparent); flex: 0 0 0.55rem; height: 0.55rem; width: 0.55rem; }
+.readiness-card--action-required .readiness-card-indicator { background: #d79b33; box-shadow: 0 0 0 0.2rem rgba(215, 155, 51, 0.14); }
+.readiness-card-chevron { fill: none; flex: 0 0 auto; height: 0.65rem; stroke: var(--muted); stroke-linecap: round; stroke-linejoin: round; stroke-width: 2; width: 1rem; }
+.readiness-card-details { border-top: 1px solid var(--border); padding: 1rem; }
+.readiness-assessment > p:last-child { color: var(--muted); line-height: 1.55; margin: 0.45rem 0 0; }
+.readiness-carry-forward { border-top: 1px solid var(--border); margin-top: 1rem; padding-top: 1rem; }
+.readiness-carry-forward ul { color: var(--muted); line-height: 1.55; margin: 0.65rem 0 0; padding-left: 1.25rem; }
+.readiness-provenance { border-top: 1px solid var(--border); margin-top: 1rem; }
+
+.charter-output-section { margin-top: 1.25rem; }
+.charter-output-section > .editable-field > .edit-controls { height: 4.25rem; }
+.charter-approval { align-items: center; background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 0.55rem; display: flex; gap: 1.5rem; justify-content: space-between; padding: 0.9rem 1rem; }
+.charter-approval strong { color: var(--ink); font-size: 0.95rem; }
+.charter-approval strong.charter-approved { color: var(--focus); }
+.charter-approval p, .charter-view-notice { color: var(--muted); font-size: 0.88rem; line-height: 1.5; margin: 0.35rem 0 0; }
+.charter-approval > button { flex: 0 0 auto; }
+.charter-used-prompt { color: var(--muted); font-size: 0.86rem; margin-top: 1rem; }
+.charter-used-prompt > pre { background: var(--surface); border: 1px solid var(--border); border-radius: 0.65rem; margin-top: 0.7rem; max-height: 18rem; overflow: auto; padding: 1rem; }
+.charter-history { border-top: 1px solid var(--border); color: var(--muted); margin-top: 1.5rem; padding-top: 1rem; }
+.charter-history summary, .charter-used-prompt > summary { cursor: pointer; }
+.charter-history summary:focus-visible, .charter-used-prompt > summary:focus-visible { border-radius: 0.25rem; outline: 2px solid var(--focus); outline-offset: 0.2rem; }
+.charter-attempt { border: 1px solid var(--border); border-radius: 0.55rem; margin-top: 0.75rem; padding: 0.85rem 1rem; scroll-margin-top: 8rem; }
+.charter-attempt > summary { color: var(--ink); font-size: 0.9rem; line-height: 1.6; }
+.charter-attempt > summary > span { margin-right: 0.8rem; }
+.charter-attempt .editable-side-actions { left: auto; right: 0.5rem; }
+.charter-attempt .job-time { display: inline; }
+
 .model-change-button {
   align-items: center;
   background: transparent;
@@ -613,6 +657,7 @@ main.project-main {
 
 @media (max-width: 44rem) {
   .llm-job-provider { align-items: stretch; flex-direction: column; gap: 0.75rem; }
+  .charter-approval { align-items: stretch; flex-direction: column; gap: 0.75rem; }
   .llm-job-model { max-width: 100%; }
   .llm-job-provider--confirming .llm-job-model, .llm-job-provider--active .llm-job-model { flex-basis: auto; }
   .job-prompt-toggle { align-self: flex-end; margin-left: 0; }

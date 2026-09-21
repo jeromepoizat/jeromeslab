@@ -23,7 +23,7 @@ export type ScopeQuestion = {
   option_structure?: 'independent' | 'cumulative' | null
   options: ScopeOption[]
 }
-export type ScopeQuestions = { schema_version: 1 | 2; introduction: string; questions: ScopeQuestion[] }
+export type ScopeQuestions = { schema_version: 1 | 2 | 3; introduction: string; questions: ScopeQuestion[] }
 export type ScopeAnswer = {
   question_id: string
   selected_option_ids: string[]
@@ -82,12 +82,17 @@ export type Job = {
   scope_follow_up_answers: ScopeAnswers | null
   scope_follow_up_answers_version: number | null
   scope_follow_up_answers_is_editable: boolean
+  charter_approved_at: string | null
+  charter_is_editable: boolean
+  charter_can_regenerate: boolean
 }
 
 function jobKindLabel(job: Job) {
-  if (job.kind === 'intent_clarification') return job.prompt_template_version === '2' ? 'Research direction' : 'Intent clarification'
-  if (job.kind === 'scope_clarification_round_1') return Number.parseInt(job.prompt_template_version, 10) >= 3 ? 'Project framing' : 'Scope clarification'
-  if (job.kind === 'scope_readiness') return Number.parseInt(job.prompt_template_version, 10) >= 3 ? 'Framing readiness review' : 'Scope readiness review'
+  const promptVersion = promptVersionNumber(job.prompt_template_version)
+  if (job.kind === 'intent_clarification') return promptVersion >= 3 ? 'Research goal questionnaire' : promptVersion === 2 ? 'Research direction' : 'Intent clarification'
+  if (job.kind === 'scope_clarification_round_1') return promptVersion >= 5 ? 'Assumptions and boundaries' : promptVersion >= 3 ? 'Project framing' : 'Scope clarification'
+  if (job.kind === 'scope_readiness') return promptVersion >= 5 ? 'Framing check' : promptVersion >= 3 ? 'Framing readiness review' : 'Scope readiness review'
+  if (job.kind === 'research_charter') return promptVersion >= 2 ? 'Peptide-discovery charter' : 'Research charter'
   return 'Question detailing'
 }
 
@@ -170,3 +175,4 @@ export function JobQueueDrawer({ jobs, nowMilliseconds, onClose, onCancel, onOpe
     </div>}
   </aside>
 }
+import { promptVersionNumber } from './promptVersion'

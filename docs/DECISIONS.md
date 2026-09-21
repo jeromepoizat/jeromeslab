@@ -18,6 +18,8 @@ unresolved ideas in other documentation are not decisions.
 | [0011](adr/0011-global-llm-provider-configuration.md) | Global provider defaults with filtered live model discovery | Accepted |
 | [0012](adr/0012-intent-and-scope-clarification-before-search.md) | Clarify research intent and scope before formal search | Amended by 0013 |
 | [0013](adr/0013-evidence-led-iterative-research-cycles.md) | Evidence-led iterative research cycles | Accepted |
+| [0014](adr/0014-charter-drafts-and-approval.md) | Charter drafts, explicit version approval, and preserved regeneration attempts | Accepted |
+| [0015](adr/0015-specialize-in-therapeutic-peptide-discovery.md) | Specialize the product in evidence-guided therapeutic peptide discovery | Accepted |
 
 Routine implementation choices belong in code and tests. Add an ADR when a
 choice constrains future architecture, security, scientific validity, data

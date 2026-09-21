@@ -1,4 +1,4 @@
-# Data model proposal
+# Therapeutic peptide discovery data model proposal
 
 This is a conceptual model for the agreed product behavior, not an implemented
 schema. SQLAlchemy models and Alembic migrations will make types, constraints,
@@ -90,20 +90,25 @@ numbered immutable versions and advance the job's effective-version pointer only
 until downstream work exists. The scope job also stores canonical JSON input that
 identifies and embeds the exact effective intent version consumed by the call.
 
-The readiness job then stores a canonical input snapshot that embeds the exact
-effective first-round answers and their source questionnaire. Its immutable
+When framing contains one or more questions, the readiness job stores a canonical
+input snapshot that embeds the exact effective first-round answers and their
+source questionnaire. Its immutable
 `scope_readiness_review` artifact contains the operational readiness decision,
 assessment, recorded uncertainties, and zero or one bounded follow-up
 questionnaire. When needed, each confirmation or correction of that questionnaire
 creates an immutable numbered `scope_follow_up_answers` artifact linked to the
 readiness-review artifact. The effective follow-up version can move only before a
 future charter job consumes it; no third automatic clarification round exists.
+When framing contains no questions, the empty application-created answer artifact
+is retained and charter input records a deterministic no-check source and
+assessment. No readiness job, provider call, or synthetic readiness artifact is
+created for that path.
 Framing-question schema version 2 marks each option set as `independent` or
 `cumulative`. Cumulative sets are valid only as single-choice boundaries;
 multiple-choice sets contain independent options. Older schema-version-1
 artifacts remain readable without adding or inferring this metadata.
 
-Readiness prompt version 4 defines every first-round response—including Not sure
+Readiness prompt version 6 defines every first-round response—including Not sure
 and a note-only response—as answered, accepts broad exploration, and keeps later
 literature-search eligibility out of project framing. A deterministic cross-input
 validator rejects repeated questions and structurally invalid cumulative options
@@ -111,6 +116,29 @@ before a readiness review becomes a trusted artifact. The rejected provider
 response remains available in the associated call record. The prompt requires
 selected option IDs to be interpreted literally rather than silently adding an
 unselected option.
+
+### Research charter and approval (implemented for the first investigation)
+
+Projects store the next `research_charter_prompt` and its version. Charter jobs
+retain their own prompt and canonical workflow-input snapshots, including the
+preserved direction/framing context, the framing-check source and readiness
+artifact when one exists, and the exact final answer version when applicable.
+The original Markdown and each manual revision are
+immutable `research_charter` artifacts using the existing effective-version
+selection and content hash mechanism.
+
+Charter approvals are append-only records of an exact artifact version and UTC
+time. Approval is effective only for the current version of the current completed
+charter and never transfers to an edit or regenerated output. Earlier approvals
+remain historical records. A pending replacement prevents downstream consumption;
+failure or cancellation restores access to the most recent completed charter.
+
+The repository exposes an approved-input snapshot containing the charter artifact,
+version, job, approval, Markdown, and investigation number. The persisted
+`cycle_number` key is retained for backward compatibility. Later jobs must retain that
+exact reference when enqueueing. The backend locks consumed charter versions;
+attempts to approve or edit stale versions are rejected. Multiple-investigation execution
+remains a later feature.
 
 ### Proposed integrity-verification behavior
 
@@ -225,7 +253,7 @@ Aggregated step/project/global usage and cost should normally be derived from
 call records. Materialized summaries may be added later for performance with a
 documented reconciliation rule.
 
-## Literature search and publications
+## Scientific searches and source records
 
 ### SearchQuery
 
@@ -257,6 +285,16 @@ search run and query, retrieval timestamp, raw-record artifact/reference, and
 source-specific metadata. This entity is the basis for per-query, per-source,
 exclusive, and overlap statistics.
 
+### StructuredSourceRecord
+
+Preserves a source-native record from a protein/target, structure, interaction,
+bioactivity, peptide, sequence/motif, assay, or other accepted scientific adapter.
+Expected fields include source and adapter version, source record identity,
+query/search-run relationship, retrieval time, raw record artifact, parsed schema
+version, and source-specific metadata. Publication deduplication rules do not
+apply automatically; cross-source entity resolution retains every contributing
+record and its conflicts.
+
 ## Later-stage entities (design in progress)
 
 ### ScreeningDecision
@@ -267,15 +305,51 @@ deleting the original decision. Schema is unresolved.
 
 ### EvidenceItem
 
-Will represent an atomic extracted result with source publication and exact source
-location, study/method context, quantitative content, extraction provenance, and
-confidence/uncertainty. Schema is unresolved.
+Will represent an atomic peptide-relevant result with a source publication or
+structured source record and exact source location/field, study or assay context,
+experimental system, method, quantitative content and units, extraction
+provenance, and confidence/uncertainty. It must distinguish direct observation,
+curated annotation, source-author interpretation, application inference, and
+computational prediction. Candidate domains include target/pathway, interaction
+interface, peptide identity/sequence/modification, structure, activity/affinity,
+efficacy, selectivity, safety, immunogenicity, stability, degradation, delivery,
+and manufacturability. Schema is unresolved.
 
 ### ScientificClaim
 
 Will group or express a claim supported or contradicted by evidence items and
 eventually connect synthesis text to its evidence chain. Reconciliation and
 weighting semantics are unresolved.
+
+### PeptideDesignBrief
+
+A reviewed, versioned bridge from evidence synthesis to candidate work. Expected
+dimensions include therapeutic purpose, target and intended modulation,
+interaction region or motif, peptide class, sequence/structure constraints,
+modifications, delivery context, selectivity, stability, safety,
+immunogenicity, and manufacturability. Each populated requirement references
+supporting evidence or an explicit user decision; unknown and conflicting
+requirements remain representable. Approval identifies one exact effective brief
+version, and candidate work consumes that version.
+
+### PeptideCandidate
+
+A stable candidate identity with immutable versions for exact sequence and an
+eventual chemical representation capable of recording relevant termini,
+cyclization, noncanonical residues, modifications, conjugates, and constraints.
+Expected provenance includes parent candidate(s), derivation operation, design
+brief version, creator, generator/tool/model version, parameters, seed where
+applicable, and creation time. Import, generation, user editing, and optimization
+must not erase lineage.
+
+### ComputationalEvaluation
+
+One attempt to evaluate one exact candidate version for one declared capability.
+Expected fields include capability, tool/provider/model and version, parameters,
+hardware/runtime context where material, exact input artifacts, raw output,
+parsed values and units, applicability-domain information, uncertainty, status,
+timing, error, and cost. Experimental and predicted values remain distinct;
+cross-capability ranking is not stored as an unexplained universal score.
 
 ## Relationship summary
 
@@ -289,8 +363,12 @@ Project --< WorkflowStep --< StepRun --< Job
 Artifact --< ArtifactVersion
 
 SearchQuery --< SearchRun --< PublicationSource >-- Publication
+                         `--< StructuredSourceRecord
 
 Publication --< ScreeningDecision --< EvidenceItem >-- ScientificClaim
+StructuredSourceRecord ----------------^                    |
+ScientificClaim --< PeptideDesignBrief --< PeptideCandidate
+PeptideCandidate --< ComputationalEvaluation
 ```
 
 Arrows describe conceptual cardinality only; final ownership and deletion rules

@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "jeromes-laboratory"
 version = "0.0.0"
-description = "A local, provenance-first scientific research application"
+description = "A local, provenance-first therapeutic peptide discovery application"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }

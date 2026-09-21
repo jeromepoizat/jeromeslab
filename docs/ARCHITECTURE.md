@@ -16,7 +16,8 @@ Browser (React/TypeScript)
 FastAPI application
   |-- workflow services ------> persistent sequential job worker
   |-- LLM service ------------> provider adapters
-  |-- literature service -----> scientific-source adapters
+  |-- evidence service -------> publication/structured-source adapters
+  |-- peptide services -------> design/computation adapters (planned)
   |-- repositories -----------> SQLite
   |-- artifact service -------> immutable files in application data
   `-- credential service -----> native OS credential store
@@ -25,6 +26,20 @@ FastAPI application
 The browser is a presentation client. FastAPI routes validate requests, call
 application services, and map results to response schemas; they do not contain
 scientific business logic.
+
+## Scientific domain boundary
+
+The application is specialized in therapeutic peptide discovery. Generic
+infrastructure—workflow lineage, artifacts, queueing, LLM calls, credentials,
+costs, and external-call provenance—must remain independent of the scientific
+domain and providers. Peptide-specific concepts belong in domain/application
+services and schemas, not in LLM or HTTP adapters.
+
+The scientific dependency direction is evidence to design: source records and
+screened evidence support claims and synthesis; approved synthesis supports a
+peptide design brief; one exact brief supports candidate derivation; candidates
+support modular computational evaluations. A downstream service may never
+reinterpret a mutable latest value or treat a prediction as source evidence.
 
 ## Frontend
 
@@ -53,6 +68,9 @@ jeromes_laboratory/
   llm/             generic contracts, provider adapters, usage and cost
   sources/         scientific database adapters
   literature/      normalization, identity resolution, deduplication
+  evidence/        peptide-relevant extraction, claims, reconciliation
+  peptides/        design briefs, candidate identity and derivation (planned)
+  computation/     provider-neutral in-silico tool contracts (planned)
   security/        credential-store boundary and redaction
   launcher/        initialization, port selection, server and browser startup
 ```
@@ -129,15 +147,36 @@ example or simulated results from live research results. See
 
 ## Scientific source integrations
 
-Each source adapter owns request construction, pagination, source-specific
-response parsing, rate/error handling, and raw-response capture. Literature
-services normalize without inventing missing fields and deduplicate publications
-while retaining a `PublicationSource` record for every discovery through every
-query and search run.
+Publication services normalize without inventing missing fields and deduplicate
+publication identities while retaining a `PublicationSource` record for every
+discovery through every query and search run.
 
 Europe PMC is the proposed first retrieval adapter. PubMed follows after the
-single-source pipeline works. This ordering is a roadmap proposal, not a claim of
-implementation.
+single-source publication pipeline works. The peptide-discovery scope will later
+require separately designed adapters for relevant protein/target annotations,
+structures, molecular interactions, bioactivity, peptides, sequences/motifs, and
+assays. These sources must not be forced through publication identity rules.
+
+Every adapter owns query construction, pagination, source-native identity,
+licensing/API constraints, response parsing, rate/error handling, and raw
+response capture. Cross-source entity resolution must preserve each source
+record and every discovery relationship.
+
+## Peptide design and computation boundaries
+
+The planned peptide design service consumes an exact approved design-brief
+artifact. Candidate adapters may import, adapt, or generate sequences and
+chemical forms, but must return a provider-neutral candidate representation plus
+complete derivation provenance. No candidate generator decides that its own
+output is effective or safe.
+
+The planned computation layer treats structure prediction, interaction analysis,
+docking, property prediction, toxicity, immunogenicity, stability, aggregation,
+delivery-related prediction, and manufacturability as distinct capabilities.
+Adapters preserve tool/model identity, version, parameters, seeds where relevant,
+hardware/runtime context where material, exact inputs, raw outputs, parsed values
+and units, timing, failure, and cost. Combining or prioritizing results is an
+explicit application/user decision, not hidden adapter behavior.
 
 ## Secrets and local security
 

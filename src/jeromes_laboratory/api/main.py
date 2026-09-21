@@ -10,8 +10,10 @@ from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.staticfiles import StaticFiles
 
 from jeromes_laboratory.api.schemas import (
+    ApproveResearchCharterRequest,
     ClientStateResponse,
     CreateProjectRequest,
+    EnqueueResearchCharterRequest,
     FetchLLMModelsRequest,
     FetchLLMModelsResponse,
     FolderPickerResponse,
@@ -32,6 +34,8 @@ from jeromes_laboratory.api.schemas import (
     UpdateQuestionDetailingOutputRequest,
     UpdateQuestionDetailingPromptRequest,
     UpdateQuestionRequest,
+    UpdateResearchCharterOutputRequest,
+    UpdateResearchCharterPromptRequest,
     UpdateScopeAnswersRequest,
     UpdateScopeClarificationPromptRequest,
     UpdateScopeFollowUpAnswersRequest,
@@ -159,6 +163,9 @@ def create_app(
             scope_readiness_prompt=record.scope_readiness_prompt,
             scope_readiness_prompt_version=record.scope_readiness_prompt_version,
             scope_readiness_prompt_is_editable=record.scope_readiness_prompt_is_editable,
+            research_charter_prompt=record.research_charter_prompt,
+            research_charter_prompt_version=record.research_charter_prompt_version,
+            research_charter_prompt_is_editable=record.research_charter_prompt_is_editable,
         )
 
     def job_repository() -> JobRepository:
@@ -877,6 +884,97 @@ def create_app(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=str(error),
+            ) from error
+
+    @application.patch(
+        "/api/projects/{project_id}/research-charter-prompt",
+        response_model=ProjectResponse,
+        tags=["projects"],
+    )
+    def update_research_charter_prompt(
+        project_id: str,
+        request: UpdateResearchCharterPromptRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> ProjectResponse:
+        """Save the prompt for a future charter attempt without changing earlier calls."""
+        try:
+            return project_response(
+                project_repository().update_research_charter_prompt(project_id, request.prompt)
+            )
+        except ProjectError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(error)
+            ) from error
+
+    @application.post(
+        "/api/projects/{project_id}/research-charter/jobs",
+        response_model=JobResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["jobs"],
+    )
+    def enqueue_research_charter(
+        project_id: str,
+        request: EnqueueResearchCharterRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Queue a charter draft or an explicitly requested regeneration."""
+        try:
+            settings = application.state.llm_settings_service.read()
+            if settings.provider is None or settings.model is None:
+                raise JobError("Configure an LLM provider and model before starting this job.")
+            if application.state.credential_store.get_api_key(settings.provider) is None:
+                raise JobError("The selected provider API key is no longer available.")
+            record = job_repository().enqueue_research_charter(
+                project_id,
+                settings.provider,
+                settings.model,
+                previous_job_id=request.previous_job_id,
+                base_version=request.base_version,
+            )
+        except (CredentialStoreError, LLMSettingsError, JobError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
+        return job_response(record)
+
+    @application.patch(
+        "/api/jobs/{job_id}/research-charter-output",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def edit_research_charter_output(
+        job_id: str,
+        request: UpdateResearchCharterOutputRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Create a new draft version while retaining the original charter and approvals."""
+        try:
+            return job_response(job_repository().edit_research_charter_output(
+                job_id, request.markdown, request.base_version
+            ))
+        except JobError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(error)
+            ) from error
+
+    @application.post(
+        "/api/jobs/{job_id}/research-charter-approval",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def approve_research_charter(
+        job_id: str,
+        request: ApproveResearchCharterRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Record explicit approval of the current effective charter version."""
+        try:
+            return job_response(job_repository().approve_research_charter(
+                job_id, request.base_version
+            ))
+        except JobError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(error)
             ) from error
 
     @application.get("/api/client-state", response_model=ClientStateResponse, tags=["client"])

@@ -93,10 +93,11 @@ class IntentGateway:
         )
 
 
-def test_default_direction_prompt_supports_evidence_led_exploration() -> None:
-    assert INTENT_CLARIFICATION_PROMPT_VERSION == "2"
+def test_default_direction_prompt_supports_peptide_discovery_exploration() -> None:
+    assert INTENT_CLARIFICATION_PROMPT_VERSION == "4"
     assert "broad exploration" in DEFAULT_INTENT_CLARIFICATION_PROMPT.casefold()
-    assert "current objective" in DEFAULT_INTENT_CLARIFICATION_PROMPT.casefold()
+    assert "therapeutic peptide discovery" in DEFAULT_INTENT_CLARIFICATION_PROMPT.casefold()
+    assert "existing peptide" in DEFAULT_INTENT_CLARIFICATION_PROMPT.casefold()
     assert "study types" in DEFAULT_INTENT_CLARIFICATION_PROMPT.casefold()
 
 

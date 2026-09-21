@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-SCOPE_CLARIFICATION_PROMPT_VERSION = "4"
+SCOPE_CLARIFICATION_PROMPT_VERSION = "6"
 
 
 class ScopeClarificationError(ValueError):
@@ -81,12 +81,12 @@ class ScopeClarificationOutput(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal[1, 2]
+    schema_version: Literal[1, 2, 3]
     introduction: str = Field(min_length=1, max_length=1_200)
-    # Version 3 and later permit a small questionnaire rather than forcing
-    # the model to fill a quota with decisions that belong to search planning.
-    # The upper bound remains compatible with preserved version 1/2 responses.
-    questions: list[ScopeQuestion] = Field(min_length=1, max_length=7)
+    # Schema version 3 permits an empty questionnaire rather than forcing the
+    # model to invent a decision. The upper bound remains compatible with
+    # preserved version 1/2 responses.
+    questions: list[ScopeQuestion] = Field(default_factory=list, max_length=7)
 
     @field_validator("introduction")
     @classmethod
@@ -102,12 +102,14 @@ class ScopeClarificationOutput(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def version_two_declares_option_structure(self) -> ScopeClarificationOutput:
-        if self.schema_version == 2 and any(
+    def current_versions_declare_option_structure(self) -> ScopeClarificationOutput:
+        if self.schema_version in {1, 2} and not self.questions:
+            raise ValueError("scope schema versions 1 and 2 require at least one question")
+        if self.schema_version in {2, 3} and any(
             question.option_structure is None for question in self.questions
         ):
-            raise ValueError("schema version 2 questions must declare option_structure")
-        if self.schema_version == 2 and any(
+            raise ValueError("scope schema versions 2 and 3 must declare option_structure")
+        if self.schema_version in {2, 3} and any(
             question.selection_mode == "multiple_choice"
             and question.uses_explicit_cumulative_wording()
             for question in self.questions
@@ -146,10 +148,10 @@ class ScopeAnswers(BaseModel):
 
     schema_version: Literal[1] = 1
     questions_artifact_id: str
-    # The first questionnaire contains 3–7 questions, while the one permitted
-    # readiness follow-up contains 1–5. The validator below still requires an
-    # answer for every question in the specific questionnaire.
-    answers: list[ScopeAnswer] = Field(min_length=1, max_length=7)
+    # A current first questionnaire contains 0–5 questions, while preserved
+    # versions may contain as many as 7 and the one readiness follow-up 1–5.
+    # Validation still requires one answer for every question that exists.
+    answers: list[ScopeAnswer] = Field(default_factory=list, max_length=7)
 
 
 def load_scope_clarification_prompt(version: str) -> str:

@@ -11,7 +11,7 @@ from typing import Any, cast
 import pytest
 from test_intent_clarification import IntentGateway, MemoryCredentialStore
 
-from jeromes_laboratory.database.jobs import JobRepository, provider_input_for_job
+from jeromes_laboratory.database.jobs import JobError, JobRepository, provider_input_for_job
 from jeromes_laboratory.database.projects import ProjectRepository
 from jeromes_laboratory.jobs.worker import JobWorker
 from jeromes_laboratory.llm.catalog import ProviderName
@@ -159,16 +159,20 @@ class ScopeGateway:
 
 
 def test_default_framing_prompts_separate_project_and_literature_scope() -> None:
-    assert SCOPE_CLARIFICATION_PROMPT_VERSION == "4"
-    assert SCOPE_READINESS_PROMPT_VERSION == "4"
-    assert "literature-investigation and query-planning" in DEFAULT_SCOPE_CLARIFICATION_PROMPT
-    assert "whether animal studies should be included" in DEFAULT_SCOPE_CLARIFICATION_PROMPT
+    assert SCOPE_CLARIFICATION_PROMPT_VERSION == "6"
+    assert SCOPE_READINESS_PROMPT_VERSION == "6"
+    assert "therapeutic peptide discovery" in DEFAULT_SCOPE_CLARIFICATION_PROMPT
+    assert "between 0 and 5" in DEFAULT_SCOPE_CLARIFICATION_PROMPT
+    assert "scientific-source investigation and query planning" in (
+        DEFAULT_SCOPE_CLARIFICATION_PROMPT
+    )
     assert "multiple-choice question must always use independent" in (
         DEFAULT_SCOPE_CLARIFICATION_PROMPT
     )
-    assert "scientific unknown" in DEFAULT_SCOPE_READINESS_PROMPT
+    assert "Broad exploratory work is ready" in DEFAULT_SCOPE_READINESS_PROMPT
+    assert "peptide quality" in DEFAULT_SCOPE_READINESS_PROMPT
     assert "study designs" in DEFAULT_SCOPE_READINESS_PROMPT
-    assert "unselected independent option is not included" in DEFAULT_SCOPE_READINESS_PROMPT
+    assert "Never repeat or rephrase an answered question" in DEFAULT_SCOPE_READINESS_PROMPT
 
 
 class ReadinessGateway(ScopeGateway):
@@ -259,6 +263,14 @@ def test_scope_output_and_answers_are_strictly_validated() -> None:
     for question in legacy_output["questions"]:
         del question["option_structure"]
     assert parse_scope_clarification_output(json.dumps(legacy_output)).schema_version == 1
+    empty_output = {
+        "schema_version": 3,
+        "introduction": "The selected direction is already framed for this cycle.",
+        "questions": [],
+    }
+    assert parse_scope_clarification_output(json.dumps(empty_output)).questions == []
+    with pytest.raises(ScopeClarificationError):
+        parse_scope_clarification_output(json.dumps({**empty_output, "schema_version": 2}))
     with pytest.raises(ScopeClarificationError, match="single-choice"):
         validate_scope_answers(
             questions,
@@ -369,6 +381,61 @@ def test_scope_job_snapshots_effective_intent_and_versions_answers(tmp_path: Pat
     assert repository.get_job(queued.id).scope_answers_is_editable is False
     with pytest.raises(ValueError, match="downstream job"):
         repository.edit_scope_answers(queued.id, valid_answers(), 2)
+
+
+def test_empty_peptide_framing_is_confirmed_without_fake_user_answers(
+    tmp_path: Path,
+) -> None:
+    service, database_path, repository, project_id, _ = completed_intent(tmp_path)
+    queued = repository.enqueue_scope_clarification(project_id, "openai", "gpt-example")
+    empty_output = {
+        "schema_version": 3,
+        "introduction": "No additional user-controlled framing decision is needed.",
+        "questions": [],
+    }
+
+    assert JobWorker(
+        service,
+        MemoryCredentialStore(),
+        ScopeGateway(json.dumps(empty_output)),
+    ).run_once() is True
+    completed = repository.get_job(queued.id)
+
+    assert completed.scope_questions == empty_output
+    assert completed.scope_answers_version == 1
+    assert completed.scope_answers is not None
+    assert completed.scope_answers["answers"] == []
+    with sqlite3.connect(database_path) as connection:
+        artifacts = connection.execute(
+            "SELECT kind, creator_type FROM artifact_versions WHERE job_id = ? "
+            "ORDER BY rowid",
+            (queued.id,),
+        ).fetchall()
+    assert artifacts == [
+        ("scope_clarification_questions", "llm"),
+        ("scope_clarification_answers", "application"),
+    ]
+
+    with pytest.raises(JobError, match="No framing check is required"):
+        repository.enqueue_scope_readiness(project_id, "openai", "gpt-example")
+
+    charter = repository.enqueue_research_charter(project_id, "openai", "gpt-example")
+    snapshot = json.loads(charter.workflow_input_snapshot_json or "{}")
+    assert snapshot["framing_input"]["scope_answers"]["answers"] == []
+    assert snapshot["framing_check_source"] == "application_rule_no_questions"
+    assert snapshot["readiness_job_id"] is None
+    assert snapshot["readiness_artifact_id"] is None
+    assert snapshot["readiness_review"] == {
+        "assessment": (
+            "No separate framing check was required because project framing identified "
+            "no additional user-controlled decisions."
+        ),
+        "follow_up_questions": [],
+        "ready_for_charter": True,
+        "remaining_uncertainties": [],
+        "schema_version": 2,
+    }
+    assert repository.get_job(queued.id).scope_answers_is_editable is False
 
 
 def test_invalid_scope_response_fails_without_trusted_artifact(tmp_path: Path) -> None:

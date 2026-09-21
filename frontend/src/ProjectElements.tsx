@@ -16,8 +16,45 @@ export function PromptToggleButton({ isVisible, onToggle }: { isVisible: boolean
   return <button className="job-prompt-toggle" type="button" aria-expanded={isVisible} onClick={onToggle}>{isVisible ? 'Hide prompt' : 'Show prompt'}</button>
 }
 
+type JobPromptDisclosureProps = {
+  visible: boolean
+  isEditing: boolean
+  canEdit: boolean
+  prompt: string
+  editedPrompt: string
+  isSaving: boolean
+  ariaLabel: string
+  editLabel: string
+  notice?: string
+  onEditedPromptChange: (value: string) => void
+  onEdit: () => void
+  onCancel: () => void
+  onSave: () => void
+}
+
+/** Shared advanced-prompt field used directly beneath every LLM job card. */
+export function JobPromptDisclosure({ visible, isEditing, canEdit, prompt, editedPrompt, isSaving, ariaLabel, editLabel, notice, onEditedPromptChange, onEdit, onCancel, onSave }: JobPromptDisclosureProps) {
+  if (!visible) return null
+  return <div className="job-prompt-disclosure">
+    {notice && <p className="charter-view-notice">{notice}</p>}
+    <EditableField
+      variant="multiline"
+      isEditing={isEditing && canEdit}
+      canEdit={canEdit}
+      display={<pre className="question-detailing-prompt">{prompt}</pre>}
+      editor={<textarea value={editedPrompt} onChange={event => onEditedPromptChange(event.target.value)} aria-label={ariaLabel} disabled={isSaving} />}
+      onEdit={onEdit}
+      editLabel={editLabel}
+      actions={<>
+        <button className="primary-button" type="button" disabled={isSaving || !editedPrompt.trim()} onClick={onSave}>{isSaving ? 'Saving…' : 'Save prompt'}</button>
+        <button className="text-button" type="button" disabled={isSaving} onClick={onCancel}>Cancel</button>
+      </>}
+    />
+  </div>
+}
+
 type EditableFieldProps = {
-  variant: 'single-line' | 'multiline'
+  variant: 'single-line' | 'adaptive' | 'multiline'
   isEditing: boolean
   canEdit?: boolean
   display: ReactNode

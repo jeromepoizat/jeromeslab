@@ -16,6 +16,10 @@ from jeromes_laboratory.workflow.question_detailing import (
     DEFAULT_QUESTION_DETAILING_PROMPT,
     QUESTION_DETAILING_PROMPT_VERSION,
 )
+from jeromes_laboratory.workflow.research_charter import (
+    DEFAULT_RESEARCH_CHARTER_PROMPT,
+    RESEARCH_CHARTER_PROMPT_VERSION,
+)
 from jeromes_laboratory.workflow.scope_clarification import (
     DEFAULT_SCOPE_CLARIFICATION_PROMPT,
     SCOPE_CLARIFICATION_PROMPT_VERSION,
@@ -52,6 +56,9 @@ class ProjectRecord:
     scope_readiness_prompt: str
     scope_readiness_prompt_version: str
     scope_readiness_prompt_is_editable: bool
+    research_charter_prompt: str
+    research_charter_prompt_version: str
+    research_charter_prompt_is_editable: bool
 
 
 class ProjectRepository:
@@ -68,6 +75,7 @@ class ProjectRepository:
                 "intent_clarification_prompt, intent_clarification_prompt_version, "
                 "scope_clarification_prompt, scope_clarification_prompt_version, "
                 "scope_readiness_prompt, scope_readiness_prompt_version, "
+                "research_charter_prompt, research_charter_prompt_version, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id) "
                 "AS question_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
@@ -77,8 +85,9 @@ class ProjectRepository:
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
                 "AND jobs.kind = 'scope_clarification_round_1') AS scope_prompt_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
-                "AND jobs.kind = 'scope_readiness') AS readiness_prompt_is_editable "
-                "FROM projects ORDER BY created_at"
+                "AND jobs.kind = 'scope_readiness') AS readiness_prompt_is_editable, "
+                + self._charter_prompt_editable_sql()
+                + "FROM projects ORDER BY created_at"
             ).fetchall()
         return [self._record_from_row(row) for row in rows]
 
@@ -90,6 +99,7 @@ class ProjectRepository:
                 "intent_clarification_prompt, intent_clarification_prompt_version, "
                 "scope_clarification_prompt, scope_clarification_prompt_version, "
                 "scope_readiness_prompt, scope_readiness_prompt_version, "
+                "research_charter_prompt, research_charter_prompt_version, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id) "
                 "AS question_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
@@ -99,8 +109,9 @@ class ProjectRepository:
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
                 "AND jobs.kind = 'scope_clarification_round_1') AS scope_prompt_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
-                "AND jobs.kind = 'scope_readiness') AS readiness_prompt_is_editable "
-                "FROM projects WHERE id = ?",
+                "AND jobs.kind = 'scope_readiness') AS readiness_prompt_is_editable, "
+                + self._charter_prompt_editable_sql()
+                + "FROM projects WHERE id = ?",
                 (project_id,),
             ).fetchone()
         if row is None:
@@ -117,28 +128,43 @@ class ProjectRepository:
             connection.execute("BEGIN IMMEDIATE")
             next_tag_number = self._next_tag_number(connection)
             tag = f"PROJ{next_tag_number:03d}"
+            has_charter_columns = self._column_exists(
+                connection, "projects", "research_charter_prompt"
+            )
+            charter_columns = (
+                ", research_charter_prompt, research_charter_prompt_version"
+                if has_charter_columns
+                else ""
+            )
+            charter_placeholders = ", ?, ?" if has_charter_columns else ""
+            values: tuple[object, ...] = (
+                project_id,
+                tag,
+                question,
+                now,
+                now,
+                DEFAULT_QUESTION_DETAILING_PROMPT,
+                QUESTION_DETAILING_PROMPT_VERSION,
+                DEFAULT_INTENT_CLARIFICATION_PROMPT,
+                INTENT_CLARIFICATION_PROMPT_VERSION,
+                DEFAULT_SCOPE_CLARIFICATION_PROMPT,
+                SCOPE_CLARIFICATION_PROMPT_VERSION,
+                DEFAULT_SCOPE_READINESS_PROMPT,
+                SCOPE_READINESS_PROMPT_VERSION,
+            )
+            if has_charter_columns:
+                values += (DEFAULT_RESEARCH_CHARTER_PROMPT, RESEARCH_CHARTER_PROMPT_VERSION)
             connection.execute(
                 "INSERT INTO projects (id, tag, scientific_question, created_at, updated_at, "
                 "question_detailing_prompt, question_detailing_prompt_version, "
                 "intent_clarification_prompt, intent_clarification_prompt_version, "
                 "scope_clarification_prompt, scope_clarification_prompt_version, "
-                "scope_readiness_prompt, scope_readiness_prompt_version) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    project_id,
-                    tag,
-                    question,
-                    now,
-                    now,
-                    DEFAULT_QUESTION_DETAILING_PROMPT,
-                    QUESTION_DETAILING_PROMPT_VERSION,
-                    DEFAULT_INTENT_CLARIFICATION_PROMPT,
-                    INTENT_CLARIFICATION_PROMPT_VERSION,
-                    DEFAULT_SCOPE_CLARIFICATION_PROMPT,
-                    SCOPE_CLARIFICATION_PROMPT_VERSION,
-                    DEFAULT_SCOPE_READINESS_PROMPT,
-                    SCOPE_READINESS_PROMPT_VERSION,
-                ),
+                "scope_readiness_prompt, scope_readiness_prompt_version"
+                + charter_columns
+                + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
+                + charter_placeholders
+                + ")",
+                values,
             )
             connection.execute(
                 "INSERT INTO application_metadata (key, value) VALUES ('next_project_tag_number', ?) "
@@ -164,6 +190,9 @@ class ProjectRepository:
             scope_readiness_prompt=DEFAULT_SCOPE_READINESS_PROMPT,
             scope_readiness_prompt_version=SCOPE_READINESS_PROMPT_VERSION,
             scope_readiness_prompt_is_editable=True,
+            research_charter_prompt=DEFAULT_RESEARCH_CHARTER_PROMPT,
+            research_charter_prompt_version=RESEARCH_CHARTER_PROMPT_VERSION,
+            research_charter_prompt_is_editable=True,
         )
 
     def rename_project(self, project_id: str, tag_value: str) -> ProjectRecord:
@@ -239,7 +268,11 @@ class ProjectRepository:
                 )
             cursor = connection.execute(
                 "UPDATE projects SET intent_clarification_prompt = ?, "
-                "intent_clarification_prompt_version = 'custom', updated_at = ? WHERE id = ?",
+                "intent_clarification_prompt_version = CASE "
+                "WHEN intent_clarification_prompt_version LIKE 'custom%' "
+                "THEN intent_clarification_prompt_version "
+                "ELSE 'custom:' || intent_clarification_prompt_version END, "
+                "updated_at = ? WHERE id = ?",
                 (prompt, now, project_id),
             )
         if cursor.rowcount == 0:
@@ -264,7 +297,11 @@ class ProjectRepository:
                 )
             cursor = connection.execute(
                 "UPDATE projects SET scope_clarification_prompt = ?, "
-                "scope_clarification_prompt_version = 'custom', updated_at = ? WHERE id = ?",
+                "scope_clarification_prompt_version = CASE "
+                "WHEN scope_clarification_prompt_version LIKE 'custom%' "
+                "THEN scope_clarification_prompt_version "
+                "ELSE 'custom:' || scope_clarification_prompt_version END, "
+                "updated_at = ? WHERE id = ?",
                 (prompt, now, project_id),
             )
         if cursor.rowcount == 0:
@@ -287,12 +324,52 @@ class ProjectRepository:
                 )
             cursor = connection.execute(
                 "UPDATE projects SET scope_readiness_prompt = ?, "
-                "scope_readiness_prompt_version = 'custom', updated_at = ? WHERE id = ?",
+                "scope_readiness_prompt_version = CASE "
+                "WHEN scope_readiness_prompt_version LIKE 'custom%' "
+                "THEN scope_readiness_prompt_version "
+                "ELSE 'custom:' || scope_readiness_prompt_version END, "
+                "updated_at = ? WHERE id = ?",
                 (prompt, now, project_id),
             )
         if cursor.rowcount == 0:
             raise ProjectError("The selected project no longer exists.")
         return self.get_project(project_id)
+
+    def update_research_charter_prompt(self, project_id: str, prompt_value: str) -> ProjectRecord:
+        """Change the prompt for the next explicit attempt, preserving all prior snapshots."""
+        prompt = self._required_text(prompt_value, "Enter a prompt before saving.")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT " + self._charter_prompt_editable_sql() + "FROM projects WHERE id = ?",
+                (project_id,),
+            ).fetchone()
+            if row is None:
+                raise ProjectError("The selected project no longer exists.")
+            if not row["charter_prompt_is_editable"]:
+                raise ProjectError("The charter prompt is locked while a job runs or downstream work uses it.")
+            connection.execute(
+                "UPDATE projects SET research_charter_prompt = ?, "
+                "research_charter_prompt_version = CASE "
+                "WHEN research_charter_prompt_version LIKE 'custom%' "
+                "THEN research_charter_prompt_version "
+                "ELSE 'custom:' || research_charter_prompt_version END, "
+                "updated_at = ? WHERE id = ?",
+                (prompt, self._timestamp(), project_id),
+            )
+        return self.get_project(project_id)
+
+    @staticmethod
+    def _charter_prompt_editable_sql() -> str:
+        return (
+            "(NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
+            "AND jobs.kind = 'research_charter') "
+            "AND NOT EXISTS (SELECT 1 FROM jobs consumer, json_tree(consumer.workflow_input_snapshot_json) input "
+            "JOIN artifact_versions artifact ON artifact.id = input.value "
+            "WHERE consumer.project_id = projects.id AND consumer.kind != 'research_charter' "
+            "AND input.key = 'charter_artifact_id' AND artifact.kind = 'research_charter_output')) "
+            "AS charter_prompt_is_editable "
+        )
 
     @staticmethod
     def _question_is_editable(connection: sqlite3.Connection, project_id: str) -> bool:
@@ -320,6 +397,12 @@ class ProjectRepository:
         return connection
 
     @staticmethod
+    def _column_exists(
+        connection: sqlite3.Connection, table_name: str, column_name: str
+    ) -> bool:
+        return any(row[1] == column_name for row in connection.execute(f"PRAGMA table_info({table_name})"))
+
+    @staticmethod
     def _record_from_row(row: sqlite3.Row) -> ProjectRecord:
         return ProjectRecord(
             id=row["id"],
@@ -340,6 +423,9 @@ class ProjectRepository:
             scope_readiness_prompt=row["scope_readiness_prompt"],
             scope_readiness_prompt_version=row["scope_readiness_prompt_version"],
             scope_readiness_prompt_is_editable=bool(row["readiness_prompt_is_editable"]),
+            research_charter_prompt=row["research_charter_prompt"],
+            research_charter_prompt_version=row["research_charter_prompt_version"],
+            research_charter_prompt_is_editable=bool(row["charter_prompt_is_editable"]),
         )
 
     @staticmethod

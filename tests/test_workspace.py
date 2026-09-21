@@ -20,6 +20,12 @@ from jeromes_laboratory.storage.workspace import (
 from jeromes_laboratory.workflow.intent_clarification import (
     DEFAULT_INTENT_CLARIFICATION_PROMPT,
     INTENT_CLARIFICATION_PROMPT_VERSION,
+    load_intent_clarification_prompt,
+)
+from jeromes_laboratory.workflow.research_charter import (
+    DEFAULT_RESEARCH_CHARTER_PROMPT,
+    RESEARCH_CHARTER_PROMPT_VERSION,
+    load_research_charter_prompt,
 )
 from jeromes_laboratory.workflow.scope_clarification import (
     DEFAULT_SCOPE_CLARIFICATION_PROMPT,
@@ -63,7 +69,7 @@ def test_configure_workspace_creates_layout_and_applies_migration(tmp_path: Path
         revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
 
     assert "application_metadata" in tables
-    assert revision == ("0016",)
+    assert revision == ("0020",)
 
 
 def test_readiness_migration_preserves_consumed_scope_prompt(tmp_path: Path) -> None:
@@ -262,6 +268,235 @@ def test_structured_option_migration_preserves_consumed_version_three_prompts(
         SCOPE_CLARIFICATION_PROMPT_VERSION,
         DEFAULT_SCOPE_READINESS_PROMPT,
         SCOPE_READINESS_PROMPT_VERSION,
+    )
+
+
+def test_peptide_prompt_migration_updates_only_unconsumed_defaults(tmp_path: Path) -> None:
+    database_path = tmp_path / "peptide-prompts.db"
+    configuration = Config()
+    configuration.set_main_option("script_location", str(MIGRATIONS_DIRECTORY))
+    configuration.set_main_option("sqlalchemy.url", database_url(database_path))
+    command.upgrade(configuration, "0017")
+    repository = ProjectRepository(database_path)
+    consumed = repository.create_project("Consumed peptide workflow")
+    unused = repository.create_project("Unused peptide workflow")
+    old_prompts = (
+        load_intent_clarification_prompt("2"),
+        load_scope_clarification_prompt("4"),
+        load_scope_readiness_prompt("4"),
+        load_research_charter_prompt("1"),
+    )
+
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            "UPDATE projects SET intent_clarification_prompt = ?, "
+            "intent_clarification_prompt_version = '2', scope_clarification_prompt = ?, "
+            "scope_clarification_prompt_version = '4', scope_readiness_prompt = ?, "
+            "scope_readiness_prompt_version = '4', research_charter_prompt = ?, "
+            "research_charter_prompt_version = '1'",
+            old_prompts,
+        )
+        for index, (kind, prompt, template_id, version) in enumerate((
+            ("intent_clarification", old_prompts[0], "intent-clarification", "2"),
+            ("scope_clarification_round_1", old_prompts[1], "scope-clarification-round-1", "4"),
+            ("scope_readiness", old_prompts[2], "scope-readiness", "4"),
+            ("research_charter", old_prompts[3], "research-charter", "1"),
+        )):
+            connection.execute(
+                "INSERT INTO jobs (id, project_id, kind, status, created_at, provider, model, "
+                "scientific_question_snapshot, prompt_snapshot, prompt_template_id, "
+                "prompt_template_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    f"consumed-stage-{index}",
+                    consumed.id,
+                    kind,
+                    "completed",
+                    f"2026-09-21T00:00:0{index}+00:00",
+                    "openai",
+                    "gpt-example",
+                    consumed.scientific_question,
+                    prompt,
+                    template_id,
+                    version,
+                ),
+            )
+
+    command.upgrade(configuration, "head")
+
+    with sqlite3.connect(database_path) as connection:
+        consumed_prompts = connection.execute(
+            "SELECT intent_clarification_prompt, intent_clarification_prompt_version, "
+            "scope_clarification_prompt, scope_clarification_prompt_version, "
+            "scope_readiness_prompt, scope_readiness_prompt_version, "
+            "research_charter_prompt, research_charter_prompt_version "
+            "FROM projects WHERE id = ?",
+            (consumed.id,),
+        ).fetchone()
+        unused_prompts = connection.execute(
+            "SELECT intent_clarification_prompt, intent_clarification_prompt_version, "
+            "scope_clarification_prompt, scope_clarification_prompt_version, "
+            "scope_readiness_prompt, scope_readiness_prompt_version, "
+            "research_charter_prompt, research_charter_prompt_version "
+            "FROM projects WHERE id = ?",
+            (unused.id,),
+        ).fetchone()
+
+    assert consumed_prompts == (
+        old_prompts[0], "2", old_prompts[1], "4", old_prompts[2], "4", old_prompts[3], "1"
+    )
+    assert unused_prompts == (
+        DEFAULT_INTENT_CLARIFICATION_PROMPT,
+        INTENT_CLARIFICATION_PROMPT_VERSION,
+        DEFAULT_SCOPE_CLARIFICATION_PROMPT,
+        SCOPE_CLARIFICATION_PROMPT_VERSION,
+        DEFAULT_SCOPE_READINESS_PROMPT,
+        SCOPE_READINESS_PROMPT_VERSION,
+        DEFAULT_RESEARCH_CHARTER_PROMPT,
+        RESEARCH_CHARTER_PROMPT_VERSION,
+    )
+
+
+def test_investigation_prompt_migration_preserves_consumed_stage_prompts(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "investigation-prompts.db"
+    configuration = Config()
+    configuration.set_main_option("script_location", str(MIGRATIONS_DIRECTORY))
+    configuration.set_main_option("sqlalchemy.url", database_url(database_path))
+    command.upgrade(configuration, "0018")
+    repository = ProjectRepository(database_path)
+    consumed = repository.create_project("Consumed investigation terminology")
+    unused = repository.create_project("Unused investigation terminology")
+    old_prompts = (
+        load_intent_clarification_prompt("3"),
+        load_scope_clarification_prompt("5"),
+        load_scope_readiness_prompt("5"),
+        load_research_charter_prompt("2"),
+    )
+
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            "UPDATE projects SET intent_clarification_prompt = ?, "
+            "intent_clarification_prompt_version = '3', scope_clarification_prompt = ?, "
+            "scope_clarification_prompt_version = '5', scope_readiness_prompt = ?, "
+            "scope_readiness_prompt_version = '5', research_charter_prompt = ?, "
+            "research_charter_prompt_version = '2'",
+            old_prompts,
+        )
+        for index, (kind, prompt, template_id, version) in enumerate((
+            ("intent_clarification", old_prompts[0], "intent-clarification", "3"),
+            ("scope_clarification_round_1", old_prompts[1], "scope-clarification-round-1", "5"),
+            ("scope_readiness", old_prompts[2], "scope-readiness", "5"),
+            ("research_charter", old_prompts[3], "research-charter", "2"),
+        )):
+            connection.execute(
+                "INSERT INTO jobs (id, project_id, kind, status, created_at, provider, model, "
+                "scientific_question_snapshot, prompt_snapshot, prompt_template_id, "
+                "prompt_template_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    f"consumed-investigation-stage-{index}",
+                    consumed.id,
+                    kind,
+                    "completed",
+                    f"2026-09-21T01:00:0{index}+00:00",
+                    "openai",
+                    "gpt-example",
+                    consumed.scientific_question,
+                    prompt,
+                    template_id,
+                    version,
+                ),
+            )
+
+    command.upgrade(configuration, "head")
+
+    with sqlite3.connect(database_path) as connection:
+        consumed_prompts = connection.execute(
+            "SELECT intent_clarification_prompt, intent_clarification_prompt_version, "
+            "scope_clarification_prompt, scope_clarification_prompt_version, "
+            "scope_readiness_prompt, scope_readiness_prompt_version, "
+            "research_charter_prompt, research_charter_prompt_version "
+            "FROM projects WHERE id = ?",
+            (consumed.id,),
+        ).fetchone()
+        unused_prompts = connection.execute(
+            "SELECT intent_clarification_prompt, intent_clarification_prompt_version, "
+            "scope_clarification_prompt, scope_clarification_prompt_version, "
+            "scope_readiness_prompt, scope_readiness_prompt_version, "
+            "research_charter_prompt, research_charter_prompt_version "
+            "FROM projects WHERE id = ?",
+            (unused.id,),
+        ).fetchone()
+
+    assert consumed_prompts == (
+        old_prompts[0], "3", old_prompts[1], "5", old_prompts[2], "5", old_prompts[3], "2"
+    )
+    assert unused_prompts == (
+        DEFAULT_INTENT_CLARIFICATION_PROMPT,
+        INTENT_CLARIFICATION_PROMPT_VERSION,
+        DEFAULT_SCOPE_CLARIFICATION_PROMPT,
+        SCOPE_CLARIFICATION_PROMPT_VERSION,
+        DEFAULT_SCOPE_READINESS_PROMPT,
+        SCOPE_READINESS_PROMPT_VERSION,
+        DEFAULT_RESEARCH_CHARTER_PROMPT,
+        RESEARCH_CHARTER_PROMPT_VERSION,
+    )
+
+
+def test_concise_charter_prompt_migration_preserves_consumed_prompt(tmp_path: Path) -> None:
+    database_path = tmp_path / "concise-charter.db"
+    configuration = Config()
+    configuration.set_main_option("script_location", str(MIGRATIONS_DIRECTORY))
+    configuration.set_main_option("sqlalchemy.url", database_url(database_path))
+    command.upgrade(configuration, "0019")
+    repository = ProjectRepository(database_path)
+    consumed = repository.create_project("Consumed charter prompt")
+    unused = repository.create_project("Unused charter prompt")
+    old_prompt = load_research_charter_prompt("3")
+
+    with sqlite3.connect(database_path) as connection:
+        connection.execute(
+            "UPDATE projects SET research_charter_prompt = ?, "
+            "research_charter_prompt_version = '3'",
+            (old_prompt,),
+        )
+        connection.execute(
+            "INSERT INTO jobs (id, project_id, kind, status, created_at, provider, model, "
+            "scientific_question_snapshot, prompt_snapshot, prompt_template_id, "
+            "prompt_template_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                "consumed-charter-v3",
+                consumed.id,
+                "research_charter",
+                "completed",
+                "2026-09-21T02:00:00+00:00",
+                "openai",
+                "gpt-example",
+                consumed.scientific_question,
+                old_prompt,
+                "research-charter",
+                "3",
+            ),
+        )
+
+    command.upgrade(configuration, "head")
+
+    with sqlite3.connect(database_path) as connection:
+        consumed_prompt = connection.execute(
+            "SELECT research_charter_prompt, research_charter_prompt_version "
+            "FROM projects WHERE id = ?",
+            (consumed.id,),
+        ).fetchone()
+        unused_prompt = connection.execute(
+            "SELECT research_charter_prompt, research_charter_prompt_version "
+            "FROM projects WHERE id = ?",
+            (unused.id,),
+        ).fetchone()
+
+    assert consumed_prompt == (old_prompt, "3")
+    assert unused_prompt == (
+        DEFAULT_RESEARCH_CHARTER_PROMPT,
+        RESEARCH_CHARTER_PROMPT_VERSION,
     )
 
 

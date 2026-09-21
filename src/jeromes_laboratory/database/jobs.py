@@ -8,7 +8,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 from uuid import uuid4
 
 from jeromes_laboratory.llm.catalog import ProviderName
@@ -19,6 +19,7 @@ from jeromes_laboratory.workflow.intent_clarification import (
     IntentSelection,
     parse_intent_clarification_output,
 )
+from jeromes_laboratory.workflow.research_charter import research_charter_payload
 from jeromes_laboratory.workflow.scope_clarification import (
     ScopeAnswer,
     ScopeAnswers,
@@ -83,6 +84,9 @@ class JobRecord:
     scope_follow_up_answers: dict[str, object] | None
     scope_follow_up_answers_version: int | None
     scope_follow_up_answers_is_editable: bool
+    charter_approved_at: str | None
+    charter_is_editable: bool
+    charter_can_regenerate: bool
 
 
 class JobRepository:
@@ -297,6 +301,11 @@ class JobRepository:
                 scope["answers_version"],
                 scope["answers_json"],
             )
+            questions = ScopeClarificationOutput.model_validate_json(scope["questions_json"])
+            if not questions.questions:
+                raise JobError(
+                    "No framing check is required because the framing stage produced no questions."
+                )
             connection.execute(
                 "INSERT INTO jobs (id, project_id, kind, status, created_at, provider, model, "
                 "scientific_question_snapshot, prompt_snapshot, prompt_template_id, "
@@ -317,17 +326,344 @@ class JobRepository:
             )
         return self.get_job(job_id)
 
+    def enqueue_research_charter(
+        self,
+        project_id: str,
+        provider: ProviderName,
+        model: str,
+        previous_job_id: str | None = None,
+        base_version: int | None = None,
+    ) -> JobRecord:
+        """Queue an explicit charter attempt from preserved framing, never live reinterpretations."""
+        now = _timestamp()
+        job_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            project = connection.execute(
+                "SELECT * FROM projects WHERE id = ?", (project_id,)
+            ).fetchone()
+            if project is None:
+                raise JobError("The selected project no longer exists.")
+            latest = self._latest_charter(connection, project_id)
+            current_completed = self._current_completed_charter(connection, project_id)
+            if latest is not None and latest["status"] in {"pending", "awaiting_response"}:
+                raise JobError("A research charter job is already running or queued.")
+            if current_completed is not None and self._charter_has_dependents(
+                connection, current_completed["id"]
+            ):
+                raise JobError("The charter is locked because a downstream job uses it.")
+            if latest is not None and latest["status"] == "completed":
+                if (
+                    previous_job_id is None
+                    or previous_job_id != latest["id"]
+                    or base_version is None
+                ):
+                    raise JobError("Confirm regeneration of the current charter before starting another job.")
+                current = self._editable_charter(connection, previous_job_id, base_version)
+                workflow_input = json.loads(latest["workflow_input_snapshot_json"])
+                workflow_input["regeneration"] = {
+                    "previous_job_id": latest["id"],
+                    "previous_artifact_id": current["artifact_id"],
+                    "previous_version": base_version,
+                }
+            elif previous_job_id is not None or base_version is not None:
+                raise JobError("The charter attempt changed. Reload before regenerating.")
+            elif latest is not None:
+                # A failed/cancelled attempt does not unlock or re-resolve its inputs.
+                workflow_input = json.loads(latest["workflow_input_snapshot_json"])
+                workflow_input["retry_of_job_id"] = latest["id"]
+            else:
+                workflow_input = self._charter_input_snapshot(connection, project_id)
+            snapshot = _json(workflow_input)
+            connection.execute(
+                "INSERT INTO jobs (id, project_id, kind, status, created_at, provider, model, "
+                "scientific_question_snapshot, prompt_snapshot, prompt_template_id, "
+                "prompt_template_version, workflow_input_snapshot_json) "
+                "VALUES (?, ?, 'research_charter', 'pending', ?, ?, ?, ?, ?, 'research-charter', ?, ?)",
+                (
+                    job_id, project_id, now, provider, model,
+                    workflow_input["framing_input"]["upstream_question_and_intent"]["scientific_question"],
+                    project["research_charter_prompt"], project["research_charter_prompt_version"],
+                    snapshot,
+                ),
+            )
+        return self.get_job(job_id)
+
+    @staticmethod
+    def _charter_input_snapshot(connection: sqlite3.Connection, project_id: str) -> dict[str, object]:
+        readiness = connection.execute(
+            "SELECT jobs.id, jobs.workflow_input_snapshot_json, review.id AS review_id, "
+            "review.content_json AS review_json, followup.id AS followup_id, "
+            "followup.version_number AS followup_version, followup.content_json AS followup_json "
+            "FROM jobs JOIN artifact_versions review ON review.job_id = jobs.id "
+            "AND review.kind = 'scope_readiness_review' AND review.version_number = 1 "
+            "LEFT JOIN artifact_effective_versions selected ON selected.job_id = jobs.id "
+            "LEFT JOIN artifact_versions followup ON followup.id = selected.artifact_version_id "
+            "AND followup.kind = 'scope_follow_up_answers' "
+            "WHERE jobs.project_id = ? AND jobs.kind = 'scope_readiness' "
+            "AND jobs.status = 'completed' ORDER BY jobs.rowid DESC LIMIT 1", (project_id,)
+        ).fetchone()
+        try:
+            if readiness is None:
+                scope = connection.execute(
+                    "SELECT scope_job.workflow_input_snapshot_json, "
+                    "questions.id AS questions_artifact_id, "
+                    "questions.content_json AS questions_json, "
+                    "answers.id AS answers_artifact_id, "
+                    "answers.version_number AS answers_version, "
+                    "answers.content_json AS answers_json "
+                    "FROM jobs scope_job "
+                    "JOIN artifact_versions questions ON questions.job_id = scope_job.id "
+                    "AND questions.kind = 'scope_clarification_questions' "
+                    "JOIN artifact_effective_versions effective ON effective.job_id = scope_job.id "
+                    "JOIN artifact_versions answers ON answers.id = effective.artifact_version_id "
+                    "AND answers.kind = 'scope_clarification_answers' "
+                    "WHERE scope_job.project_id = ? "
+                    "AND scope_job.kind = 'scope_clarification_round_1' "
+                    "AND scope_job.status = 'completed' "
+                    "ORDER BY scope_job.rowid DESC LIMIT 1",
+                    (project_id,),
+                ).fetchone()
+                if scope is None:
+                    raise JobError(
+                        "Complete project framing before generating an investigation charter."
+                    )
+                framing = json.loads(
+                    _readiness_input_snapshot(
+                        scope["workflow_input_snapshot_json"],
+                        scope["questions_artifact_id"],
+                        scope["questions_json"],
+                        scope["answers_artifact_id"],
+                        scope["answers_version"],
+                        scope["answers_json"],
+                    )
+                )
+                questions = ScopeClarificationOutput.model_validate(framing["scope_questions"])
+                answers = ScopeAnswers.model_validate(framing["scope_answers"])
+                if questions.questions:
+                    raise JobError(
+                        "Complete the framing check before generating an investigation charter."
+                    )
+                review = ScopeReadinessOutput(
+                    schema_version=2,
+                    ready_for_charter=True,
+                    assessment=(
+                        "No separate framing check was required because project framing "
+                        "identified no additional user-controlled decisions."
+                    ),
+                    remaining_uncertainties=[],
+                    follow_up_questions=[],
+                )
+                followup = None
+                readiness_job_id = None
+                readiness_artifact_id = None
+                followup_artifact_id = None
+                followup_version = None
+                framing_check_source = "application_rule_no_questions"
+            else:
+                review = ScopeReadinessOutput.model_validate_json(readiness["review_json"])
+                framing = json.loads(readiness["workflow_input_snapshot_json"])
+                questions = ScopeClarificationOutput.model_validate(framing["scope_questions"])
+                answers = ScopeAnswers.model_validate(framing["scope_answers"])
+                followup = None
+                if not review.ready_for_charter:
+                    if readiness["followup_json"] is None:
+                        raise JobError("Confirm the final framing answers before generating a charter.")
+                    followup = ScopeAnswers.model_validate_json(readiness["followup_json"])
+                    if followup.questions_artifact_id != readiness["review_id"]:
+                        raise ValueError("The follow-up answer reference is inconsistent.")
+                    validate_scope_answers(
+                        review.follow_up_questions, readiness["review_id"], followup.answers
+                    )
+                readiness_job_id = readiness["id"]
+                readiness_artifact_id = readiness["review_id"]
+                followup_artifact_id = readiness["followup_id"]
+                followup_version = readiness["followup_version"]
+                framing_check_source = "llm"
+            questions = ScopeClarificationOutput.model_validate(framing["scope_questions"])
+            answers = ScopeAnswers.model_validate(framing["scope_answers"])
+            if answers.questions_artifact_id != framing["scope_questions_artifact_id"]:
+                raise ValueError("The framing answer reference is inconsistent.")
+            validate_scope_answers(questions, answers.questions_artifact_id, answers.answers)
+            upstream = framing["upstream_question_and_intent"]
+            # Fetch the *referenced* selection, never the mutable effective pointer.
+            intent = connection.execute(
+                "SELECT selection.content_json, questions.content_json AS questions_json, "
+                "intent_job.prompt_template_version FROM artifact_versions selection "
+                "JOIN jobs intent_job ON intent_job.id = selection.job_id "
+                "JOIN artifact_versions questions ON questions.id = ? "
+                "AND questions.job_id = selection.job_id "
+                "WHERE selection.id = ? AND selection.project_id = ? "
+                "AND selection.kind = 'intent_clarification_selection' "
+                "AND selection.version_number = ?",
+                (upstream["intent_questions_artifact_id"], upstream["intent_selection_artifact_id"],
+                 project_id, upstream["intent_selection_version"]),
+            ).fetchone()
+            if intent is None:
+                raise ValueError("The preserved research direction is missing.")
+            original_selection = IntentSelection.model_validate_json(intent["content_json"])
+            original_questions = IntentClarificationOutput.model_validate_json(intent["questions_json"])
+            expected_upstream = json.loads(_scope_input_snapshot(
+                upstream["scientific_question"], upstream["intent_questions_artifact_id"],
+                intent["questions_json"], upstream["intent_selection_artifact_id"],
+                upstream["intent_selection_version"], intent["content_json"],
+            ))
+            if upstream != expected_upstream:
+                raise ValueError("The preserved research direction is inconsistent.")
+        except (ValueError, KeyError, TypeError) as error:
+            if isinstance(error, JobError):
+                raise
+            raise JobError("The preserved charter inputs are not valid.") from error
+        return {
+            "schema_version": 1,
+            "cycle_number": 1,
+            "framing_input": framing,
+            "intent_questionnaire": original_questions.model_dump(mode="json"),
+            "intent_selection": original_selection.model_dump(mode="json"),
+            "intent_prompt_version": intent["prompt_template_version"],
+            "framing_check_source": framing_check_source,
+            "readiness_job_id": readiness_job_id,
+            "readiness_artifact_id": readiness_artifact_id,
+            "readiness_review": review.model_dump(mode="json"),
+            "follow_up_answers_artifact_id": followup_artifact_id,
+            "follow_up_answers_version": followup_version,
+            "follow_up_answers": followup.model_dump(mode="json") if followup else None,
+        }
+
+    @staticmethod
+    def _latest_charter(connection: sqlite3.Connection, project_id: str) -> sqlite3.Row | None:
+        return cast(sqlite3.Row | None, connection.execute(
+            "SELECT * FROM jobs WHERE project_id = ? AND kind = 'research_charter' "
+            "ORDER BY rowid DESC LIMIT 1", (project_id,)
+        ).fetchone())
+
+    @staticmethod
+    def _current_completed_charter(
+        connection: sqlite3.Connection, project_id: str
+    ) -> sqlite3.Row | None:
+        """Return the newest completed charter unless a replacement is active."""
+        active = connection.execute(
+            "SELECT 1 FROM jobs WHERE project_id = ? AND kind = 'research_charter' "
+            "AND status IN ('pending', 'awaiting_response') LIMIT 1",
+            (project_id,),
+        ).fetchone()
+        if active is not None:
+            return None
+        return cast(sqlite3.Row | None, connection.execute(
+            "SELECT * FROM jobs WHERE project_id = ? AND kind = 'research_charter' "
+            "AND status = 'completed' ORDER BY rowid DESC LIMIT 1",
+            (project_id,),
+        ).fetchone())
+
+    @staticmethod
+    def _charter_has_dependents(connection: sqlite3.Connection, job_id: str) -> bool:
+        return connection.execute(
+            "SELECT 1 FROM jobs consumer, json_tree(consumer.workflow_input_snapshot_json) input "
+            "JOIN artifact_versions artifact ON artifact.id = input.value "
+            "WHERE input.key = 'charter_artifact_id' AND artifact.job_id = ? "
+            "AND artifact.kind = 'research_charter_output' "
+            "AND consumer.kind != 'research_charter' LIMIT 1", (job_id,)
+        ).fetchone() is not None
+
+    @classmethod
+    def _editable_charter(
+        cls, connection: sqlite3.Connection, job_id: str, base_version: int
+    ) -> sqlite3.Row:
+        current = connection.execute(
+            "SELECT jobs.project_id, current.id AS artifact_id, current.version_number, "
+            "current.llm_call_id, current.content_json FROM jobs "
+            "JOIN artifact_effective_versions selected ON selected.job_id = jobs.id "
+            "JOIN artifact_versions current ON current.id = selected.artifact_version_id "
+            "AND current.kind = 'research_charter_output' "
+            "WHERE jobs.id = ? AND jobs.kind = 'research_charter' AND jobs.status = 'completed'",
+            (job_id,),
+        ).fetchone()
+        if current is None:
+            raise JobError("Only a completed research charter can be edited or approved.")
+        latest = cls._current_completed_charter(connection, current["project_id"])
+        if latest is None or latest["id"] != job_id:
+            raise JobError("A newer charter attempt exists. Reload the current charter.")
+        if current["version_number"] != base_version:
+            raise JobError("The charter was edited elsewhere. Reload before continuing.")
+        if cls._charter_has_dependents(connection, job_id):
+            raise JobError("The charter is locked because a downstream job uses it.")
+        return cast(sqlite3.Row, current)
+
+    def edit_research_charter_output(self, job_id: str, markdown: str, base_version: int) -> JobRecord:
+        payload = research_charter_payload(markdown)
+        now = _timestamp()
+        artifact_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            current = self._editable_charter(connection, job_id, base_version)
+            self._insert_user_artifact(
+                connection, artifact_id=artifact_id, project_id=current["project_id"],
+                job_id=job_id, llm_call_id=current["llm_call_id"], kind="research_charter_output",
+                content_json=_json(payload), version=base_version + 1, created_at=now,
+            )
+            connection.execute(
+                "UPDATE artifact_effective_versions SET artifact_version_id = ?, "
+                "selected_at = ?, selection_reason = 'user_edit' WHERE job_id = ?",
+                (artifact_id, now, job_id),
+            )
+        return self.get_job(job_id)
+
+    def approve_research_charter(self, job_id: str, base_version: int) -> JobRecord:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            current = self._editable_charter(connection, job_id, base_version)
+            connection.execute(
+                "INSERT INTO research_charter_approvals (id, job_id, artifact_version_id, approved_at) "
+                "VALUES (?, ?, ?, ?) ON CONFLICT(artifact_version_id) DO NOTHING",
+                (str(uuid4()), job_id, current["artifact_id"], _timestamp()),
+            )
+        return self.get_job(job_id)
+
+    def get_approved_research_charter_input(
+        self, project_id: str, *, connection: sqlite3.Connection | None = None
+    ) -> dict[str, object]:
+        """Resolve a current approved input; enqueue consumers within the SAME transaction.
+
+        Future enqueue code must pass its BEGIN IMMEDIATE connection and persist this
+        snapshot before committing, closing the approval/edit race.
+        """
+        if connection is None:
+            with self._connect() as owned:
+                return self.get_approved_research_charter_input(project_id, connection=owned)
+        latest = self._current_completed_charter(connection, project_id)
+        if latest is None or latest["status"] != "completed":
+            raise JobError("Approve the current research charter before starting downstream work.")
+        row = connection.execute(
+            "SELECT artifact.*, approval.id AS approval_id, approval.approved_at "
+            "FROM artifact_effective_versions selected "
+            "JOIN artifact_versions artifact ON artifact.id = selected.artifact_version_id "
+            "JOIN research_charter_approvals approval ON approval.artifact_version_id = artifact.id "
+            "AND approval.job_id = selected.job_id "
+            "WHERE selected.job_id = ? AND artifact.kind = 'research_charter_output'", (latest["id"],)
+        ).fetchone()
+        if row is None:
+            raise JobError("Approve the current research charter before starting downstream work.")
+        return {
+            "schema_version": 1, "cycle_number": 1, "charter_job_id": latest["id"],
+            "charter_artifact_id": row["id"], "charter_version": row["version_number"],
+            "charter_approval_id": row["approval_id"], "approved_at": row["approved_at"],
+            "charter_markdown": _markdown_from_json(row["content_json"]),
+        }
+
     def list_jobs(self) -> list[JobRecord]:
         with self._connect() as connection:
             rows = connection.execute(
-                self._select_sql() + " ORDER BY jobs.created_at DESC"
+                self._select_sql(self._table_exists(connection, "research_charter_approvals"))
+                + " ORDER BY jobs.created_at DESC"
             ).fetchall()
         return [self._record(row) for row in rows]
 
     def get_job(self, job_id: str) -> JobRecord:
         with self._connect() as connection:
             row = connection.execute(
-                self._select_sql() + " WHERE jobs.id = ?", (job_id,)
+                self._select_sql(self._table_exists(connection, "research_charter_approvals"))
+                + " WHERE jobs.id = ?",
+                (job_id,),
             ).fetchone()
         if row is None:
             raise JobError("The selected job no longer exists.")
@@ -377,16 +713,39 @@ class JobRepository:
         input_content = provider_input_for_job(job)
         if job.kind == "intent_clarification":
             prompt_template_id = "intent-clarification"
-            purpose = "Generate research-intent choices for user clarification"
+            purpose = (
+                "Generate therapeutic peptide discovery directions for user selection"
+                if _prompt_version_at_least(job.prompt_template_version, 3)
+                else "Generate research-intent choices for user clarification"
+            )
         elif job.kind == "question_detailing":
             prompt_template_id = "question-detailing"
             purpose = "Develop the scientific question for literature-search planning"
         elif job.kind == "scope_clarification_round_1":
             prompt_template_id = "scope-clarification-round-1"
-            purpose = "Generate material scope decisions from the confirmed research intent"
+            purpose = (
+                "Generate user-controlled framing decisions for a peptide-discovery investigation"
+                if _prompt_version_at_least(job.prompt_template_version, 6)
+                else "Generate user-controlled framing decisions for a peptide-discovery cycle"
+                if _prompt_version_at_least(job.prompt_template_version, 5)
+                else "Generate material scope decisions from the confirmed research intent"
+            )
         elif job.kind == "scope_readiness":
             prompt_template_id = "scope-readiness"
-            purpose = "Evaluate scope readiness and generate the only follow-up round if needed"
+            purpose = (
+                "Check peptide-discovery framing and generate one follow-up only if blocked"
+                if _prompt_version_at_least(job.prompt_template_version, 5)
+                else "Evaluate scope readiness and generate the only follow-up round if needed"
+            )
+        elif job.kind == "research_charter":
+            prompt_template_id = "research-charter"
+            purpose = (
+                "Generate a reviewable peptide-discovery charter for the current investigation"
+                if _prompt_version_at_least(job.prompt_template_version, 3)
+                else "Generate a reviewable peptide-discovery charter for the evidence cycle"
+                if _prompt_version_at_least(job.prompt_template_version, 2)
+                else "Generate a reviewable charter draft for the current research cycle"
+            )
         else:
             raise JobError(f"Unsupported LLM job kind: {job.kind}")
         with self._connect() as connection:
@@ -417,6 +776,7 @@ class JobRepository:
     def complete(self, job_id: str, call_id: str, result: GenerationResult) -> JobRecord:
         now = _timestamp()
         job = self.get_job(job_id)
+        automatically_confirm_empty_scope = False
         if job.kind == "intent_clarification":
             try:
                 parsed_intents = parse_intent_clarification_output(result.output_text)
@@ -431,6 +791,7 @@ class JobRepository:
                 raise JobError(str(error)) from error
             artifact_payload = parsed_scope.model_dump(mode="json")
             artifact_kind = "scope_clarification_questions"
+            automatically_confirm_empty_scope = not parsed_scope.questions
         elif job.kind == "scope_readiness":
             try:
                 parsed_readiness = parse_scope_readiness_output(result.output_text)
@@ -448,6 +809,12 @@ class JobRepository:
                 "detailed_question": result.output_text,
             }
             artifact_kind = "question_detailing_output"
+        elif job.kind == "research_charter":
+            try:
+                artifact_payload = research_charter_payload(result.output_text)
+            except ValueError as error:
+                raise JobError(str(error)) from error
+            artifact_kind = "research_charter_output"
         else:
             raise JobError(f"Unsupported LLM job kind: {job.kind}")
         content_json = _json(artifact_payload)
@@ -502,7 +869,37 @@ class JobRepository:
                     job_id,
                 ),
             )
-            if job.kind == "question_detailing":
+            if automatically_confirm_empty_scope:
+                answers_id = str(uuid4())
+                answers_payload = ScopeAnswers(
+                    questions_artifact_id=artifact_id,
+                    answers=[],
+                ).model_dump(mode="json")
+                answers_json = _json(answers_payload)
+                answers_bytes = answers_json.encode("utf-8")
+                connection.execute(
+                    "INSERT INTO artifact_versions (id, project_id, job_id, llm_call_id, kind, "
+                    "content_type, content_json, content_sha256, byte_size, creator_type, "
+                    "version_number, created_at) SELECT ?, project_id, id, ?, "
+                    "'scope_clarification_answers', 'application/json', ?, ?, ?, "
+                    "'application', 1, ? FROM jobs WHERE id = ?",
+                    (
+                        answers_id,
+                        call_id,
+                        answers_json,
+                        hashlib.sha256(answers_bytes).hexdigest(),
+                        len(answers_bytes),
+                        now,
+                        job_id,
+                    ),
+                )
+                connection.execute(
+                    "INSERT INTO artifact_effective_versions "
+                    "(job_id, artifact_version_id, selected_at, selection_reason) "
+                    "VALUES (?, ?, ?, 'no_framing_questions')",
+                    (job_id, answers_id, now),
+                )
+            if job.kind in {"question_detailing", "research_charter"}:
                 connection.execute(
                     "INSERT INTO artifact_effective_versions "
                     "(job_id, artifact_version_id, selected_at, selection_reason) "
@@ -930,7 +1327,8 @@ class JobRepository:
                 "JOIN llm_calls ON llm_calls.job_id = jobs.id "
                 "JOIN artifact_effective_versions selection ON selection.job_id = jobs.id "
                 "JOIN artifact_versions effective ON effective.id = selection.artifact_version_id "
-                "WHERE jobs.id = ? AND jobs.status = 'completed'",
+                "WHERE jobs.id = ? AND jobs.kind = 'question_detailing' "
+                "AND jobs.status = 'completed'",
                 (job_id,),
             ).fetchone()
             if current is None:
@@ -1006,7 +1404,40 @@ class JobRepository:
         return cursor.rowcount
 
     @staticmethod
-    def _select_sql() -> str:
+    def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
+        return connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table_name,)
+        ).fetchone() is not None
+
+    @staticmethod
+    def _select_sql(has_charter_approvals: bool = True) -> str:
+        charter_columns = (
+            "charter_approval.approved_at AS charter_approved_at, "
+            "NOT EXISTS (SELECT 1 FROM jobs active_charter WHERE "
+            "active_charter.project_id = jobs.project_id "
+            "AND active_charter.kind = 'research_charter' "
+            "AND active_charter.status IN ('pending', 'awaiting_response')) AS no_active_charter, "
+            "jobs.rowid = COALESCE((SELECT current_charter.rowid FROM jobs current_charter "
+            "WHERE current_charter.project_id = jobs.project_id "
+            "AND current_charter.kind = 'research_charter' "
+            "AND current_charter.status = 'completed' "
+            "ORDER BY current_charter.rowid DESC LIMIT 1), -1) AS is_current_charter, "
+            "NOT EXISTS (SELECT 1 FROM jobs charter_consumer, "
+            "json_tree(charter_consumer.workflow_input_snapshot_json) charter_input "
+            "JOIN artifact_versions charter_artifact ON charter_artifact.id = charter_input.value "
+            "WHERE charter_input.key = 'charter_artifact_id' "
+            "AND charter_artifact.job_id = jobs.id "
+            "AND charter_artifact.kind = 'research_charter_output' "
+            "AND charter_consumer.kind != 'research_charter') AS no_charter_dependents, "
+        ) if has_charter_approvals else (
+            "NULL AS charter_approved_at, 1 AS no_active_charter, "
+            "0 AS is_current_charter, 1 AS no_charter_dependents, "
+        )
+        charter_join = (
+            "LEFT JOIN research_charter_approvals charter_approval "
+            "ON charter_approval.job_id = jobs.id "
+            "AND charter_approval.artifact_version_id = effective.id "
+        ) if has_charter_approvals else ""
         return (
             "SELECT jobs.*, projects.tag AS project_tag, llm_calls.id AS llm_call_id, "
             "llm_calls.input_tokens, llm_calls.output_tokens, llm_calls.total_tokens, "
@@ -1023,13 +1454,17 @@ class JobRepository:
             "readiness_review.content_json AS readiness_review_json, "
             "follow_up_answers.content_json AS follow_up_answers_json, "
             "follow_up_answers.version_number AS follow_up_answers_version, "
+            + charter_columns
+            +
             "NOT EXISTS (SELECT 1 FROM jobs downstream WHERE "
             "downstream.project_id = jobs.project_id AND downstream.id != jobs.id "
             "AND downstream.created_at > jobs.created_at) AS no_downstream_job "
             "FROM jobs JOIN projects ON projects.id = jobs.project_id "
             "LEFT JOIN llm_calls ON llm_calls.job_id = jobs.id "
             "LEFT JOIN artifact_versions original ON original.job_id = jobs.id "
-            "AND original.kind = 'question_detailing_output' AND original.version_number = 1 "
+            "AND original.kind = CASE WHEN jobs.kind = 'research_charter' "
+            "THEN 'research_charter_output' ELSE 'question_detailing_output' END "
+            "AND original.version_number = 1 "
             "LEFT JOIN artifact_effective_versions selection ON selection.job_id = jobs.id "
             "LEFT JOIN artifact_versions effective ON effective.id = selection.artifact_version_id "
             "LEFT JOIN artifact_versions intent_questions ON intent_questions.job_id = jobs.id "
@@ -1050,6 +1485,7 @@ class JobRepository:
             "LEFT JOIN artifact_versions follow_up_answers "
             "ON follow_up_answers.id = selection.artifact_version_id "
             "AND follow_up_answers.kind = 'scope_follow_up_answers' "
+            + charter_join
         )
 
     @staticmethod
@@ -1109,6 +1545,21 @@ class JobRepository:
                 and row["follow_up_answers_version"] is not None
                 and bool(row["no_downstream_job"])
             ),
+            charter_approved_at=row["charter_approved_at"],
+            charter_is_editable=(
+                row["kind"] == "research_charter"
+                and row["status"] == "completed"
+                and bool(row["no_active_charter"])
+                and bool(row["is_current_charter"])
+                and bool(row["no_charter_dependents"])
+            ),
+            charter_can_regenerate=(
+                row["kind"] == "research_charter"
+                and row["status"] == "completed"
+                and bool(row["no_active_charter"])
+                and bool(row["is_current_charter"])
+                and bool(row["no_charter_dependents"])
+            ),
         )
 
     def _connect(self) -> sqlite3.Connection:
@@ -1124,7 +1575,7 @@ def provider_input(scientific_question: str) -> str:
 
 def provider_input_for_job(job: JobRecord) -> str:
     """Return the immutable input prepared for this exact job kind."""
-    if job.kind in {"scope_clarification_round_1", "scope_readiness"}:
+    if job.kind in {"scope_clarification_round_1", "scope_readiness", "research_charter"}:
         if job.workflow_input_snapshot_json is None:
             raise JobError("The structured workflow input snapshot is missing.")
         return f"Scientific workflow input (JSON):\n\n{job.workflow_input_snapshot_json}"
@@ -1245,7 +1696,8 @@ def _markdown_from_json(content_json: str | None) -> str | None:
     if content_json is None:
         return None
     try:
-        value = json.loads(content_json).get("detailed_question")
+        payload = json.loads(content_json)
+        value = payload.get("detailed_question") or payload.get("research_charter")
     except (AttributeError, json.JSONDecodeError):
         return None
     return value if isinstance(value, str) else None
@@ -1271,6 +1723,12 @@ def _optional_row_value(row: sqlite3.Row, key: str) -> str | None:
 
 def _timestamp() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _prompt_version_at_least(value: str, minimum: int) -> bool:
+    """Recognize bundled versions and custom prompts that retain their base version."""
+    candidate = value.rsplit(":", maxsplit=1)[-1]
+    return candidate.isdigit() and int(candidate) >= minimum
 
 
 def _duration_ms(started_at: str, completed_at: str) -> int:

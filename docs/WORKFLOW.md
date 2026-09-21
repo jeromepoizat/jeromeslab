@@ -1,4 +1,4 @@
-# Scientific workflow
+# Therapeutic peptide discovery workflow
 
 This is the authoritative workflow description. Status terms mean:
 
@@ -6,10 +6,14 @@ This is the authoritative workflow description. Status terms mean:
 - **planned**: product behavior is agreed enough to schedule;
 - **design in progress**: goals are known, but schema or method is unresolved.
 
-Research-direction clarification, the first project-framing round, and the
-bounded framing-readiness/follow-up stage are implemented. Their internal names
-retain `intent` and `scope` for data compatibility. The current-cycle research
-charter and later scientific stages remain planned or in design.
+Jerome's Laboratory is specialized in evidence-guided therapeutic peptide
+discovery under ADR 0015. Research-direction clarification, project framing,
+conditional bounded framing-check/follow-up, and first-investigation charter generation and approval are
+implemented with peptide-specific prompt defaults. Internal names retain
+`intent` and `scope` for data compatibility, while consumed older prompts remain
+preserved with their original wording and versions. Scientific-source
+investigation, peptide evidence extraction, design, and in-silico stages remain
+planned or in design.
 
 ## Cross-cutting workflow rules
 
@@ -23,12 +27,20 @@ charter and later scientific stages remain planned or in design.
   checkpoint and share immutable upstream artifacts.
 - Record each job and external call, including failure and retry provenance.
 - Never silently discard a retrieved publication.
+- Keep observed evidence, source annotations, model inference, and computational
+  predictions explicitly distinguishable.
+- Require a reviewed peptide design brief before candidate generation or
+  optimization consumes synthesized evidence.
+- Do not turn an evidence-dependent target, mechanism, sequence, peptide format,
+  delivery strategy, or validation method into an early user preference.
 
 ## Agreed early workflow
 
 ### Step 0 — Scientific question (implemented as project creation)
 
-The user enters a scientific question in a large text field and starts a project.
+The user enters a scientific question and starts a peptide-discovery project.
+The question may already name a target or peptide, or it may begin broadly with a
+therapeutic need or biological system whose peptide opportunity is to be explored.
 The initial project shell stores the exact text in the project record; an
 immutable artifact version will replace that storage representation when the
 artifact engine is implemented. The question is not normalized or rewritten in
@@ -36,14 +48,18 @@ place once a started or completed workflow job uses it as input. Project tags
 remain separately mutable display metadata; users can also add notes later
 without altering the question.
 
-### Step 1 — Current research direction (implemented)
+### Step 1 — Research-goal questionnaire (implemented)
 
-Each project snapshots a versioned, editable intent-clarification prompt before
-the first call. An LLM reads only the preserved original question and returns a
-strictly validated JSON questionnaire with three to seven distinct, relevant
-research directions. The active version 2 treats broad evidence mapping as a
-valid immediate objective and distinguishes the current cycle from later or
-parallel goals. It does not define literature-search scope or generate queries.
+Each project snapshots a versioned, editable direction-clarification prompt
+before the first call. An LLM reads only the preserved original question and
+returns a strictly validated JSON questionnaire with three to seven distinct,
+relevant directions. Active version 4 fixes therapeutic peptide discovery as the
+domain while accepting projects that begin from a broad therapeutic problem, a
+known target without a peptide, or an existing peptide. It treats evidence
+landscape mapping as valid immediate work and distinguishes it from later target
+assessment, peptide design, optimization, and evaluation goals. Non-peptide
+modalities may be context or comparators, not design outputs. It does not define
+source-search scope, select scientific answers, or generate queries.
 
 The user selects exactly one current objective, may check multiple later or
 parallel goals, and may add a free-form qualification. The persisted version-1
@@ -61,40 +77,51 @@ version; earlier confirmations remain inspectable provenance. Queueing downstrea
 work locks the effective intent because that job must retain the exact input it
 consumed.
 
-Intent clarification is one logical stage. A cancelled or failed call may be
+Direction clarification is one logical stage. A cancelled or failed call may be
 retried without deleting the retained attempt. The generated questionnaire and
 confirmed decision for a completed attempt are not iteratively regenerated.
 
-### Step 2 — Project framing (implemented; internally scope clarification)
+### Step 2 — Assumptions and boundaries (implemented; internally scope clarification)
 
 The first LLM round uses the original question and exact effective confirmed
-direction artifact to generate one to five material project-framing questions as
-validated JSON. Each question
-declares whether it is single-choice or multiple-choice, explains why the choice
+direction artifact to generate zero to five material project-framing questions
+as validated JSON. Active version 6 asks only for user-controlled premises,
+fixed starting points, project boundaries, or ordering decisions in therapeutic
+peptide discovery. Each question declares whether it is single-choice or
+multiple-choice, explains why the choice
 matters, provides concise options, and accepts a manual note or a "not sure"
 response that is exclusive of suggested choices. A manual note may explain that
 uncertainty, qualify selected choices, or serve as the complete answer when the
-generated options do not fit. The active version 4 prompt asks only about the
-purpose, conceptual boundary, user-known constraints, or ordering of the current
-cycle. It explicitly forbids questions that belong to later query and screening
-scope and forbids asking the user to decide scientific unknowns that evidence is
-supposed to resolve. It may return fewer questions rather than manufacture
-search-scope choices. Its version-2 output schema declares options as independent
-or cumulative; cumulative boundaries must be single-choice, while multiple-choice
-options must be independent. Generated questions and
-each confirmed or edited answer set are separate immutable, SHA-256-addressed
+generated options do not fit. The prompt explicitly forbids questions that
+belong to later query and screening scope and forbids asking the user to decide
+scientific unknowns that evidence is supposed to resolve. In particular, it must
+not demand an unsupported target, mechanism, interaction site, peptide class,
+sequence constraint, modification, delivery route, or validation strategy. Its
+version-3 output schema may return an empty question list instead of manufacturing
+a decision. The application then creates an immutable empty answer artifact with
+`application` provenance so later lineage remains structurally complete without
+pretending the user answered anything. Generated questions otherwise declare
+options as independent or cumulative; cumulative boundaries must be
+single-choice, while multiple-choice options must be independent. Generated
+questions and each confirmed or edited answer set are separate immutable,
+SHA-256-addressed
 artifacts. Downstream enqueueing locks the effective answer version.
 
-After the user confirms the first round, a separate explicit LLM job evaluates
-whether the project is framed clearly enough to construct a current-cycle
-research charter. It does not judge scientific truth, supporting evidence, or
-feasibility. A broad exploratory project can be ready while retaining unknown
-mechanisms, candidates, outcomes, and validation strategies as investigation
-objectives or deferred decisions. The job
-snapshots the exact effective first-round answer artifact it consumes and returns
-validated JSON containing a readiness decision, concise assessment, remaining or
-accepted uncertainties, and either zero follow-up questions when ready or one to
-five questions when a material ambiguity remains.
+When the first round contains one or more questions, a separate explicit LLM job
+evaluates the confirmed answers for a material contradiction or a genuinely new
+blocking user-controlled decision before the investigation charter is created.
+It does not judge scientific truth, supporting evidence, or feasibility. A broad
+exploratory project can be ready while retaining unknown mechanisms, candidates,
+outcomes, and validation strategies as investigation objectives or deferred
+decisions. The job snapshots the exact effective first-round answer artifact it
+consumes and returns validated JSON containing a readiness decision, concise
+assessment, remaining or accepted uncertainties, and either zero follow-up
+questions when ready or one to five questions when a material ambiguity remains.
+
+When framing returns no questions, the separate check would have no user answer
+to evaluate and is skipped. The application records that deterministic reason,
+the empty immutable answer artifact, and a ready result in the charter's input
+provenance. It does not create a synthetic LLM call or readiness artifact.
 
 Only one follow-up questionnaire is permitted. It reuses the first-round answer
 controls: suggested single- or multiple-choice answers, a manual note, and an
@@ -103,24 +130,60 @@ artifacts and remain editable only until the charter job is queued. After this
 round, the workflow advances with unresolved uncertainty recorded rather than
 starting an open-ended clarification loop. Not sure, note-only, broad, and
 inclusive responses are treated as completed answers: the readiness provider
-must preserve their uncertainty rather than ask the same decision again. The
-active version 4 prompt also prohibits follow-ups about study eligibility,
-sources, queries, or screening criteria and requires literal interpretation of
-selected IDs without silently including an unselected option. The application
+must preserve their uncertainty rather than ask the same decision again. Active
+version 6 presents this as a compact framing check. It declares a project not
+ready only for a material contradiction or a genuinely missing user-controlled
+decision that makes the current investigation impossible to state. It prohibits
+follow-ups about study eligibility, sources, queries, screening criteria, or
+evidence-dependent peptide design choices and requires literal interpretation
+of selected IDs without silently including an unselected option. The application
 rejects structurally inconsistent option sets and any follow-up that repeats an
 answered first-round question by ID or normalized wording.
 First-round answers lock as soon as the readiness job is queued. Reconnaissance
 search is intentionally deferred until formal search/query generation and later
 workflow behavior have been designed and tested.
 
-### Step 3 — Current-cycle research charter (planned)
+### Step 3 — Peptide-discovery charter (implemented for the first investigation)
 
-The LLM will turn the original question, confirmed direction, project-framing
+The LLM turns the original question, confirmed direction, project-framing
 answers, notes, investigation objectives, deferred decisions, and accepted
-uncertainties into a readable charter for the next cycle. An exploratory charter
+uncertainties into a readable charter for the current investigation. An exploratory charter
 states the subject and purpose without pretending that evidence-dependent
 mechanisms, candidates, or conclusions are already decided. The user reviews and
 explicitly approves an effective version before downstream work may consume it.
+
+The prompt is a versioned text resource, hidden by default and editable only
+before this stage's first job is created. The exact prompt remains viewable but
+locked afterward. Active version 4 asks for concise, flexible Markdown containing
+an explicit refined investigation question, confirmed purpose and boundaries,
+distinct evidence objectives, important unknowns, deferred design decisions, and
+the link to later peptide discovery or optimization. It tells the model to state
+each substantive point once, combine overlapping material, omit a separate copy
+of the original question, and normally stay within approximately 350–600 words.
+It preserves explicit user constraints, keeps the framing check advisory, and
+distinguishes hypotheses from commitments. It must not invent findings, queries,
+search criteria, candidates, sequences, or design specifications.
+
+Charter generation becomes available when a non-empty framing questionnaire
+passes its check, the one final follow-up is confirmed, or framing returned no
+questions. Enqueueing snapshots the complete confirmed inputs and
+locks any follow-up answer version it consumes. The generated Markdown is
+wrapped by the application in an immutable, hashed JSON artifact. The user can
+inspect the original, save manual versions, and explicitly approve the effective
+version. Editing produces a draft that requires fresh approval.
+
+Earlier general and peptide-specific research-charter prompts remain preserved
+for jobs that already consumed them. Version 4 becomes the default only for
+unconsumed stages and new projects.
+
+The backend retains a replacement-attempt lifecycle in which another generation
+creates a separate job and LLM call rather than overwriting history. Active
+replacement temporarily prevents changes or downstream use of the earlier
+charter; a successful new output becomes the current draft, while a failed or
+cancelled attempt leaves the most recent completed charter usable. The completed
+charter card does not currently expose a regeneration action. Neither editing nor
+replacement is allowed after downstream consumption. Later investigation creation is
+not implemented by this slice.
 
 ### Legacy question detailing (implemented compatibility path)
 
@@ -129,31 +192,39 @@ retain that exact interface, prompt, call provenance, Markdown output, and manua
 artifact versions. They are not silently converted to the new workflow. A future
 explicit transition or fork from a legacy output remains to be designed.
 
-### Step 4 — Literature investigation strategy (planned)
+### Step 4 — Scientific-source investigation strategy (planned)
 
-This stage, not project framing, owns the scope of literature data acquisition.
-The user chooses enabled scientific sources and decides applicable search and
-screening dimensions such as study populations or species, evidence stages,
-study designs, publication types, dates, languages, outcomes, and inclusion or
-exclusion rules. An intended animal application captured during framing is
-distinct from the later decision to include animal studies as evidence.
+This stage, not project framing, owns the scope of evidence acquisition. The user
+chooses enabled publication and structured-data sources and decides applicable
+search and screening dimensions such as study populations or species, evidence
+stages, study designs, publication types, dates, languages, outcomes, and
+inclusion or exclusion rules. An intended therapeutic application captured
+during framing is distinct from the later decision to include a study type as
+evidence.
 
-The first source is expected to be Europe PMC and later PubMed. The LLM generates
-purpose-labelled, source-specific query families rather than forcing a broad
-exploration into one query. Exact generated queries are stored and can be edited
-through the same original/effective version mechanism. Search execution consumes
-the effective query version.
+The first retrieval slice is still expected to use Europe PMC, with PubMed later.
+Future adapters may cover protein/target annotation, structure, interaction,
+bioactivity, peptide, sequence/motif, and assay sources. Each source requires its
+own accepted identity, licensing, query, pagination, normalization, and
+provenance rules before implementation. The LLM generates purpose-labelled,
+source-specific query families rather than forcing target biology, known peptide
+modulators, interaction interfaces, efficacy, safety, stability, and delivery
+into one query. Exact generated queries are stored and reviewed through the same
+original/effective version mechanism.
 
-### Step 5 — Literature retrieval (planned)
+### Step 5 — Scientific-source retrieval (planned)
 
 Each effective query is executed through its source adapter. A `SearchRun`
 preserves source, exact query/version, timestamps, request details, paging state,
 errors, and raw results where useful. Each returned record is represented and
 linked to the query that discovered it.
 
-Records are normalized into publications without inventing missing values.
+Publication records are normalized without inventing missing values.
 Deduplication merges publication identity, not discovery history: every source
-record and query relationship survives.
+record and query relationship survives. Structured scientific records keep their
+source-native identity and raw representation; cross-source entity resolution is
+a separate, conservative operation rather than publication deduplication reused
+without justification.
 
 The first implementation will define and report at least:
 
@@ -170,13 +241,13 @@ The first implementation will define and report at least:
 Identity precedence and treatment of multiple results from the same source remain
 to be specified before implementation.
 
-### Evidence-informed research-cycle iteration (planned)
+### Evidence-informed investigation iteration (planned)
 
 After enough retrieval, screening, extraction, and synthesis exists for a useful
 decision, the application presents a checkpoint. The user may continue the broad
 exploration, narrow one direction, stop, or fork several directions. A subsequent
-cycle links to the exact prior charter, evidence state, and user decision. It does
-not edit or reinterpret the consumed history of the earlier cycle.
+investigation links to the exact prior charter, evidence state, and user decision.
+It does not edit or reinterpret the consumed history of the earlier investigation.
 
 ## Later workflow: design in progress
 
@@ -201,11 +272,17 @@ retention, copyright boundaries, and document identity require further design.
 
 ### Evidence extraction
 
-The goal is atomic structured evidence rather than a paper summary. Candidate
-fields include claim, source location, study type, experimental system, method,
-result, quantitative evidence, and confidence. The schema and validation process
-are unresolved. Every evidence item must link to its source publication and the
-exact accessible text used.
+The goal is atomic peptide-relevant evidence rather than a paper or database
+summary. Candidate entities include therapeutic need, biological target,
+pathway, mechanism, interaction interface, peptide sequence or identity, peptide
+class and modification, assay, experimental system, structure, activity or
+affinity measurement, efficacy outcome, selectivity/off-target result, toxicity,
+immunogenicity, stability, degradation, delivery, and manufacturability finding.
+
+Every item must link to its publication or structured source record and exact
+source location or field. It must distinguish direct observation, curated source
+annotation, author interpretation, application inference, and computational
+prediction. The final schema and validation process are unresolved.
 
 ### Evidence reconciliation and weighting
 
@@ -219,14 +296,60 @@ scientific justification and a recorded decision.
 Narrative synthesis comes only after structured evidence. The intended chain is:
 
 ```text
-synthesis sentence -> scientific claim -> evidence item -> publication
-                   -> screening decision -> search run/query -> original question
+synthesis sentence -> scientific claim -> evidence item -> source record
+                   -> screening decision -> search run/query -> discovery charter
+                   -> original scientific question
 ```
 
 The narrative schema, citation rendering, contradiction presentation, and
 confidence language remain unresolved.
 
-### Downstream computational research
+### Peptide design brief
 
-In-silico drug discovery and related computation are long-term possibilities and
-are outside the current design scope.
+Before candidate generation, the application converts approved evidence and
+explicit user decisions into a reviewed design brief. Candidate dimensions
+include therapeutic objective, target and intended modulation, binding region or
+motif, peptide class, sequence/structure constraints, modifications, delivery
+context, selectivity, stability, safety, immunogenicity, and manufacturability.
+Every requirement must link to evidence or an explicit user decision. Unsupported
+or conflicting dimensions remain unknown or become design alternatives rather
+than silently selected defaults.
+
+The brief is versioned and explicitly approved. Any candidate-generation or
+optimization run consumes one exact approved brief version.
+
+### Candidate generation and adaptation
+
+Candidate work may start from a known peptide, motif, epitope, interaction
+interface, structural model, or de-novo method. Each candidate records its exact
+sequence and chemical representation, modifications, parent/derivation links,
+generation or editing method, model/tool version, parameters, random seed where
+applicable, input brief, and creator. User-created and imported candidates use
+the same provenance rules.
+
+The generation methods, supported peptide representations, validity rules, and
+vendor/tool integrations remain design decisions. No generated candidate is
+presented as efficacious merely because it satisfies a model or syntax check.
+
+### In-silico evaluation and prioritization
+
+Candidate evaluation is modular. Potential analyses include physicochemical and
+sequence liabilities, solubility, aggregation, proteolytic stability, structure,
+target interaction, selectivity/off-target behavior, toxicity, immunogenicity,
+delivery-related properties, and manufacturability. Every result preserves the
+tool, version, parameters, exact candidate/input structure, raw output, parsed
+value, units, applicability domain, and failures.
+
+Experimental observations and computational predictions remain separate.
+Prioritization must expose per-dimension results, uncertainty, missing values,
+and user-defined trade-offs; the product will not invent one opaque universal
+fitness score. Evaluation ordering, local-versus-remote execution, supported
+tools, resource requirements, and validation benchmarks are unresolved.
+
+### Evidence-guided iteration
+
+After evidence synthesis, design-brief review, or candidate evaluation, the user
+may continue broadly, narrow, revise an unconsumed brief, stop, or fork competing
+strategies from a checkpoint. Later investigations reference the exact evidence state,
+brief, candidate set, and decision that motivated them rather than rewriting
+earlier history.

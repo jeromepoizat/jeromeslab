@@ -7,6 +7,7 @@ import { JobElapsedTime, JobStatusLabel, type Job } from './JobQueue'
 import { ChangeModelIcon, EditableField, SectionTitle } from './ProjectElements'
 import { ScopeClarificationStage } from './ScopeClarificationStage'
 import { ScopeReadinessStage } from './ScopeReadinessStage'
+import { ResearchCharterStage } from './ResearchCharterStage'
 
 type Project = {
   id: string
@@ -25,6 +26,9 @@ type Project = {
   scope_readiness_prompt: string
   scope_readiness_prompt_version: string
   scope_readiness_prompt_is_editable: boolean
+  research_charter_prompt: string
+  research_charter_prompt_version: string
+  research_charter_prompt_is_editable: boolean
 }
 
 type ClientState = { selected_project_id: string | null; scroll_top: number }
@@ -70,6 +74,7 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
   const scopeJobOutput = useRef<HTMLElement | null>(null)
   const readinessJobCard = useRef<HTMLDivElement | null>(null)
   const readinessJobOutput = useRef<HTMLElement | null>(null)
+  const jobRevision = jobs.map(job => `${job.id}:${job.status}`).join('|')
 
   const saveClientState = useCallback((state: ClientState) => {
     void fetch('/api/client-state', {
@@ -101,6 +106,17 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
   }, [])
 
   useEffect(() => {
+    if (!jobRevision) return
+    let disposed = false
+    void fetch('/api/projects').then(async response => {
+      if (!response.ok) return
+      const updated = await response.json() as Project[]
+      if (!disposed) setProjects(updated)
+    }).catch(() => { /* The regular job/health refresh reports connection failures. */ })
+    return () => { disposed = true }
+  }, [jobRevision])
+
+  useEffect(() => {
     if (selectedProjectId === null) return
     window.setTimeout(() => window.scrollTo({ top: restoredScrollTop.current }), 0)
   }, [selectedProjectId])
@@ -121,6 +137,11 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
       scrollTimer = window.setTimeout(() => {
         const target = document.getElementById(`${jobNavigation.target === 'output' ? 'job-output' : 'job-card'}-${jobNavigation.jobId}`)
           ?? (jobNavigation.target === 'output' ? jobOutput.current : jobCard.current)
+        let ancestor: HTMLElement | null = target
+        while (ancestor !== null) {
+          if (ancestor instanceof HTMLDetailsElement) ancestor.open = true
+          ancestor = ancestor.parentElement
+        }
         target?.scrollIntoView({ behavior: 'smooth', block: 'start' })
       }, 50)
     }, 0)
@@ -298,6 +319,14 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
   const readinessJob = selectedProject === null
     ? null
     : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'scope_readiness') ?? null
+  const charterJobs = selectedProject === null ? [] : jobs.filter(job => job.project_id === selectedProject.id && job.kind === 'research_charter')
+  const framingProducedNoQuestions = scopeJob?.status === 'completed'
+    && scopeJob.scope_questions?.questions.length === 0
+    && scopeJob.scope_answers !== null
+  const isReadyForCharter = framingProducedNoQuestions || (readinessJob?.status === 'completed' && (
+    readinessJob.scope_readiness_review?.ready_for_charter === true
+    || readinessJob.scope_follow_up_answers !== null
+  ))
   const selectedJob = legacyJob
   const activeJob = legacyJob !== null && (legacyJob.status === 'pending' || legacyJob.status === 'awaiting_response') ? legacyJob : null
   const isSidebarExpanded = !isCollapsed || (isSidebarHovered && !suppressHoverExpansion)
@@ -332,19 +361,19 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
       <section className="project-content">
         {selectedProject === null ? <div className="new-project-card">
           <p className="step-label">New project</p>
-          <SectionTitle help="Enter the exact scientific question that will define this project and its later research workflow.">What scientific question do you want to investigate?</SectionTitle>
-          <input value={question} onChange={event => setQuestion(event.target.value)} placeholder="Enter the exact scientific question…" aria-label="Scientific question" />
+          <SectionTitle help="Start from a therapeutic problem, a biological system, a known target, or an existing peptide. You do not need to know the mechanism or final design yet.">What scientific question do you want to investigate?</SectionTitle>
+          <textarea className="adaptive-question-entry" rows={1} value={question} onChange={event => setQuestion(event.target.value)} placeholder="Enter the exact scientific question…" aria-label="Scientific question" />
           {error !== null && <p className="setup-error" role="alert">{error}</p>}
           <button className="primary-button" type="button" onClick={() => void createProject()} disabled={isCreating}>{isCreating ? 'Starting…' : 'Start'}</button>
         </div> : <article className="project-view">
           <p className="step-label">{selectedProject.tag}</p>
-          <SectionTitle help="The exact question that defines this project and supplies later workflow steps.">Scientific question</SectionTitle>
+          <SectionTitle help="The immutable starting question for this therapeutic peptide discovery project. It may be broad; later stages preserve it while refining the current evidence investigation.">Scientific question</SectionTitle>
           <EditableField
-            variant="single-line"
+            variant="adaptive"
             isEditing={isEditingQuestion}
             canEdit={selectedProject.question_is_editable}
             display={<p className="scientific-question">{selectedProject.scientific_question}</p>}
-            editor={<input value={editedQuestion} onChange={event => setEditedQuestion(event.target.value)} aria-label="Scientific question" />}
+            editor={<textarea rows={1} value={editedQuestion} onChange={event => setEditedQuestion(event.target.value)} aria-label="Scientific question" />}
             onEdit={() => { setEditedQuestion(selectedProject.scientific_question); setIsEditingQuestion(true) }}
             editLabel="Edit scientific question"
             actions={<>
@@ -380,7 +409,7 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
             onJobsChanged={onJobsChanged}
             onOpenSettings={onOpenSettings}
           />}
-          {scopeJob?.scope_answers !== null && scopeJob?.scope_answers !== undefined && <ScopeReadinessStage
+          {scopeJob?.scope_answers !== null && scopeJob?.scope_answers !== undefined && (scopeJob.scope_questions?.questions.length ?? 0) > 0 && <ScopeReadinessStage
             key={`${selectedProject.id}:${readinessJob?.id ?? 'new'}:${readinessJob?.scope_follow_up_answers_version ?? 'open'}`}
             project={selectedProject}
             job={readinessJob}
@@ -391,6 +420,17 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
             outputRef={readinessJobOutput}
             onProjectUpdated={updated => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, ...updated } : project))}
             onProjectLocked={() => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, scope_readiness_prompt_is_editable: false } : project))}
+            onJobsChanged={onJobsChanged}
+            onOpenSettings={onOpenSettings}
+          />}
+          {(isReadyForCharter || charterJobs.length > 0) && <ResearchCharterStage
+            key={selectedProject.id}
+            project={selectedProject}
+            jobs={charterJobs}
+            setupToken={setupToken}
+            llmSettings={llmSettings}
+            nowMilliseconds={nowMilliseconds}
+            onProjectUpdated={updated => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, ...updated } : project))}
             onJobsChanged={onJobsChanged}
             onOpenSettings={onOpenSettings}
           />}</> : <>

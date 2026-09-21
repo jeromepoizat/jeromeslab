@@ -13,14 +13,19 @@ Before substantial work, read in this order:
 
 Keep these invariants unless a new, explicit decision supersedes them:
 
+- keep the product specialized in evidence-guided therapeutic peptide discovery,
+  not general scientific research or non-peptide drug design;
 - bind the local server to `127.0.0.1` by default;
-- keep scientific workflow logic independent of LLM and literature providers;
+- keep scientific workflow logic independent of LLM, scientific-source, peptide-
+  design, and computation providers;
 - preserve immutable completed history, exact inputs, original outputs, effective
   edited versions, and provenance links;
 - fork at a checkpoint instead of rewriting history with downstream dependents;
 - never store or return API secrets outside the native credential store;
 - execute at most one research job at a time in V1;
 - do not require end users to preinstall Python, Node.js, `uv`, or pnpm;
+- distinguish experimental/source evidence, inference, and computational
+  prediction, and require an approved peptide design brief before candidate work;
 - do not present later scientific stages as settled designs.
 
 After meaningful work, run proportionate checks and update `docs/STATUS.md`.

@@ -1,6 +1,6 @@
 # Current status
 
-Last updated: 2026-09-11
+Last updated: 2026-09-21
 
 ## Current milestone
 
@@ -10,6 +10,13 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 
 ## Implementation state
 
+- ADR 0015 narrows the product from general scientific research to
+  evidence-guided therapeutic peptide discovery. The accepted path now runs from
+  the original question through scientific-source evidence, an approved peptide
+  design brief, candidate derivation, and modular in-silico evaluation. Existing
+  generic infrastructure remains applicable. Peptide-specific defaults now cover
+  the implemented direction, framing, framing-check, and charter stages; later
+  evidence and design stages are not yet implemented.
 - Source-of-truth product, architecture, workflow, data-model, roadmap, status,
   and decision documentation now exists.
 - Python dependencies are resolved in `uv.lock` and installed in the ignored
@@ -46,6 +53,9 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   from device-local UI state, or shows a minimal scientific-question/start form.
   Projects receive sequential default tags (`PROJ001`, etc.); tags are mutable,
   while the scientific question is protected as workflow input.
+- Scientific-question entry and editing start at a compact one-line height and
+  grow naturally into a wrapped paragraph field when the question needs more
+  space, with a bounded scroll area for exceptionally long text.
 - Projects retain the exact legacy question-detailing prompt and template
   version that was supplied to that workflow. Versioned defaults
   are bundled as plain-text resources rather than Python strings. The project
@@ -102,12 +112,13 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   explicit effective-version selection. The UI toggles between the permanently
   read-only original provider output and the editable effective version; stale
   concurrent edits are rejected.
-- New and previously unused projects now begin with research-direction clarification instead
+- New and previously unused projects now begin with a research-goal questionnaire instead
   of the legacy one-shot decomposition. A versioned, editable prompt asks the
   selected provider for strictly validated JSON containing three to seven
-  question-specific directions. Active version 2 treats broad evidence mapping as
-  a valid current objective and distinguishes later or parallel goals without
-  entering literature-search scope. The UI uses the same terms while the persisted
+  question-specific directions. Active version 4 specializes those choices for
+  therapeutic peptide discovery, treats broad evidence mapping as a valid current
+  objective, and distinguishes later or parallel goals without entering
+  literature-search scope. The UI uses the same terms while the persisted
   schema retains its version-1 field names. Generated choices and the confirmed
   decision remain separate immutable, SHA-256-addressed artifacts.
 - A confirmed research direction can be edited until downstream work is queued.
@@ -116,7 +127,10 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   pointer. Migration 0011 selects confirmations created by the initial slice.
 - Job prompts use an advanced disclosure pattern: the prompt is hidden by default
   and a Show prompt/Hide prompt control in the job card reveals the standard
-  editable field without burdening the normal workflow.
+  editable field directly beneath that card without burdening the normal
+  workflow. Direction, framing, readiness, and charter each use one stage title
+  for their job, prompt, and result rather than presenting prompts as separate
+  workflow sections.
 - The first project-framing round is implemented for projects with a confirmed
   direction. Its versioned prompt and queued job consume a canonical JSON
   snapshot of the original question and exact effective intent artifact version.
@@ -131,8 +145,8 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   navigation patterns as intent clarification. Migration 0012 backfills the
   versioned default prompt for existing projects and adds the immutable structured
   job-input snapshot field.
-- Scope-readiness review is implemented as an explicit queued LLM job after the
-  first answer set is confirmed. It snapshots that exact effective version and
+- Scope-readiness review is implemented as an explicit queued LLM job after a
+  non-empty first answer set is confirmed. It snapshots that exact effective version and
   accepts only validated JSON containing an operational readiness decision,
   assessment, recorded uncertainties, and zero follow-up questions when ready or
   one to five when clarification is still material. It does not claim to assess
@@ -144,7 +158,7 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   consumes them. Migration 0013 adds the readiness prompt and upgrades only
   unused version-1 scope prompts to the improved version 2, preserving consumed
   prompts such as `PROJ007` byte-for-byte.
-- Readiness prompt version 2 treats Not sure, note-only, broad, and inclusive
+- The current readiness prompt version 6 treats Not sure, note-only, broad, and inclusive
   first-round responses as completed decisions whose uncertainty is carried into
   the charter. It forbids retrying them. A backend cross-input validator rejects
   repeated follow-ups by question ID or normalized text while preserving the
@@ -161,6 +175,33 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   are rejected unless single-choice, and readiness must interpret selected IDs
   literally. Migration 0016 updates only unconsumed version-3 defaults, so
   `PROJ009` remains unchanged as the exact record that revealed the problem.
+- A successful framing-readiness result is presented as a compact card that is
+  collapsed by default. Expanding it reveals the complete assessment, call
+  provenance, and preserved open questions under the more accurate label
+  **Questions carried into the charter**. A required follow-up remains expanded
+  until answered; the readiness stage does not introduce a competing notes field.
+- First-investigation research-charter generation is implemented from an immutable snapshot
+  of the original question, effective confirmed direction, framing questionnaire
+  and answers, optional readiness review, and optional final follow-up answers. Its
+  versioned prompt explicitly preserves broad exploratory investigations and forbids the
+  model from inventing findings, restrictions, search terms, or eligibility rules.
+- Charter outputs are immutable hashed Markdown artifacts. The current draft can
+  be reviewed, manually versioned, compared with the original provider output,
+  and explicitly approved. Approval identifies one exact effective artifact
+  version; editing invalidates effective approval without deleting its history.
+- A stage prompt is editable only before that stage's first job is created. The
+  exact prompt remains viewable afterward but is locked together with the job
+  input it produced; this rule is enforced by both the interface and backend.
+- Explicit regeneration creates a separate queued/call/artifact attempt. Active
+  replacement blocks editing and downstream consumption, failed or cancelled
+  replacement restores the prior completed charter and its approval, and
+  successful replacement becomes the new unapproved draft. Historical attempts
+  remain inspectable in the project interface and global job list.
+- The completed charter card keeps only completion status and the advanced prompt
+  disclosure; it does not continue to display a generation action. The current
+  output no longer repeats its used prompt below the editor, while historical
+  attempts retain their exact prompt locally. Edit controls reserve additional
+  vertical space before the approval card.
 - ADR 0013 records iterative research cycles: evidence can inform later narrowing,
   continuation, stopping, or checkpoint forks without rewriting prior inputs or
   outputs. A project application such as animal production remains distinct from
@@ -171,6 +212,46 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 
 ## Recently completed
 
+- Removed duplicate **Completed** badges from generated result and confirmed-answer
+  boxes. Completion status now appears only in job/prompt cards and the global job
+  queue, keeping result content focused on the scientific record. Completed job
+  cards also share one alignment, with status consistently positioned before the
+  prompt control.
+- Renamed the first two user-facing stages to **Clarify the research goal** and
+  **Clarify assumptions and boundaries**. Their helpers and actions now state
+  explicitly that the first generates a goal questionnaire and the second asks
+  only for any remaining user-controlled clarifications.
+- Added concise charter prompt v4 and migration 0020. The prompt asks for each
+  substantive point once, combines overlapping sections, avoids repeating the
+  original question, and normally targets 350–600 words. Only unconsumed charter
+  stages receive it; existing prompt snapshots and outputs remain unchanged.
+- Replaced user-facing “cycle” terminology with “investigation” in the active
+  workflow and documentation. Migration 0019 introduced direction v4, framing
+  v6, framing-check v6, and investigation-worded charter v3 only for unconsumed
+  stages, preserving historical prompt snapshots byte-for-byte.
+- Made the framing check conditional. A framing result with one or more questions
+  still receives the bounded LLM check, while a zero-question result skips that
+  redundant call and section, proceeds directly to charter generation, and
+  records `application_rule_no_questions` plus a deterministic assessment in the
+  charter input provenance.
+- Reworked the implemented early workflow around therapeutic peptide discovery
+  with versioned direction v3, framing v5, framing-check v5, and charter v2
+  prompts while preserving every consumed prompt and historical project.
+- Allowed peptide-discovery framing to return zero questions when no genuine
+  user-controlled decision remains. The application records an immutable empty
+  answer artifact with application provenance without presenting a fake
+  questionnaire.
+- Established shared stage titles, helpers, prompt disclosure, job cards, and
+  result sections across the direction, framing, framing-check, and charter UI.
+- New advanced prompt edits retain their base generation in the version label
+  (for example `custom:5`) so custom text does not lose its workflow-era
+  provenance or fall back to legacy interface terminology.
+- Specialized the product vision, workflow, roadmap, architecture, conceptual
+  data model, README, and repository guidance around therapeutic peptide
+  discovery while explicitly preserving broad evidence-led exploration.
+- Recorded the design brief as the required evidence-to-candidate checkpoint and
+  established that computational predictions remain distinct from experimental
+  or curated source evidence.
 - Converted the initial product brief into maintainable repository documentation.
 - Recorded foundational ADRs for the local web stack, immutable lineage, hybrid
   storage, sequential jobs, secret handling, and LLM provenance/cost accounting.
@@ -252,23 +333,23 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 
 ## Work in progress
 
-Research-direction clarification, project framing, and bounded
-readiness/follow-up are implemented. New evidence-led prompt defaults and
-user-facing terminology are ready for live provider-account evaluation before
-current-cycle charter implementation.
+The documentation and implemented early-workflow prompts now reflect therapeutic
+peptide discovery. Direction, framing, bounded framing-check/follow-up, and
+first-investigation charter generation require evaluation across representative project
+starting points before scientific-source query generation is designed and built.
 
 ## Immediate next tasks
 
-1. Run a new exploratory project through direction, framing, and readiness with a
-   user-owned provider account; verify that scientific unknowns and literature
-   eligibility choices are not asked prematurely.
-2. Design and implement the current-cycle research charter from the exact
-   clarified inputs, investigation objectives, deferred decisions, and recorded
-   uncertainties.
-3. Define charter approval/editing and downstream-lock behavior consistently with
-   existing immutable effective versions.
-4. Add immutable model-pricing snapshots and call/step/project cost aggregation.
-5. Verify the expanded queue and generation slice on the cross-platform CI matrix.
+1. Evaluate the peptide-specific prompts on a broad therapeutic question, a
+   known target without a candidate, and an existing peptide optimization
+   project.
+2. Refine only newly versioned defaults when evaluation exposes a reproducible
+   failure; never rewrite consumed prompts or historical artifacts.
+3. Design the scientific-source investigation strategy and query-generation
+   stage that consumes the exact approved peptide-discovery charter.
+4. Select the first publication source and separately inventory candidate
+   protein, structure, interaction, bioactivity, peptide, and assay sources.
+5. Add immutable model-pricing snapshots and call/step/project cost aggregation.
 
 ## Known issues and blockers
 
@@ -291,10 +372,14 @@ current-cycle charter implementation.
 - LLM retry-attempt representation and the source/update process for trustworthy
   pricing snapshots.
 - Publication identity precedence and conflict handling during deduplication.
-- First-source confirmation (Europe PMC is proposed) and external API etiquette.
-- All later-stage scientific methods: screening criteria and disagreement,
-  full-text resolution, evidence schema/strength, contradiction reconciliation,
-  and synthesis structure.
+- First-source confirmation (Europe PMC is proposed), structured-source
+  selection/licensing, cross-source entity resolution, and external API etiquette.
+- Peptide-specific screening, full-text resolution, evidence schema/strength,
+  contradiction reconciliation, and synthesis structure.
+- Peptide chemical representation, design-brief schema, candidate identity and
+  derivation, candidate-generation methods, and supported modifications.
+- Selection, validation, applicability limits, compute/runtime distribution, and
+  transparent multi-property comparison for in-silico tools.
 - Localhost security details such as session/CSRF protection before any mutating
   browser API is exposed.
 - Bootstrap proxy/offline behavior, disk-space reporting, musl Linux support, and

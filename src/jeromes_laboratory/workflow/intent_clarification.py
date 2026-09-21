@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
-INTENT_CLARIFICATION_PROMPT_VERSION = "2"
+INTENT_CLARIFICATION_PROMPT_VERSION = "4"
 
 
 class IntentClarificationError(ValueError):

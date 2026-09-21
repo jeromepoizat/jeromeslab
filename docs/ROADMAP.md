@@ -86,7 +86,7 @@ on each target OS rather than treating it as a cross-compiled artifact.
 - Strict, deterministic replay-provider fixtures for network-free integration
   tests, with simulated provenance and no fallback to paid APIs.
 
-## Milestone 6 — Research direction, project framing, and charter
+## Milestone 6 — Research goal, assumptions and boundaries, and charter
 
 - Generate validated dynamic research-direction choices from the preserved
   question and confirm one current objective, optional later or parallel goals,
@@ -96,23 +96,30 @@ on each target OS rather than treating it as a cross-compiled artifact.
   decisions into early clarification.
 - Preserve every generated questionnaire, user decision, note, uncertainty,
   call, and prompt as exact provenance.
-- Generate and approve an effective current-cycle research charter without
+- Generate and approve an effective current-investigation research charter without
   losing its original.
 - Continue only with the exact approved charter version.
+- Maintain the implemented versioned peptide-discovery prompt defaults while
+  preserving every consumed prompt and project artifact.
+- Validate the specialized flow with broad therapeutic exploration, a known
+  target without a candidate, and an existing peptide optimization project.
 - Add a bundled example project once enough end-to-end workflow exists, using
   clearly labelled replayed outputs so it requires no provider key or API cost.
 
-## Milestone 7 — Literature query generation
+## Milestone 7 — Peptide evidence-investigation strategy and queries
 
-- Source selection, beginning with the source chosen for retrieval prototyping.
+- Source selection across publications and relevant structured scientific data,
+  beginning with one publication source for retrieval prototyping.
 - Explicitly decide data-search and screening scope here, including applicable
   species or populations, evidence stages, study designs, publication types,
   dates, languages, outcomes, and inclusion or exclusion rules.
 - Source-specific queries with purpose and exact LLM provenance.
 - Purpose-labelled query families for broad exploratory evidence mapping.
+- Peptide-relevant query purposes such as target biology, mechanism, known peptide
+  modulators, interaction interfaces, efficacy, safety, stability, and delivery.
 - Original/effective query versions and pre-execution review.
 
-## Milestone 8 — Literature retrieval prototype
+## Milestone 8 — Scientific-source retrieval prototype
 
 - Start with one source, provisionally Europe PMC.
 - Query execution, pagination, raw-response artifacts, and external-error handling.
@@ -120,15 +127,43 @@ on each target OS rather than treating it as a cross-compiled artifact.
 - Conservative deduplication with every discovery relationship preserved.
 - Defined/tested retrieval statistics, progress, and expandable publication UI.
 - Add PubMed and cross-source overlap only after the single-source path is sound.
+- Specify adapters for protein/target, structure, interaction, bioactivity,
+  peptide, sequence/motif, and assay sources individually before adding them.
 
-## Milestone 9 and later — design before implementation
+## Milestone 9 — Peptide evidence extraction and synthesis
 
-Design literature screening collaboratively, then full-text/access resolution,
-evidence extraction, reconciliation/weighting, and synthesis. Each stage needs an
-explicit schema, provenance contract, human-correction behavior, evaluation plan,
-and ADRs where choices affect scientific validity. In-silico research is beyond
-these milestones and has no committed design.
+- Design publication screening and full-text/access resolution.
+- Define atomic peptide-relevant evidence with explicit source location and
+  observed/annotated/inferred/predicted type.
+- Reconcile supporting, contradictory, negative, and missing evidence without an
+  arbitrary universal evidence score.
+- Produce traceable synthesis whose statements resolve to evidence and sources.
 
-After the first evidence-bearing end-to-end path exists, add research-cycle
+## Milestone 10 — Peptide design brief and candidate provenance
+
+- Convert approved evidence and explicit user decisions into a versioned,
+  human-approved peptide design brief.
+- Preserve unknown or conflicting requirements rather than inventing defaults.
+- Define peptide representations, modifications, parent/derivation lineage, and
+  validity rules.
+- Record imported, user-edited, adapted, and generated candidates through the
+  same immutable provenance contracts.
+
+## Milestone 11 — Modular in-silico discovery
+
+- Select and validate one computational capability at a time rather than adding
+  an opaque end-to-end score.
+- Preserve tool/model version, parameters, seeds where applicable, exact inputs,
+  raw output, units, failures, applicability limits, timing, and cost.
+- Keep predictions distinct from experimental evidence and expose missing or
+  conflicting evaluation dimensions.
+- Support transparent prioritization and checkpoint forks for competing design
+  strategies.
+
+Every later scientific stage requires an explicit schema, provenance contract,
+human-correction behavior, evaluation plan, and ADRs where choices affect
+scientific validity.
+
+After the first evidence-bearing end-to-end path exists, add investigation
 checkpoints that let the user continue exploring, narrow a direction, stop, or
 fork alternatives without rewriting any consumed charter or evidence history.
