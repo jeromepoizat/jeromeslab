@@ -11,8 +11,9 @@ discovery under ADR 0015. Research-direction clarification, project framing,
 conditional bounded framing-check/follow-up, and first-investigation charter generation and approval are
 implemented with peptide-specific prompt defaults. Internal names retain
 `intent` and `scope` for data compatibility, while consumed older prompts remain
-preserved with their original wording and versions. Scientific-source
-investigation, peptide evidence extraction, design, and in-silico stages remain
+preserved with their original wording and versions. The first scientific-source
+scope questionnaire is implemented. Strategy approval, query generation,
+retrieval, peptide evidence extraction, design, and in-silico stages remain
 planned or in design.
 
 ## Cross-cutting workflow rules
@@ -192,7 +193,7 @@ retain that exact interface, prompt, call provenance, Markdown output, and manua
 artifact versions. They are not silently converted to the new workflow. A future
 explicit transition or fork from a legacy output remains to be designed.
 
-### Step 4 — Scientific-source investigation strategy (planned)
+### Step 4 — Scientific-source investigation strategy (questionnaire implemented)
 
 This stage, not project framing, owns the scope of evidence acquisition. The user
 chooses enabled publication and structured-data sources and decides applicable
@@ -201,6 +202,31 @@ stages, study designs, publication types, dates, languages, outcomes, and
 inclusion or exclusion rules. An intended therapeutic application captured
 during framing is distinct from the later decision to include a study type as
 evidence.
+
+The implemented first slice begins only from the exact current approved charter.
+A versioned, advanced-disclosure prompt generates validated JSON with two
+separate layers: mandatory evidence themes derived from every current charter
+objective, and zero to six user-controlled retrieval or screening decisions.
+Themes may identify relevant peptide identity, sequence, target, pathway,
+mechanism, interaction, activity, translational, developability, safety, or
+delivery domains without treating that list as universally mandatory. Relevant
+negative, null, contradictory, failed, and adverse evidence cannot be disabled.
+
+Questions may clarify related-entity breadth, evidence stages, populations,
+comparators, indirect context, or exceptional operational limits. They must not
+ask the user to predict findings, remove a charter objective, choose an
+unsupported peptide-design solution, or generate database syntax. Advisory
+recommendations are visible but never silently selected. The user may instead
+choose another option, add a note, answer only with a note, or preserve
+uncertainty with **Not sure**. Generated questions and confirmed or edited answer
+sets are immutable hashed artifacts; downstream work will consume one exact
+effective version. A zero-question result receives a deterministic empty answer
+artifact without pretending the user made a decision.
+
+The next slice will convert the approved charter themes and confirmed answers
+into a separately reviewable evidence-investigation strategy. Source-specific
+query generation remains downstream of that strategy rather than being hidden
+inside the questionnaire call.
 
 The first retrieval slice is still expected to use Europe PMC, with PubMed later.
 Future adapters may cover protein/target annotation, structure, interaction,

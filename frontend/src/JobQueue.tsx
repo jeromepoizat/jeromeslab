@@ -22,6 +22,8 @@ export type ScopeQuestion = {
   selection_mode: 'single_choice' | 'multiple_choice'
   option_structure?: 'independent' | 'cumulative' | null
   options: ScopeOption[]
+  recommended_option_ids?: string[]
+  recommendation_reason?: string
 }
 export type ScopeQuestions = { schema_version: 1 | 2 | 3; introduction: string; questions: ScopeQuestion[] }
 export type ScopeAnswer = {
@@ -41,6 +43,24 @@ export type ScopeReadinessReview = {
   assessment: string
   remaining_uncertainties: string[]
   follow_up_questions: ScopeQuestion[]
+}
+export type EvidenceTheme = {
+  id: string
+  label: string
+  purpose: string
+  evidence_domains: string[]
+  negative_evidence_required: boolean
+}
+export type EvidenceScopeQuestion = ScopeQuestion & {
+  option_structure: 'independent' | 'cumulative'
+  recommended_option_ids: string[]
+  recommendation_reason: string
+}
+export type EvidenceScopeQuestions = {
+  schema_version: 1
+  introduction: string
+  charter_evidence_themes: EvidenceTheme[]
+  questions: EvidenceScopeQuestion[]
 }
 
 export type Job = {
@@ -85,6 +105,10 @@ export type Job = {
   charter_approved_at: string | null
   charter_is_editable: boolean
   charter_can_regenerate: boolean
+  evidence_scope_questions: EvidenceScopeQuestions | null
+  evidence_scope_answers: ScopeAnswers | null
+  evidence_scope_answers_version: number | null
+  evidence_scope_answers_is_editable: boolean
 }
 
 function jobKindLabel(job: Job) {
@@ -93,6 +117,7 @@ function jobKindLabel(job: Job) {
   if (job.kind === 'scope_clarification_round_1') return promptVersion >= 5 ? 'Assumptions and boundaries' : promptVersion >= 3 ? 'Project framing' : 'Scope clarification'
   if (job.kind === 'scope_readiness') return promptVersion >= 5 ? 'Framing check' : promptVersion >= 3 ? 'Framing readiness review' : 'Scope readiness review'
   if (job.kind === 'research_charter') return promptVersion >= 2 ? 'Peptide-discovery charter' : 'Research charter'
+  if (job.kind === 'evidence_scope_questionnaire') return 'Evidence search scope'
   return 'Question detailing'
 }
 

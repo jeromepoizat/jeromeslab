@@ -18,10 +18,12 @@ the provenance and cost of every LLM-assisted transformation.
 
 **The product is now specialized in evidence-guided therapeutic peptide
 discovery.** The local application already implements research-direction and
-project-framing through charter approval with immutable provenance. New and
+project-framing through charter approval and the first evidence-search scope
+questionnaire with immutable provenance. New and
 unused stages now use peptide-specific direction, framing, framing-check, and
 charter prompts; consumed prompts and historical projects remain unchanged.
-Later evidence, design, and in-silico stages remain planned. See
+Evidence-strategy approval, query generation, retrieval, design, and in-silico
+stages remain planned. See
 [current status](docs/STATUS.md) before starting work.
 
 ## Intended workflow
@@ -148,8 +150,12 @@ Markdown draft, and optionally edit it before choosing **Approve charter**.
 Edits need fresh approval. The completed charter card does not offer a
 regeneration action. The retained replacement-attempt lifecycle remains a
 backend capability so any future regeneration interface cannot overwrite prior
-attempts. Approval prepares the exact charter version for the later
-scientific-source investigation stage, which is not implemented yet.
+attempts. Approval unlocks an evidence-search scope questionnaire. It displays
+mandatory evidence themes derived from the charter separately from remaining
+user-controlled retrieval and screening decisions. Recommendations are advisory;
+answers may use suggested choices, a note, or explicit uncertainty. Exact queries
+are not generated yet: a separately reviewable evidence-investigation strategy
+remains the next planned stage.
 Existing projects with completed question-detailing outputs retain their original
 Markdown and manual versions as a compatibility path.
 

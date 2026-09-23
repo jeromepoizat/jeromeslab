@@ -39,6 +39,8 @@ class Project(Base):
     scope_readiness_prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
     research_charter_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     research_charter_prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    evidence_scope_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_scope_prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
 
 
 class Job(Base):

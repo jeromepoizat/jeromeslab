@@ -1,6 +1,6 @@
 # Current status
 
-Last updated: 2026-09-21
+Last updated: 2026-09-23
 
 ## Current milestone
 
@@ -192,6 +192,19 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 - A stage prompt is editable only before that stage's first job is created. The
   exact prompt remains viewable afterward but is locked together with the job
   input it produced; this rule is enforced by both the interface and backend.
+- The first Milestone 7 slice is implemented after exact charter approval. A
+  versioned evidence-scope prompt and sequential LLM job generate validated,
+  charter-derived mandatory evidence themes plus zero to six user-controlled
+  retrieval or screening questions. The stage cannot remove a charter objective
+  or make relevant negative evidence optional, and it does not generate database
+  queries.
+- Evidence-scope questions support advisory recommendations, independent or
+  cumulative option semantics, suggested answers, note-only answers, optional
+  notes, and explicit Not sure. Confirmed and edited answers are immutable hashed
+  artifacts with an effective-version pointer; a zero-question result receives
+  a deterministic application-created empty answer artifact. The project UI
+  keeps the prompt hidden by default, displays mandatory themes separately from
+  decisions, and exposes the job in the global queue.
 - Explicit regeneration creates a separate queued/call/artifact attempt. Active
   replacement blocks editing and downstream consumption, failed or cancelled
   replacement restores the prior completed charter and its approval, and
@@ -212,6 +225,12 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 
 ## Recently completed
 
+- Added the approved-charter evidence-search scope questionnaire and recorded the
+  charter-theme/question boundary in ADR 0016. Evidence-strategy approval and
+  source-specific query generation remain separate future stages.
+- Extended the OpenAI text-generation model filter to include the GPT-6 family;
+  compatible GPT-6 models returned by the user's account catalog can now be
+  selected after refreshing the model list.
 - Removed duplicate **Completed** badges from generated result and confirmed-answer
   boxes. Completion status now appears only in job/prompt cards and the global job
   queue, keeping result content focused on the scientific record. Completed job

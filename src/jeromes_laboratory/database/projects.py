@@ -8,6 +8,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
+from jeromes_laboratory.workflow.evidence_scope import (
+    DEFAULT_EVIDENCE_SCOPE_PROMPT,
+    EVIDENCE_SCOPE_PROMPT_VERSION,
+)
 from jeromes_laboratory.workflow.intent_clarification import (
     DEFAULT_INTENT_CLARIFICATION_PROMPT,
     INTENT_CLARIFICATION_PROMPT_VERSION,
@@ -59,6 +63,9 @@ class ProjectRecord:
     research_charter_prompt: str
     research_charter_prompt_version: str
     research_charter_prompt_is_editable: bool
+    evidence_scope_prompt: str
+    evidence_scope_prompt_version: str
+    evidence_scope_prompt_is_editable: bool
 
 
 class ProjectRepository:
@@ -76,6 +83,7 @@ class ProjectRepository:
                 "scope_clarification_prompt, scope_clarification_prompt_version, "
                 "scope_readiness_prompt, scope_readiness_prompt_version, "
                 "research_charter_prompt, research_charter_prompt_version, "
+                "evidence_scope_prompt, evidence_scope_prompt_version, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id) "
                 "AS question_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
@@ -87,6 +95,8 @@ class ProjectRepository:
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
                 "AND jobs.kind = 'scope_readiness') AS readiness_prompt_is_editable, "
                 + self._charter_prompt_editable_sql()
+                + ", NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
+                "AND jobs.kind = 'evidence_scope_questionnaire') AS evidence_scope_prompt_is_editable "
                 + "FROM projects ORDER BY created_at"
             ).fetchall()
         return [self._record_from_row(row) for row in rows]
@@ -100,6 +110,7 @@ class ProjectRepository:
                 "scope_clarification_prompt, scope_clarification_prompt_version, "
                 "scope_readiness_prompt, scope_readiness_prompt_version, "
                 "research_charter_prompt, research_charter_prompt_version, "
+                "evidence_scope_prompt, evidence_scope_prompt_version, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id) "
                 "AS question_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
@@ -111,6 +122,8 @@ class ProjectRepository:
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
                 "AND jobs.kind = 'scope_readiness') AS readiness_prompt_is_editable, "
                 + self._charter_prompt_editable_sql()
+                + ", NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
+                "AND jobs.kind = 'evidence_scope_questionnaire') AS evidence_scope_prompt_is_editable "
                 + "FROM projects WHERE id = ?",
                 (project_id,),
             ).fetchone()
@@ -131,12 +144,21 @@ class ProjectRepository:
             has_charter_columns = self._column_exists(
                 connection, "projects", "research_charter_prompt"
             )
+            has_evidence_scope_columns = self._column_exists(
+                connection, "projects", "evidence_scope_prompt"
+            )
             charter_columns = (
                 ", research_charter_prompt, research_charter_prompt_version"
                 if has_charter_columns
                 else ""
             )
             charter_placeholders = ", ?, ?" if has_charter_columns else ""
+            evidence_scope_columns = (
+                ", evidence_scope_prompt, evidence_scope_prompt_version"
+                if has_evidence_scope_columns
+                else ""
+            )
+            evidence_scope_placeholders = ", ?, ?" if has_evidence_scope_columns else ""
             values: tuple[object, ...] = (
                 project_id,
                 tag,
@@ -154,6 +176,8 @@ class ProjectRepository:
             )
             if has_charter_columns:
                 values += (DEFAULT_RESEARCH_CHARTER_PROMPT, RESEARCH_CHARTER_PROMPT_VERSION)
+            if has_evidence_scope_columns:
+                values += (DEFAULT_EVIDENCE_SCOPE_PROMPT, EVIDENCE_SCOPE_PROMPT_VERSION)
             connection.execute(
                 "INSERT INTO projects (id, tag, scientific_question, created_at, updated_at, "
                 "question_detailing_prompt, question_detailing_prompt_version, "
@@ -161,8 +185,10 @@ class ProjectRepository:
                 "scope_clarification_prompt, scope_clarification_prompt_version, "
                 "scope_readiness_prompt, scope_readiness_prompt_version"
                 + charter_columns
+                + evidence_scope_columns
                 + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
                 + charter_placeholders
+                + evidence_scope_placeholders
                 + ")",
                 values,
             )
@@ -193,6 +219,9 @@ class ProjectRepository:
             research_charter_prompt=DEFAULT_RESEARCH_CHARTER_PROMPT,
             research_charter_prompt_version=RESEARCH_CHARTER_PROMPT_VERSION,
             research_charter_prompt_is_editable=True,
+            evidence_scope_prompt=DEFAULT_EVIDENCE_SCOPE_PROMPT,
+            evidence_scope_prompt_version=EVIDENCE_SCOPE_PROMPT_VERSION,
+            evidence_scope_prompt_is_editable=True,
         )
 
     def rename_project(self, project_id: str, tag_value: str) -> ProjectRecord:
@@ -359,6 +388,33 @@ class ProjectRepository:
             )
         return self.get_project(project_id)
 
+    def update_evidence_scope_prompt(self, project_id: str, prompt_value: str) -> ProjectRecord:
+        """Save the exact prompt before the evidence-scope questionnaire is queued."""
+        prompt = self._required_text(prompt_value, "Enter a prompt before saving.")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                "SELECT 1 FROM jobs WHERE project_id = ? "
+                "AND kind = 'evidence_scope_questionnaire'",
+                (project_id,),
+            ).fetchone()
+            if existing is not None:
+                raise ProjectError(
+                    "The evidence-scope prompt is locked because a workflow job already uses it."
+                )
+            cursor = connection.execute(
+                "UPDATE projects SET evidence_scope_prompt = ?, "
+                "evidence_scope_prompt_version = CASE "
+                "WHEN evidence_scope_prompt_version LIKE 'custom%' "
+                "THEN evidence_scope_prompt_version "
+                "ELSE 'custom:' || evidence_scope_prompt_version END, "
+                "updated_at = ? WHERE id = ?",
+                (prompt, self._timestamp(), project_id),
+            )
+        if cursor.rowcount == 0:
+            raise ProjectError("The selected project no longer exists.")
+        return self.get_project(project_id)
+
     @staticmethod
     def _charter_prompt_editable_sql() -> str:
         return (
@@ -426,6 +482,9 @@ class ProjectRepository:
             research_charter_prompt=row["research_charter_prompt"],
             research_charter_prompt_version=row["research_charter_prompt_version"],
             research_charter_prompt_is_editable=bool(row["charter_prompt_is_editable"]),
+            evidence_scope_prompt=row["evidence_scope_prompt"],
+            evidence_scope_prompt_version=row["evidence_scope_prompt_version"],
+            evidence_scope_prompt_is_editable=bool(row["evidence_scope_prompt_is_editable"]),
         )
 
     @staticmethod

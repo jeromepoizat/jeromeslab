@@ -49,8 +49,12 @@ def test_openai_catalog_returns_only_supported_text_models() -> None:
         {
             "https://api.openai.com/v1/models": {
                 "data": [
+                    {"id": "gpt-6-astra"},
+                    {"id": "gpt-6-sol"},
+                    {"id": "gpt-6-luna"},
                     {"id": "gpt-5.6-sol"},
                     {"id": "gpt-4.1-mini"},
+                    {"id": "gpt-6-codex"},
                     {"id": "gpt-5.6-codex"},
                     {"id": "gpt-realtime"},
                     {"id": "text-embedding-3-large"},
@@ -59,7 +63,13 @@ def test_openai_catalog_returns_only_supported_text_models() -> None:
         }
     )
 
-    assert catalog.fetch_models("openai", "secret") == ["gpt-5.6-sol", "gpt-4.1-mini"]
+    assert catalog.fetch_models("openai", "secret") == [
+        "gpt-6-astra",
+        "gpt-6-sol",
+        "gpt-6-luna",
+        "gpt-5.6-sol",
+        "gpt-4.1-mini",
+    ]
 
 
 def test_anthropic_catalog_follows_pagination_and_filters_models() -> None:

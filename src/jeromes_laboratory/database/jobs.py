@@ -13,6 +13,13 @@ from uuid import uuid4
 
 from jeromes_laboratory.llm.catalog import ProviderName
 from jeromes_laboratory.llm.generation import GenerationResult, PreparedGeneration
+from jeromes_laboratory.workflow.evidence_scope import (
+    EvidenceScopeAnswers,
+    EvidenceScopeError,
+    EvidenceScopeOutput,
+    parse_evidence_scope_output,
+    validate_evidence_scope_answers,
+)
 from jeromes_laboratory.workflow.intent_clarification import (
     IntentClarificationError,
     IntentClarificationOutput,
@@ -87,6 +94,10 @@ class JobRecord:
     charter_approved_at: str | None
     charter_is_editable: bool
     charter_can_regenerate: bool
+    evidence_scope_questions: dict[str, object] | None
+    evidence_scope_answers: dict[str, object] | None
+    evidence_scope_answers_version: int | None
+    evidence_scope_answers_is_editable: bool
 
 
 class JobRepository:
@@ -650,6 +661,60 @@ class JobRepository:
             "charter_markdown": _markdown_from_json(row["content_json"]),
         }
 
+    def enqueue_evidence_scope_questionnaire(
+        self, project_id: str, provider: ProviderName, model: str
+    ) -> JobRecord:
+        """Queue scope generation from one exact approved charter version."""
+        now = _timestamp()
+        job_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            project = connection.execute(
+                "SELECT scientific_question, evidence_scope_prompt, "
+                "evidence_scope_prompt_version FROM projects WHERE id = ?",
+                (project_id,),
+            ).fetchone()
+            if project is None:
+                raise JobError("The selected project no longer exists.")
+            existing = connection.execute(
+                "SELECT 1 FROM jobs WHERE project_id = ? "
+                "AND kind = 'evidence_scope_questionnaire' "
+                "AND status IN ('pending', 'awaiting_response', 'completed')",
+                (project_id,),
+            ).fetchone()
+            if existing is not None:
+                raise JobError(
+                    "The evidence-search scope questionnaire has already been started."
+                )
+            approved_charter = self.get_approved_research_charter_input(
+                project_id, connection=connection
+            )
+            workflow_input = _json(
+                {
+                    "schema_version": 1,
+                    "approved_research_charter": approved_charter,
+                }
+            )
+            connection.execute(
+                "INSERT INTO jobs (id, project_id, kind, status, created_at, provider, model, "
+                "scientific_question_snapshot, prompt_snapshot, prompt_template_id, "
+                "prompt_template_version, workflow_input_snapshot_json) "
+                "VALUES (?, ?, 'evidence_scope_questionnaire', 'pending', ?, ?, ?, ?, ?, "
+                "'evidence-scope-questionnaire', ?, ?)",
+                (
+                    job_id,
+                    project_id,
+                    now,
+                    provider,
+                    model,
+                    project["scientific_question"],
+                    project["evidence_scope_prompt"],
+                    project["evidence_scope_prompt_version"],
+                    workflow_input,
+                ),
+            )
+        return self.get_job(job_id)
+
     def list_jobs(self) -> list[JobRecord]:
         with self._connect() as connection:
             rows = connection.execute(
@@ -746,6 +811,12 @@ class JobRepository:
                 if _prompt_version_at_least(job.prompt_template_version, 2)
                 else "Generate a reviewable charter draft for the current research cycle"
             )
+        elif job.kind == "evidence_scope_questionnaire":
+            prompt_template_id = "evidence-scope-questionnaire"
+            purpose = (
+                "Derive mandatory evidence themes and user-controlled search-scope decisions "
+                "from the approved peptide-discovery charter"
+            )
         else:
             raise JobError(f"Unsupported LLM job kind: {job.kind}")
         with self._connect() as connection:
@@ -777,6 +848,7 @@ class JobRepository:
         now = _timestamp()
         job = self.get_job(job_id)
         automatically_confirm_empty_scope = False
+        automatically_confirm_empty_evidence_scope = False
         if job.kind == "intent_clarification":
             try:
                 parsed_intents = parse_intent_clarification_output(result.output_text)
@@ -815,6 +887,14 @@ class JobRepository:
             except ValueError as error:
                 raise JobError(str(error)) from error
             artifact_kind = "research_charter_output"
+        elif job.kind == "evidence_scope_questionnaire":
+            try:
+                parsed_evidence_scope = parse_evidence_scope_output(result.output_text)
+            except EvidenceScopeError as error:
+                raise JobError(str(error)) from error
+            artifact_payload = parsed_evidence_scope.model_dump(mode="json")
+            artifact_kind = "evidence_scope_questions"
+            automatically_confirm_empty_evidence_scope = not parsed_evidence_scope.questions
         else:
             raise JobError(f"Unsupported LLM job kind: {job.kind}")
         content_json = _json(artifact_payload)
@@ -897,6 +977,36 @@ class JobRepository:
                     "INSERT INTO artifact_effective_versions "
                     "(job_id, artifact_version_id, selected_at, selection_reason) "
                     "VALUES (?, ?, ?, 'no_framing_questions')",
+                    (job_id, answers_id, now),
+                )
+            if automatically_confirm_empty_evidence_scope:
+                answers_id = str(uuid4())
+                answers_payload = EvidenceScopeAnswers(
+                    questions_artifact_id=artifact_id,
+                    answers=[],
+                ).model_dump(mode="json")
+                answers_json = _json(answers_payload)
+                answers_bytes = answers_json.encode("utf-8")
+                connection.execute(
+                    "INSERT INTO artifact_versions (id, project_id, job_id, llm_call_id, kind, "
+                    "content_type, content_json, content_sha256, byte_size, creator_type, "
+                    "version_number, created_at) SELECT ?, project_id, id, ?, "
+                    "'evidence_scope_answers', 'application/json', ?, ?, ?, "
+                    "'application', 1, ? FROM jobs WHERE id = ?",
+                    (
+                        answers_id,
+                        call_id,
+                        answers_json,
+                        hashlib.sha256(answers_bytes).hexdigest(),
+                        len(answers_bytes),
+                        now,
+                        job_id,
+                    ),
+                )
+                connection.execute(
+                    "INSERT INTO artifact_effective_versions "
+                    "(job_id, artifact_version_id, selected_at, selection_reason) "
+                    "VALUES (?, ?, ?, 'no_evidence_scope_questions')",
                     (job_id, answers_id, now),
                 )
             if job.kind in {"question_detailing", "research_charter"}:
@@ -1151,6 +1261,122 @@ class JobRepository:
                 job_id=job_id,
                 llm_call_id=row["llm_call_id"],
                 kind="scope_clarification_answers",
+                content_json=content_json,
+                version=base_version + 1,
+                created_at=now,
+            )
+            connection.execute(
+                "UPDATE artifact_effective_versions SET artifact_version_id = ?, "
+                "selected_at = ?, selection_reason = 'user_edit' WHERE job_id = ?",
+                (artifact_id, now, job_id),
+            )
+        return self.get_job(job_id)
+
+    def submit_evidence_scope_answers(
+        self, job_id: str, answers: list[ScopeAnswer]
+    ) -> JobRecord:
+        """Persist the first complete evidence-scope answer set."""
+        now = _timestamp()
+        artifact_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT jobs.project_id, llm_calls.id AS llm_call_id, "
+                "questions.id AS questions_artifact_id, questions.content_json "
+                "FROM jobs JOIN llm_calls ON llm_calls.job_id = jobs.id "
+                "JOIN artifact_versions questions ON questions.job_id = jobs.id "
+                "AND questions.kind = 'evidence_scope_questions' "
+                "WHERE jobs.id = ? AND jobs.kind = 'evidence_scope_questionnaire' "
+                "AND jobs.status = 'completed'",
+                (job_id,),
+            ).fetchone()
+            if row is None:
+                raise JobError("Evidence-scope questions are not ready for this job.")
+            existing = connection.execute(
+                "SELECT 1 FROM artifact_versions WHERE job_id = ? "
+                "AND kind = 'evidence_scope_answers'",
+                (job_id,),
+            ).fetchone()
+            if existing is not None:
+                raise JobError("The evidence-scope answers have already been confirmed.")
+            questions = EvidenceScopeOutput.model_validate_json(row["content_json"])
+            try:
+                validated = validate_evidence_scope_answers(
+                    questions, row["questions_artifact_id"], answers
+                )
+            except (EvidenceScopeError, ValueError) as error:
+                raise JobError(str(error)) from error
+            content_json = _json(validated.model_dump(mode="json"))
+            self._insert_user_artifact(
+                connection,
+                artifact_id=artifact_id,
+                project_id=row["project_id"],
+                job_id=job_id,
+                llm_call_id=row["llm_call_id"],
+                kind="evidence_scope_answers",
+                content_json=content_json,
+                version=1,
+                created_at=now,
+            )
+            connection.execute(
+                "INSERT INTO artifact_effective_versions "
+                "(job_id, artifact_version_id, selected_at, selection_reason) "
+                "VALUES (?, ?, ?, 'confirmed_evidence_scope_answers')",
+                (job_id, artifact_id, now),
+            )
+        return self.get_job(job_id)
+
+    def edit_evidence_scope_answers(
+        self, job_id: str, answers: list[ScopeAnswer], base_version: int
+    ) -> JobRecord:
+        """Create a new effective evidence-scope answer version before downstream work."""
+        now = _timestamp()
+        artifact_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT jobs.project_id, jobs.created_at AS job_created_at, "
+                "llm_calls.id AS llm_call_id, questions.id AS questions_artifact_id, "
+                "questions.content_json AS questions_json, current.version_number "
+                "FROM jobs JOIN llm_calls ON llm_calls.job_id = jobs.id "
+                "JOIN artifact_versions questions ON questions.job_id = jobs.id "
+                "AND questions.kind = 'evidence_scope_questions' "
+                "JOIN artifact_effective_versions effective ON effective.job_id = jobs.id "
+                "JOIN artifact_versions current ON current.id = effective.artifact_version_id "
+                "AND current.kind = 'evidence_scope_answers' "
+                "WHERE jobs.id = ? AND jobs.kind = 'evidence_scope_questionnaire' "
+                "AND jobs.status = 'completed'",
+                (job_id,),
+            ).fetchone()
+            if row is None:
+                raise JobError("Only confirmed evidence-scope answers can be edited.")
+            downstream = connection.execute(
+                "SELECT 1 FROM jobs WHERE project_id = ? AND id != ? AND created_at > ? LIMIT 1",
+                (row["project_id"], job_id, row["job_created_at"]),
+            ).fetchone()
+            if downstream is not None:
+                raise JobError(
+                    "The evidence-scope answers are locked because a downstream job was queued."
+                )
+            if row["version_number"] != base_version:
+                raise JobError(
+                    "These evidence-scope answers were edited elsewhere. Reload before saving."
+                )
+            questions = EvidenceScopeOutput.model_validate_json(row["questions_json"])
+            try:
+                validated = validate_evidence_scope_answers(
+                    questions, row["questions_artifact_id"], answers
+                )
+            except (EvidenceScopeError, ValueError) as error:
+                raise JobError(str(error)) from error
+            content_json = _json(validated.model_dump(mode="json"))
+            self._insert_user_artifact(
+                connection,
+                artifact_id=artifact_id,
+                project_id=row["project_id"],
+                job_id=job_id,
+                llm_call_id=row["llm_call_id"],
+                kind="evidence_scope_answers",
                 content_json=content_json,
                 version=base_version + 1,
                 created_at=now,
@@ -1454,6 +1680,9 @@ class JobRepository:
             "readiness_review.content_json AS readiness_review_json, "
             "follow_up_answers.content_json AS follow_up_answers_json, "
             "follow_up_answers.version_number AS follow_up_answers_version, "
+            "evidence_scope_questions.content_json AS evidence_scope_questions_json, "
+            "evidence_scope_answers.content_json AS evidence_scope_answers_json, "
+            "evidence_scope_answers.version_number AS evidence_scope_answers_version, "
             + charter_columns
             +
             "NOT EXISTS (SELECT 1 FROM jobs downstream WHERE "
@@ -1485,6 +1714,13 @@ class JobRepository:
             "LEFT JOIN artifact_versions follow_up_answers "
             "ON follow_up_answers.id = selection.artifact_version_id "
             "AND follow_up_answers.kind = 'scope_follow_up_answers' "
+            "LEFT JOIN artifact_versions evidence_scope_questions "
+            "ON evidence_scope_questions.job_id = jobs.id "
+            "AND evidence_scope_questions.kind = 'evidence_scope_questions' "
+            "AND evidence_scope_questions.version_number = 1 "
+            "LEFT JOIN artifact_versions evidence_scope_answers "
+            "ON evidence_scope_answers.id = selection.artifact_version_id "
+            "AND evidence_scope_answers.kind = 'evidence_scope_answers' "
             + charter_join
         )
 
@@ -1560,6 +1796,16 @@ class JobRepository:
                 and bool(row["is_current_charter"])
                 and bool(row["no_charter_dependents"])
             ),
+            evidence_scope_questions=_object_from_json(
+                row["evidence_scope_questions_json"]
+            ),
+            evidence_scope_answers=_object_from_json(row["evidence_scope_answers_json"]),
+            evidence_scope_answers_version=row["evidence_scope_answers_version"],
+            evidence_scope_answers_is_editable=(
+                row["kind"] == "evidence_scope_questionnaire"
+                and row["evidence_scope_answers_version"] is not None
+                and bool(row["no_downstream_job"])
+            ),
         )
 
     def _connect(self) -> sqlite3.Connection:
@@ -1575,7 +1821,12 @@ def provider_input(scientific_question: str) -> str:
 
 def provider_input_for_job(job: JobRecord) -> str:
     """Return the immutable input prepared for this exact job kind."""
-    if job.kind in {"scope_clarification_round_1", "scope_readiness", "research_charter"}:
+    if job.kind in {
+        "scope_clarification_round_1",
+        "scope_readiness",
+        "research_charter",
+        "evidence_scope_questionnaire",
+    }:
         if job.workflow_input_snapshot_json is None:
             raise JobError("The structured workflow input snapshot is missing.")
         return f"Scientific workflow input (JSON):\n\n{job.workflow_input_snapshot_json}"

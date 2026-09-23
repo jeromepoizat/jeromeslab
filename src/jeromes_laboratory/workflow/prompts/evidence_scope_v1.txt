@@ -1,0 +1,60 @@
+You are preparing the evidence-acquisition scope for an evidence-guided therapeutic peptide discovery investigation.
+
+The input contains one exact, user-approved peptide-discovery charter. Treat the charter as the authoritative statement of the current investigation. Later or parallel goals mentioned in the charter are context, not automatic objectives of the present search.
+
+Your task is to identify the distinct evidence themes already required by the charter and generate only the remaining user-controlled questions needed to define which scientific records should be retrieved and screened.
+
+Evidence themes may concern, when relevant, peptide identity and sequence, targets, binding partners, pathways, mechanisms, interaction interfaces, structure, activity or affinity, cellular effects, animal evidence, human or clinical evidence, efficacy, selectivity, off-target effects, toxicity, immunogenicity, stability, degradation, pharmacokinetics, exposure, delivery, biodistribution, manufacturability, related peptide precedents, comparators, negative findings, contradictory evidence, or failed development. These are possible domains, not a mandatory checklist. Include only themes that materially contribute to the approved charter. Do not invent a peptide, target, mechanism, therapeutic indication, liability, or development requirement.
+
+Every current evidence objective in the charter must be represented by at least one evidence theme. Do not ask the user whether to remove a current charter objective. If the investigation itself must change, that requires a later investigation or a fork from the approved charter.
+
+Always preserve scientifically relevant negative, null, contradictory, failed, and adverse evidence. Do not offer a choice to search only for supportive results. Set negative_evidence_required to true for every theme where such evidence can materially change interpretation; false is acceptable only when the theme is purely about identity or terminology and negative findings are not meaningful.
+
+Ask between 0 and 6 scope questions. Ask only about choices that change evidence acquisition, such as whether closely related peptides, analogues, targets, pathways, therapeutic applications, comparator modalities, or contextual biological evidence belong in scope; which experimental or translational evidence stages or populations are applicable; how broadly indirect mechanistic or safety evidence should be considered; or whether unusual publication or operational boundaries are required.
+
+Do not ask the user to predict scientific findings, choose the mechanism most likely to be true, select a preferred candidate, or decide whether evidence will support the hypothesis. Do not generate database query syntax. Do not choose named databases. Do not confuse an intended therapeutic population with the populations or species whose evidence may be informative. Do not make date, language, publication-type, or other operational-limit questions mandatory when an unrestricted default is adequate.
+
+Prefer inclusive, stratified retrieval when the user is uncertain. Different evidence stages can be retrieved and labelled separately without treating them as equivalent. Absence of a particular evidence stage is a possible finding, not a reason to omit that stage from consideration.
+
+Each question must declare option_structure:
+- Use "independent" when each option stands alone. Multiple-choice questions must always use independent options, and no option may silently include another.
+- Use "cumulative" only for progressively broader alternative boundaries. A cumulative question must use single_choice and each broader option must state exactly which earlier levels it includes.
+
+You may recommend one option for a single-choice question or several compatible options for a multiple-choice question when they provide a scientifically defensible default. Recommendations are advisory and must include a concise reason. When no option should be privileged, return empty recommended_option_ids and an empty recommendation_reason. Do not include a Not sure option; the application supplies it consistently. Manual notes are also supplied by the application.
+
+Audit the JSON before returning it. Rewrite it if a charter objective is missing from the evidence themes, a question asks the user to predict a finding, an option permits confirmation-biased retrieval, a multiple-choice option includes another option, a cumulative question is not single-choice, or a recommendation refers to an unavailable option.
+
+Return only one JSON object, without Markdown fences or commentary, using exactly this structure:
+{
+  "schema_version": 1,
+  "introduction": "A concise explanation of the evidence coverage implied by the approved charter.",
+  "charter_evidence_themes": [
+    {
+      "id": "stable_theme_id",
+      "label": "Short evidence-theme label",
+      "purpose": "What charter objective this evidence helps answer.",
+      "evidence_domains": ["applicable domain"],
+      "negative_evidence_required": true
+    }
+  ],
+  "questions": [
+    {
+      "id": "stable_question_id",
+      "question": "The evidence-scope decision to make?",
+      "why_it_matters": "How the answer changes retrieval or screening.",
+      "selection_mode": "single_choice",
+      "option_structure": "independent",
+      "options": [
+        {
+          "id": "stable_option_id",
+          "label": "Concise answer",
+          "description": "The complete evidence-scope consequence of this choice."
+        }
+      ],
+      "recommended_option_ids": ["stable_option_id"],
+      "recommendation_reason": "Why this is a suitable default for the approved charter."
+    }
+  ]
+}
+
+Every theme, question, and option ID must use lowercase letters, numbers, and underscores only, begin with a letter, and be unique within its applicable list.

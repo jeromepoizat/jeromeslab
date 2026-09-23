@@ -140,6 +140,24 @@ exact reference when enqueueing. The backend locks consumed charter versions;
 attempts to approve or edit stale versions are rejected. Multiple-investigation execution
 remains a later feature.
 
+### Evidence-search scope questionnaire (implemented)
+
+Projects store a versioned `evidence_scope_prompt`. The first questionnaire job
+consumes an exact approved-charter snapshot containing the charter job, artifact,
+effective version, approval, approval time, and Markdown. Its immutable provider
+artifact contains charter-derived evidence themes and zero to six evidence-scope
+questions. Each theme records a stable ID, label, purpose, applicable evidence
+domains, and whether negative evidence is meaningful for that theme.
+
+Questions use the established independent/cumulative option semantics and may
+carry advisory recommended option IDs with a reason. Recommendations are not
+stored as user decisions. Confirmed responses create a separate
+`evidence_scope_answers` artifact that supports suggested options, note-only
+answers, optional notes, and explicit uncertainty. Manual corrections append a
+new version and move the effective pointer until a downstream strategy job is
+queued. When no question is needed, the application creates an empty answer
+artifact with application provenance.
+
 ### Proposed integrity-verification behavior
 
 Each immutable `ArtifactVersion` (including a workflow step or job output) should

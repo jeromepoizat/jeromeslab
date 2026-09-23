@@ -69,7 +69,7 @@ def test_configure_workspace_creates_layout_and_applies_migration(tmp_path: Path
         revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
 
     assert "application_metadata" in tables
-    assert revision == ("0020",)
+    assert revision == ("0021",)
 
 
 def test_readiness_migration_preserves_consumed_scope_prompt(tmp_path: Path) -> None:

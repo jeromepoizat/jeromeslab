@@ -123,6 +123,9 @@ class ProjectResponse(BaseModel):
     research_charter_prompt: str
     research_charter_prompt_version: str
     research_charter_prompt_is_editable: bool
+    evidence_scope_prompt: str
+    evidence_scope_prompt_version: str
+    evidence_scope_prompt_is_editable: bool
 
 
 class CreateProjectRequest(BaseModel):
@@ -176,6 +179,12 @@ class UpdateQuestionDetailingOutputRequest(BaseModel):
 
 class UpdateResearchCharterPromptRequest(BaseModel):
     """Instructions saved for the next explicit charter-generation attempt."""
+
+    prompt: str = Field(min_length=1, max_length=20_000)
+
+
+class UpdateEvidenceScopePromptRequest(BaseModel):
+    """Instructions used to generate the evidence-search scope questionnaire."""
 
     prompt: str = Field(min_length=1, max_length=20_000)
 
@@ -310,6 +319,45 @@ class ScopeReadinessResponse(BaseModel):
     follow_up_questions: list[ScopeQuestionResponse]
 
 
+class EvidenceThemeResponse(BaseModel):
+    """One mandatory evidence theme derived from the approved charter."""
+
+    id: str
+    label: str
+    purpose: str
+    evidence_domains: list[str]
+    negative_evidence_required: bool
+
+
+class EvidenceScopeQuestionResponse(ScopeQuestionResponse):
+    """One evidence-acquisition decision with an optional advisory recommendation."""
+
+    option_structure: Literal["independent", "cumulative"]
+    recommended_option_ids: list[str]
+    recommendation_reason: str
+
+
+class EvidenceScopeQuestionsResponse(BaseModel):
+    """Validated charter-derived evidence themes and scope questions."""
+
+    schema_version: Literal[1]
+    introduction: str
+    charter_evidence_themes: list[EvidenceThemeResponse]
+    questions: list[EvidenceScopeQuestionResponse]
+
+
+class SubmitEvidenceScopeAnswersRequest(BaseModel):
+    """A complete response to the generated evidence-scope questions."""
+
+    answers: list[ScopeAnswerRequest] = Field(min_length=1, max_length=6)
+
+
+class UpdateEvidenceScopeAnswersRequest(SubmitEvidenceScopeAnswersRequest):
+    """A new answer version based on the effective version shown to the user."""
+
+    base_version: int = Field(ge=1)
+
+
 class SubmitScopeFollowUpAnswersRequest(BaseModel):
     """A complete response to the optional one-to-five-question follow-up."""
 
@@ -366,6 +414,10 @@ class JobResponse(BaseModel):
     charter_approved_at: str | None
     charter_is_editable: bool
     charter_can_regenerate: bool
+    evidence_scope_questions: EvidenceScopeQuestionsResponse | None
+    evidence_scope_answers: ScopeAnswersResponse | None
+    evidence_scope_answers_version: int | None
+    evidence_scope_answers_is_editable: bool
 
 
 class ClientStateResponse(BaseModel):

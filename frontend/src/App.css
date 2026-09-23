@@ -586,7 +586,9 @@ main.project-main {
 .scope-option input { accent-color: var(--focus); flex: 0 0 auto; height: 1.05rem; margin: 0.16rem 0 0; width: 1.05rem; }
 .scope-option > span { display: grid; gap: 0.2rem; }
 .scope-option strong { color: var(--ink); }
+.recommended-option { background: color-mix(in srgb, var(--focus) 18%, transparent); border: 1px solid color-mix(in srgb, var(--focus) 45%, var(--border)); border-radius: 999px; color: var(--ink); font-size: 0.65rem; font-style: normal; margin-left: 0.55rem; padding: 0.08rem 0.4rem; text-transform: uppercase; }
 .scope-option small { color: var(--muted); font-size: 0.8rem; line-height: 1.45; }
+.scope-recommendation { background: color-mix(in srgb, var(--focus) 8%, var(--surface-subtle)); border-left: 3px solid var(--focus); color: var(--muted); font-size: 0.82rem; margin: 0.15rem 0 0 !important; padding: 0.65rem 0.75rem; }
 .scope-option--unsure { border-style: dashed; }
 .scope-clear-options { margin-top: 0.55rem; }
 .scope-note { display: grid; gap: 0.45rem; margin-top: 0.8rem; }
@@ -595,6 +597,16 @@ main.project-main {
 .confirmed-scope-answer { border-bottom: 1px solid var(--border); padding: 0.4rem 2.6rem 1rem 0; }
 .confirmed-scope-answer:last-child { border-bottom: 0; padding-bottom: 0.4rem; }
 .confirmed-scope-answer ul { margin-bottom: 0; padding-left: 1.3rem; }
+.evidence-themes { border: 1px solid var(--border); border-radius: 0.7rem; display: grid; gap: 0.75rem; margin: 1rem 0; padding: 1rem; }
+.evidence-themes > .step-label { margin: 0; }
+.evidence-themes-helper { color: var(--muted); line-height: 1.5; margin: -0.25rem 0 0; }
+.evidence-theme { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 0.6rem; padding: 0.85rem; }
+.evidence-theme h3 { color: var(--ink); font-family: Georgia, 'Times New Roman', serif; font-size: 1.08rem; margin: 0; }
+.evidence-theme p { color: var(--muted); line-height: 1.5; margin: 0.45rem 0; }
+.evidence-theme small { color: var(--muted); display: block; line-height: 1.4; margin-top: 0.55rem; }
+.evidence-domain-list { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.evidence-domain-list span { background: var(--surface-hover); border: 1px solid var(--border); border-radius: 999px; color: var(--ink); font-size: 0.72rem; padding: 0.18rem 0.5rem; }
+.evidence-decisions-label { margin: 1.4rem 0 0.75rem; }
 
 .readiness-card {
   background: var(--surface-subtle);

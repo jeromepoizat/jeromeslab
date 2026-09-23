@@ -24,10 +24,13 @@ from jeromes_laboratory.api.schemas import (
     LLMSettingsResponse,
     ProjectResponse,
     RenameProjectRequest,
+    SubmitEvidenceScopeAnswersRequest,
     SubmitIntentSelectionRequest,
     SubmitScopeAnswersRequest,
     SubmitScopeFollowUpAnswersRequest,
     UpdateClientStateRequest,
+    UpdateEvidenceScopeAnswersRequest,
+    UpdateEvidenceScopePromptRequest,
     UpdateIntentClarificationPromptRequest,
     UpdateIntentSelectionRequest,
     UpdateLLMSettingsRequest,
@@ -166,6 +169,9 @@ def create_app(
             research_charter_prompt=record.research_charter_prompt,
             research_charter_prompt_version=record.research_charter_prompt_version,
             research_charter_prompt_is_editable=record.research_charter_prompt_is_editable,
+            evidence_scope_prompt=record.evidence_scope_prompt,
+            evidence_scope_prompt_version=record.evidence_scope_prompt_version,
+            evidence_scope_prompt_is_editable=record.evidence_scope_prompt_is_editable,
         )
 
     def job_repository() -> JobRepository:
@@ -976,6 +982,94 @@ def create_app(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT, detail=str(error)
             ) from error
+
+    @application.patch(
+        "/api/projects/{project_id}/evidence-scope-prompt",
+        response_model=ProjectResponse,
+        tags=["projects"],
+    )
+    def update_evidence_scope_prompt(
+        project_id: str,
+        request: UpdateEvidenceScopePromptRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> ProjectResponse:
+        """Save the exact advanced prompt before questionnaire generation."""
+        try:
+            return project_response(
+                project_repository().update_evidence_scope_prompt(project_id, request.prompt)
+            )
+        except ProjectError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT, detail=str(error)
+            ) from error
+
+    @application.post(
+        "/api/projects/{project_id}/evidence-scope/jobs",
+        response_model=JobResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["jobs"],
+    )
+    def enqueue_evidence_scope_questionnaire(
+        project_id: str,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Queue charter-derived evidence themes and search-scope decisions."""
+        try:
+            settings = application.state.llm_settings_service.read()
+            if settings.provider is None or settings.model is None:
+                raise JobError("Configure an LLM provider and model before starting this job.")
+            if application.state.credential_store.get_api_key(settings.provider) is None:
+                raise JobError("The selected provider API key is no longer available.")
+            record = job_repository().enqueue_evidence_scope_questionnaire(
+                project_id, settings.provider, settings.model
+            )
+        except (CredentialStoreError, LLMSettingsError, JobError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
+        return job_response(record)
+
+    @application.post(
+        "/api/jobs/{job_id}/evidence-scope-answers",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def submit_evidence_scope_answers(
+        job_id: str,
+        request: SubmitEvidenceScopeAnswersRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Confirm one complete evidence-search scope answer set."""
+        try:
+            answers = [
+                ScopeAnswer.model_validate(answer.model_dump()) for answer in request.answers
+            ]
+            return job_response(job_repository().submit_evidence_scope_answers(job_id, answers))
+        except (JobError, ValueError) as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+    @application.patch(
+        "/api/jobs/{job_id}/evidence-scope-answers",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def edit_evidence_scope_answers(
+        job_id: str,
+        request: UpdateEvidenceScopeAnswersRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Select a new evidence-scope answer version before downstream work."""
+        try:
+            answers = [
+                ScopeAnswer.model_validate(answer.model_dump()) for answer in request.answers
+            ]
+            return job_response(
+                job_repository().edit_evidence_scope_answers(
+                    job_id, answers, request.base_version
+                )
+            )
+        except (JobError, ValueError) as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
 
     @application.get("/api/client-state", response_model=ClientStateResponse, tags=["client"])
     def get_client_state() -> ClientStateResponse:

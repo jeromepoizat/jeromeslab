@@ -8,6 +8,7 @@ import { ChangeModelIcon, EditableField, SectionTitle } from './ProjectElements'
 import { ScopeClarificationStage } from './ScopeClarificationStage'
 import { ScopeReadinessStage } from './ScopeReadinessStage'
 import { ResearchCharterStage } from './ResearchCharterStage'
+import { EvidenceScopeStage } from './EvidenceScopeStage'
 
 type Project = {
   id: string
@@ -29,6 +30,9 @@ type Project = {
   research_charter_prompt: string
   research_charter_prompt_version: string
   research_charter_prompt_is_editable: boolean
+  evidence_scope_prompt: string
+  evidence_scope_prompt_version: string
+  evidence_scope_prompt_is_editable: boolean
 }
 
 type ClientState = { selected_project_id: string | null; scroll_top: number }
@@ -320,6 +324,9 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
     ? null
     : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'scope_readiness') ?? null
   const charterJobs = selectedProject === null ? [] : jobs.filter(job => job.project_id === selectedProject.id && job.kind === 'research_charter')
+  const evidenceScopeJob = selectedProject === null
+    ? null
+    : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'evidence_scope_questionnaire') ?? null
   const framingProducedNoQuestions = scopeJob?.status === 'completed'
     && scopeJob.scope_questions?.questions.length === 0
     && scopeJob.scope_answers !== null
@@ -327,6 +334,7 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
     readinessJob.scope_readiness_review?.ready_for_charter === true
     || readinessJob.scope_follow_up_answers !== null
   ))
+  const hasApprovedCurrentCharter = charterJobs.some(job => job.charter_approved_at !== null && job.charter_is_editable)
   const selectedJob = legacyJob
   const activeJob = legacyJob !== null && (legacyJob.status === 'pending' || legacyJob.status === 'awaiting_response') ? legacyJob : null
   const isSidebarExpanded = !isCollapsed || (isSidebarHovered && !suppressHoverExpansion)
@@ -431,6 +439,18 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
             llmSettings={llmSettings}
             nowMilliseconds={nowMilliseconds}
             onProjectUpdated={updated => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, ...updated } : project))}
+            onJobsChanged={onJobsChanged}
+            onOpenSettings={onOpenSettings}
+          />}
+          {(hasApprovedCurrentCharter || evidenceScopeJob !== null) && <EvidenceScopeStage
+            key={`${selectedProject.id}:${evidenceScopeJob?.id ?? 'new'}:${evidenceScopeJob?.evidence_scope_answers_version ?? 'open'}`}
+            project={selectedProject}
+            job={evidenceScopeJob}
+            setupToken={setupToken}
+            llmSettings={llmSettings}
+            nowMilliseconds={nowMilliseconds}
+            onProjectUpdated={updated => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, ...updated } : project))}
+            onProjectLocked={() => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, evidence_scope_prompt_is_editable: false } : project))}
             onJobsChanged={onJobsChanged}
             onOpenSettings={onOpenSettings}
           />}</> : <>

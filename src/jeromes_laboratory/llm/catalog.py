@@ -13,7 +13,7 @@ PROVIDER_DISPLAY_NAMES: dict[ProviderName, str] = {
     "anthropic": "Anthropic",
 }
 
-_OPENAI_TEXT_PREFIXES = ("gpt-5", "gpt-4.1", "gpt-4o", "o1", "o3", "o4")
+_OPENAI_TEXT_PREFIXES = ("gpt-6", "gpt-5", "gpt-4.1", "gpt-4o", "o1", "o3", "o4")
 _OPENAI_EXCLUDED_MARKERS = (
     "audio",
     "codex",
