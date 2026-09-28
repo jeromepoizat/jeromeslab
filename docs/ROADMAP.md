@@ -113,7 +113,7 @@ on each target OS rather than treating it as a cross-compiled artifact.
 - Preserve recommendations as advisory, accept notes and uncertainty, and
   version confirmed answers until downstream consumption (implemented).
 - Generate and approve a compact evidence-investigation strategy from the exact
-  approved charter, themes, and effective scope answers.
+  approved charter, themes, and effective scope answers (implemented).
 - Source selection across publications and relevant structured scientific data,
   beginning with one publication source for retrieval prototyping.
 - Explicitly decide data-search and screening scope here, including applicable

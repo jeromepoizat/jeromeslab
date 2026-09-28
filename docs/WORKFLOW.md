@@ -12,7 +12,7 @@ conditional bounded framing-check/follow-up, and first-investigation charter gen
 implemented with peptide-specific prompt defaults. Internal names retain
 `intent` and `scope` for data compatibility, while consumed older prompts remain
 preserved with their original wording and versions. The first scientific-source
-scope questionnaire is implemented. Strategy approval, query generation,
+scope questionnaire and reviewable strategy approval are implemented. Query generation,
 retrieval, peptide evidence extraction, design, and in-silico stages remain
 planned or in design.
 
@@ -193,7 +193,7 @@ retain that exact interface, prompt, call provenance, Markdown output, and manua
 artifact versions. They are not silently converted to the new workflow. A future
 explicit transition or fork from a legacy output remains to be designed.
 
-### Step 4 — Scientific-source investigation strategy (questionnaire implemented)
+### Step 4 — Scientific-source investigation strategy (questionnaire and strategy implemented)
 
 This stage, not project framing, owns the scope of evidence acquisition. The user
 chooses enabled publication and structured-data sources and decides applicable
@@ -223,10 +223,19 @@ sets are immutable hashed artifacts; downstream work will consume one exact
 effective version. A zero-question result receives a deterministic empty answer
 artifact without pretending the user made a decision.
 
-The next slice will convert the approved charter themes and confirmed answers
-into a separately reviewable evidence-investigation strategy. Source-specific
-query generation remains downstream of that strategy rather than being hidden
-inside the questionnaire call.
+The next implemented slice snapshots the exact approved charter, validated
+evidence themes, and current effective scope-answer artifact in one strategy
+job. Its versioned prompt is hidden by default and editable only before the
+first attempt. The LLM drafts concise Markdown with purpose-labelled evidence
+workstreams, applicable source categories, eligibility and stratification
+principles, and unresolved search decisions. The user reviews, may edit, and
+explicitly approves one effective version. The original output and earlier
+versions remain preserved; editing requires fresh approval. A cancelled or
+failed attempt can be retried with its original workflow input.
+
+The strategy describes proposed source categories without claiming that a named
+adapter or result exists. Source-specific query generation consumes the approved
+strategy and its exact charter, theme, and answer inputs in a later stage.
 
 The first retrieval slice is still expected to use Europe PMC, with PubMed later.
 Future adapters may cover protein/target annotation, structure, interaction,

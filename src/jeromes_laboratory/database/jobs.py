@@ -20,6 +20,7 @@ from jeromes_laboratory.workflow.evidence_scope import (
     parse_evidence_scope_output,
     validate_evidence_scope_answers,
 )
+from jeromes_laboratory.workflow.evidence_strategy import evidence_strategy_payload
 from jeromes_laboratory.workflow.intent_clarification import (
     IntentClarificationError,
     IntentClarificationOutput,
@@ -98,6 +99,8 @@ class JobRecord:
     evidence_scope_answers: dict[str, object] | None
     evidence_scope_answers_version: int | None
     evidence_scope_answers_is_editable: bool
+    evidence_strategy_approved_at: str | None
+    evidence_strategy_is_editable: bool
 
 
 class JobRepository:
@@ -715,10 +718,195 @@ class JobRepository:
             )
         return self.get_job(job_id)
 
+    def enqueue_evidence_strategy(
+        self, project_id: str, provider: ProviderName, model: str
+    ) -> JobRecord:
+        """Queue a strategy from one approved charter and effective scope answer set."""
+        now = _timestamp()
+        job_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            project = connection.execute(
+                "SELECT scientific_question, evidence_strategy_prompt, "
+                "evidence_strategy_prompt_version FROM projects WHERE id = ?",
+                (project_id,),
+            ).fetchone()
+            if project is None:
+                raise JobError("The selected project no longer exists.")
+            previous = connection.execute(
+                "SELECT * FROM jobs WHERE project_id = ? AND kind = 'evidence_strategy' "
+                "ORDER BY rowid DESC LIMIT 1",
+                (project_id,),
+            ).fetchone()
+            if previous is not None and previous["status"] not in {"failed", "cancelled"}:
+                raise JobError("The evidence-investigation strategy has already been started.")
+            if previous is not None:
+                if previous["workflow_input_snapshot_json"] is None:
+                    raise JobError("The previous strategy input snapshot is missing.")
+                workflow_input = json.loads(previous["workflow_input_snapshot_json"])
+                workflow_input["retry_of_job_id"] = previous["id"]
+            else:
+                approved_charter = self.get_approved_research_charter_input(
+                    project_id, connection=connection
+                )
+                scope = connection.execute(
+                    "SELECT jobs.id AS job_id, jobs.workflow_input_snapshot_json, "
+                    "questions.id AS questions_artifact_id, questions.content_json AS questions_json, "
+                    "answers.id AS answers_artifact_id, answers.version_number AS answers_version, "
+                    "answers.content_json AS answers_json "
+                    "FROM jobs JOIN artifact_versions questions ON questions.job_id = jobs.id "
+                    "AND questions.kind = 'evidence_scope_questions' AND questions.version_number = 1 "
+                    "JOIN artifact_effective_versions selected ON selected.job_id = jobs.id "
+                    "JOIN artifact_versions answers ON answers.id = selected.artifact_version_id "
+                    "AND answers.kind = 'evidence_scope_answers' "
+                    "WHERE jobs.project_id = ? AND jobs.kind = 'evidence_scope_questionnaire' "
+                    "AND jobs.status = 'completed' ORDER BY jobs.rowid DESC LIMIT 1",
+                    (project_id,),
+                ).fetchone()
+                if scope is None:
+                    raise JobError(
+                        "Confirm the evidence-scope answers before generating a strategy."
+                    )
+                try:
+                    scope_input = json.loads(scope["workflow_input_snapshot_json"])
+                    if scope_input["approved_research_charter"] != approved_charter:
+                        raise ValueError("The scope and charter references differ.")
+                    questions = EvidenceScopeOutput.model_validate_json(scope["questions_json"])
+                    answers = EvidenceScopeAnswers.model_validate_json(scope["answers_json"])
+                    validate_evidence_scope_answers(
+                        questions, scope["questions_artifact_id"], answers.answers
+                    )
+                    if answers.questions_artifact_id != scope["questions_artifact_id"]:
+                        raise ValueError("The scope answer reference is inconsistent.")
+                except (ValueError, KeyError, TypeError, EvidenceScopeError) as error:
+                    raise JobError("The saved evidence-scope inputs are not valid.") from error
+                workflow_input = {
+                    "schema_version": 1,
+                    "approved_research_charter": approved_charter,
+                    "evidence_scope_job_id": scope["job_id"],
+                    "evidence_scope_questions_artifact_id": scope["questions_artifact_id"],
+                    "evidence_scope_questions": questions.model_dump(mode="json"),
+                    "evidence_scope_answers_artifact_id": scope["answers_artifact_id"],
+                    "evidence_scope_answers_version": scope["answers_version"],
+                    "evidence_scope_answers": answers.model_dump(mode="json"),
+                }
+            connection.execute(
+                "INSERT INTO jobs (id, project_id, kind, status, created_at, provider, model, "
+                "scientific_question_snapshot, prompt_snapshot, prompt_template_id, "
+                "prompt_template_version, workflow_input_snapshot_json) "
+                "VALUES (?, ?, 'evidence_strategy', 'pending', ?, ?, ?, ?, ?, "
+                "'evidence-strategy', ?, ?)",
+                (
+                    job_id, project_id, now, provider, model,
+                    project["scientific_question"], project["evidence_strategy_prompt"],
+                    project["evidence_strategy_prompt_version"], _json(workflow_input),
+                ),
+            )
+        return self.get_job(job_id)
+
+    @staticmethod
+    def _editable_strategy(
+        connection: sqlite3.Connection, job_id: str, base_version: int
+    ) -> sqlite3.Row:
+        current = connection.execute(
+            "SELECT jobs.project_id, jobs.rowid AS job_rowid, artifact.id AS artifact_id, "
+            "artifact.version_number, artifact.llm_call_id FROM jobs "
+            "JOIN artifact_effective_versions selected ON selected.job_id = jobs.id "
+            "JOIN artifact_versions artifact ON artifact.id = selected.artifact_version_id "
+            "AND artifact.kind = 'evidence_strategy_output' "
+            "WHERE jobs.id = ? AND jobs.kind = 'evidence_strategy' "
+            "AND jobs.status = 'completed'",
+            (job_id,),
+        ).fetchone()
+        if current is None:
+            raise JobError("Only a completed evidence strategy can be edited or approved.")
+        if current["version_number"] != base_version:
+            raise JobError("The strategy was edited elsewhere. Reload before continuing.")
+        downstream = connection.execute(
+            "SELECT 1 FROM jobs WHERE project_id = ? AND rowid > ? LIMIT 1",
+            (current["project_id"], current["job_rowid"]),
+        ).fetchone()
+        if downstream is not None:
+            raise JobError("The strategy is locked because a downstream job uses it.")
+        return cast(sqlite3.Row, current)
+
+    def edit_evidence_strategy_output(
+        self, job_id: str, markdown: str, base_version: int
+    ) -> JobRecord:
+        try:
+            payload = evidence_strategy_payload(markdown)
+        except ValueError as error:
+            raise JobError(str(error)) from error
+        now = _timestamp()
+        artifact_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            current = self._editable_strategy(connection, job_id, base_version)
+            self._insert_user_artifact(
+                connection, artifact_id=artifact_id, project_id=current["project_id"],
+                job_id=job_id, llm_call_id=current["llm_call_id"],
+                kind="evidence_strategy_output", content_json=_json(payload),
+                version=base_version + 1, created_at=now,
+            )
+            connection.execute(
+                "UPDATE artifact_effective_versions SET artifact_version_id = ?, "
+                "selected_at = ?, selection_reason = 'user_edit' WHERE job_id = ?",
+                (artifact_id, now, job_id),
+            )
+        return self.get_job(job_id)
+
+    def approve_evidence_strategy(self, job_id: str, base_version: int) -> JobRecord:
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            current = self._editable_strategy(connection, job_id, base_version)
+            connection.execute(
+                "INSERT INTO evidence_strategy_approvals "
+                "(id, job_id, artifact_version_id, approved_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(artifact_version_id) DO NOTHING",
+                (str(uuid4()), job_id, current["artifact_id"], _timestamp()),
+            )
+        return self.get_job(job_id)
+
+    def get_approved_evidence_strategy_input(
+        self, project_id: str, *, connection: sqlite3.Connection | None = None
+    ) -> dict[str, object]:
+        """Resolve the exact approved strategy for a future query-generation job."""
+        if connection is None:
+            with self._connect() as owned:
+                return self.get_approved_evidence_strategy_input(project_id, connection=owned)
+        row = connection.execute(
+            "SELECT jobs.id AS job_id, artifact.id AS artifact_id, "
+            "artifact.version_number, artifact.content_json, approval.id AS approval_id, "
+            "approval.approved_at, jobs.workflow_input_snapshot_json "
+            "FROM jobs JOIN artifact_effective_versions selected ON selected.job_id = jobs.id "
+            "JOIN artifact_versions artifact ON artifact.id = selected.artifact_version_id "
+            "AND artifact.kind = 'evidence_strategy_output' "
+            "JOIN evidence_strategy_approvals approval ON approval.job_id = jobs.id "
+            "AND approval.artifact_version_id = artifact.id "
+            "WHERE jobs.project_id = ? AND jobs.kind = 'evidence_strategy' "
+            "AND jobs.status = 'completed' ORDER BY jobs.rowid DESC LIMIT 1",
+            (project_id,),
+        ).fetchone()
+        if row is None:
+            raise JobError("Approve the current evidence strategy before generating queries.")
+        return {
+            "schema_version": 1,
+            "strategy_job_id": row["job_id"],
+            "strategy_artifact_id": row["artifact_id"],
+            "strategy_version": row["version_number"],
+            "strategy_approval_id": row["approval_id"],
+            "approved_at": row["approved_at"],
+            "strategy_markdown": _markdown_from_json(row["content_json"]),
+            "strategy_input": json.loads(row["workflow_input_snapshot_json"]),
+        }
+
     def list_jobs(self) -> list[JobRecord]:
         with self._connect() as connection:
             rows = connection.execute(
-                self._select_sql(self._table_exists(connection, "research_charter_approvals"))
+                self._select_sql(
+                    self._table_exists(connection, "research_charter_approvals"),
+                    self._table_exists(connection, "evidence_strategy_approvals"),
+                )
                 + " ORDER BY jobs.created_at DESC"
             ).fetchall()
         return [self._record(row) for row in rows]
@@ -726,7 +914,10 @@ class JobRepository:
     def get_job(self, job_id: str) -> JobRecord:
         with self._connect() as connection:
             row = connection.execute(
-                self._select_sql(self._table_exists(connection, "research_charter_approvals"))
+                self._select_sql(
+                    self._table_exists(connection, "research_charter_approvals"),
+                    self._table_exists(connection, "evidence_strategy_approvals"),
+                )
                 + " WHERE jobs.id = ?",
                 (job_id,),
             ).fetchone()
@@ -817,6 +1008,9 @@ class JobRepository:
                 "Derive mandatory evidence themes and user-controlled search-scope decisions "
                 "from the approved peptide-discovery charter"
             )
+        elif job.kind == "evidence_strategy":
+            prompt_template_id = "evidence-strategy"
+            purpose = "Draft a reviewable evidence-investigation strategy from approved inputs"
         else:
             raise JobError(f"Unsupported LLM job kind: {job.kind}")
         with self._connect() as connection:
@@ -895,6 +1089,12 @@ class JobRepository:
             artifact_payload = parsed_evidence_scope.model_dump(mode="json")
             artifact_kind = "evidence_scope_questions"
             automatically_confirm_empty_evidence_scope = not parsed_evidence_scope.questions
+        elif job.kind == "evidence_strategy":
+            try:
+                artifact_payload = evidence_strategy_payload(result.output_text)
+            except ValueError as error:
+                raise JobError(str(error)) from error
+            artifact_kind = "evidence_strategy_output"
         else:
             raise JobError(f"Unsupported LLM job kind: {job.kind}")
         content_json = _json(artifact_payload)
@@ -1009,7 +1209,7 @@ class JobRepository:
                     "VALUES (?, ?, ?, 'no_evidence_scope_questions')",
                     (job_id, answers_id, now),
                 )
-            if job.kind in {"question_detailing", "research_charter"}:
+            if job.kind in {"question_detailing", "research_charter", "evidence_strategy"}:
                 connection.execute(
                     "INSERT INTO artifact_effective_versions "
                     "(job_id, artifact_version_id, selected_at, selection_reason) "
@@ -1636,7 +1836,9 @@ class JobRepository:
         ).fetchone() is not None
 
     @staticmethod
-    def _select_sql(has_charter_approvals: bool = True) -> str:
+    def _select_sql(
+        has_charter_approvals: bool = True, has_strategy_approvals: bool = True
+    ) -> str:
         charter_columns = (
             "charter_approval.approved_at AS charter_approved_at, "
             "NOT EXISTS (SELECT 1 FROM jobs active_charter WHERE "
@@ -1664,6 +1866,14 @@ class JobRepository:
             "ON charter_approval.job_id = jobs.id "
             "AND charter_approval.artifact_version_id = effective.id "
         ) if has_charter_approvals else ""
+        strategy_columns = (
+            "strategy_approval.approved_at AS evidence_strategy_approved_at, "
+        ) if has_strategy_approvals else "NULL AS evidence_strategy_approved_at, "
+        strategy_join = (
+            "LEFT JOIN evidence_strategy_approvals strategy_approval "
+            "ON strategy_approval.job_id = jobs.id "
+            "AND strategy_approval.artifact_version_id = effective.id "
+        ) if has_strategy_approvals else ""
         return (
             "SELECT jobs.*, projects.tag AS project_tag, llm_calls.id AS llm_call_id, "
             "llm_calls.input_tokens, llm_calls.output_tokens, llm_calls.total_tokens, "
@@ -1684,6 +1894,7 @@ class JobRepository:
             "evidence_scope_answers.content_json AS evidence_scope_answers_json, "
             "evidence_scope_answers.version_number AS evidence_scope_answers_version, "
             + charter_columns
+            + strategy_columns
             +
             "NOT EXISTS (SELECT 1 FROM jobs downstream WHERE "
             "downstream.project_id = jobs.project_id AND downstream.id != jobs.id "
@@ -1692,7 +1903,8 @@ class JobRepository:
             "LEFT JOIN llm_calls ON llm_calls.job_id = jobs.id "
             "LEFT JOIN artifact_versions original ON original.job_id = jobs.id "
             "AND original.kind = CASE WHEN jobs.kind = 'research_charter' "
-            "THEN 'research_charter_output' ELSE 'question_detailing_output' END "
+            "THEN 'research_charter_output' WHEN jobs.kind = 'evidence_strategy' "
+            "THEN 'evidence_strategy_output' ELSE 'question_detailing_output' END "
             "AND original.version_number = 1 "
             "LEFT JOIN artifact_effective_versions selection ON selection.job_id = jobs.id "
             "LEFT JOIN artifact_versions effective ON effective.id = selection.artifact_version_id "
@@ -1722,6 +1934,7 @@ class JobRepository:
             "ON evidence_scope_answers.id = selection.artifact_version_id "
             "AND evidence_scope_answers.kind = 'evidence_scope_answers' "
             + charter_join
+            + strategy_join
         )
 
     @staticmethod
@@ -1806,6 +2019,12 @@ class JobRepository:
                 and row["evidence_scope_answers_version"] is not None
                 and bool(row["no_downstream_job"])
             ),
+            evidence_strategy_approved_at=row["evidence_strategy_approved_at"],
+            evidence_strategy_is_editable=(
+                row["kind"] == "evidence_strategy"
+                and row["status"] == "completed"
+                and bool(row["no_downstream_job"])
+            ),
         )
 
     def _connect(self) -> sqlite3.Connection:
@@ -1826,6 +2045,7 @@ def provider_input_for_job(job: JobRecord) -> str:
         "scope_readiness",
         "research_charter",
         "evidence_scope_questionnaire",
+        "evidence_strategy",
     }:
         if job.workflow_input_snapshot_json is None:
             raise JobError("The structured workflow input snapshot is missing.")
@@ -1948,7 +2168,11 @@ def _markdown_from_json(content_json: str | None) -> str | None:
         return None
     try:
         payload = json.loads(content_json)
-        value = payload.get("detailed_question") or payload.get("research_charter")
+        value = (
+            payload.get("detailed_question")
+            or payload.get("research_charter")
+            or payload.get("evidence_strategy")
+        )
     except (AttributeError, json.JSONDecodeError):
         return None
     return value if isinstance(value, str) else None

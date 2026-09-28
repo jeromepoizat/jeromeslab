@@ -21,6 +21,7 @@ unresolved ideas in other documentation are not decisions.
 | [0014](adr/0014-charter-drafts-and-approval.md) | Charter drafts, explicit version approval, and preserved regeneration attempts | Accepted |
 | [0015](adr/0015-specialize-in-therapeutic-peptide-discovery.md) | Specialize the product in evidence-guided therapeutic peptide discovery | Accepted |
 | [0016](adr/0016-charter-derived-evidence-scope.md) | Separate charter-derived evidence themes from user-controlled search scope before query generation | Accepted |
+| [0017](adr/0017-reviewed-evidence-investigation-strategy.md) | Approve a reviewable evidence-investigation strategy before source-specific queries | Accepted |
 
 Routine implementation choices belong in code and tests. Add an ADR when a
 choice constrains future architecture, security, scientific validity, data

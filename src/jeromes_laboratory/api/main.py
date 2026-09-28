@@ -10,6 +10,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.staticfiles import StaticFiles
 
 from jeromes_laboratory.api.schemas import (
+    ApproveEvidenceStrategyRequest,
     ApproveResearchCharterRequest,
     ClientStateResponse,
     CreateProjectRequest,
@@ -31,6 +32,8 @@ from jeromes_laboratory.api.schemas import (
     UpdateClientStateRequest,
     UpdateEvidenceScopeAnswersRequest,
     UpdateEvidenceScopePromptRequest,
+    UpdateEvidenceStrategyOutputRequest,
+    UpdateEvidenceStrategyPromptRequest,
     UpdateIntentClarificationPromptRequest,
     UpdateIntentSelectionRequest,
     UpdateLLMSettingsRequest,
@@ -172,6 +175,9 @@ def create_app(
             evidence_scope_prompt=record.evidence_scope_prompt,
             evidence_scope_prompt_version=record.evidence_scope_prompt_version,
             evidence_scope_prompt_is_editable=record.evidence_scope_prompt_is_editable,
+            evidence_strategy_prompt=record.evidence_strategy_prompt,
+            evidence_strategy_prompt_version=record.evidence_strategy_prompt_version,
+            evidence_strategy_prompt_is_editable=record.evidence_strategy_prompt_is_editable,
         )
 
     def job_repository() -> JobRepository:
@@ -1069,6 +1075,90 @@ def create_app(
                 )
             )
         except (JobError, ValueError) as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+    @application.patch(
+        "/api/projects/{project_id}/evidence-strategy-prompt",
+        response_model=ProjectResponse,
+        tags=["projects"],
+    )
+    def update_evidence_strategy_prompt(
+        project_id: str,
+        request: UpdateEvidenceStrategyPromptRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> ProjectResponse:
+        """Save the exact strategy prompt before its first job."""
+        try:
+            return project_response(
+                project_repository().update_evidence_strategy_prompt(
+                    project_id, request.prompt
+                )
+            )
+        except ProjectError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+    @application.post(
+        "/api/projects/{project_id}/evidence-strategy/jobs",
+        response_model=JobResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["jobs"],
+    )
+    def enqueue_evidence_strategy(
+        project_id: str,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Queue a strategy draft from the approved charter and exact scope answers."""
+        try:
+            settings = application.state.llm_settings_service.read()
+            if settings.provider is None or settings.model is None:
+                raise JobError("Configure an LLM provider and model before starting this job.")
+            if application.state.credential_store.get_api_key(settings.provider) is None:
+                raise JobError("The selected provider API key is no longer available.")
+            record = job_repository().enqueue_evidence_strategy(
+                project_id, settings.provider, settings.model
+            )
+        except (CredentialStoreError, LLMSettingsError, JobError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
+        return job_response(record)
+
+    @application.patch(
+        "/api/jobs/{job_id}/evidence-strategy-output",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def edit_evidence_strategy_output(
+        job_id: str,
+        request: UpdateEvidenceStrategyOutputRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Create an effective strategy version while preserving the original."""
+        try:
+            return job_response(
+                job_repository().edit_evidence_strategy_output(
+                    job_id, request.markdown, request.base_version
+                )
+            )
+        except JobError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+    @application.post(
+        "/api/jobs/{job_id}/evidence-strategy-approval",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def approve_evidence_strategy(
+        job_id: str,
+        request: ApproveEvidenceStrategyRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Approve only the current effective strategy artifact version."""
+        try:
+            return job_response(
+                job_repository().approve_evidence_strategy(job_id, request.base_version)
+            )
+        except JobError as error:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
 
     @application.get("/api/client-state", response_model=ClientStateResponse, tags=["client"])

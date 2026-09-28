@@ -158,6 +158,19 @@ new version and move the effective pointer until a downstream strategy job is
 queued. When no question is needed, the application creates an empty answer
 artifact with application provenance.
 
+### Evidence-investigation strategy (implemented)
+
+Projects store a versioned `evidence_strategy_prompt`. Enqueueing a strategy job
+atomically snapshots the current approved charter, evidence-scope question
+artifact, and effective answer artifact with their IDs, versions, and content.
+The provider's Markdown is wrapped in a hashed `evidence_strategy_output`
+artifact and selected as the effective version. A manual edit appends another
+immutable artifact and moves the effective pointer; the original remains
+available. `evidence_strategy_approvals` records an append-only approval of one
+exact artifact version. Editing makes the current version unapproved without
+deleting prior approvals. Later query work must consume the exact approval and
+the structured upstream themes and answers retained in the job snapshot.
+
 ### Proposed integrity-verification behavior
 
 Each immutable `ArtifactVersion` (including a workflow step or job output) should

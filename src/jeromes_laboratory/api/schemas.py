@@ -126,6 +126,9 @@ class ProjectResponse(BaseModel):
     evidence_scope_prompt: str
     evidence_scope_prompt_version: str
     evidence_scope_prompt_is_editable: bool
+    evidence_strategy_prompt: str
+    evidence_strategy_prompt_version: str
+    evidence_strategy_prompt_is_editable: bool
 
 
 class CreateProjectRequest(BaseModel):
@@ -187,6 +190,25 @@ class UpdateEvidenceScopePromptRequest(BaseModel):
     """Instructions used to generate the evidence-search scope questionnaire."""
 
     prompt: str = Field(min_length=1, max_length=20_000)
+
+
+class UpdateEvidenceStrategyPromptRequest(BaseModel):
+    """Instructions used to generate a reviewable evidence-investigation strategy."""
+
+    prompt: str = Field(min_length=1, max_length=20_000)
+
+
+class UpdateEvidenceStrategyOutputRequest(BaseModel):
+    """A manual strategy revision that needs approval of its exact version."""
+
+    markdown: str = Field(min_length=1, max_length=100_000)
+    base_version: int = Field(ge=1)
+
+
+class ApproveEvidenceStrategyRequest(BaseModel):
+    """Approve the effective strategy version reviewed by the user."""
+
+    base_version: int = Field(ge=1)
 
 
 class EnqueueResearchCharterRequest(BaseModel):
@@ -418,6 +440,8 @@ class JobResponse(BaseModel):
     evidence_scope_answers: ScopeAnswersResponse | None
     evidence_scope_answers_version: int | None
     evidence_scope_answers_is_editable: bool
+    evidence_strategy_approved_at: str | None
+    evidence_strategy_is_editable: bool
 
 
 class ClientStateResponse(BaseModel):

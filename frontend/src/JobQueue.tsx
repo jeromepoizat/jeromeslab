@@ -109,6 +109,8 @@ export type Job = {
   evidence_scope_answers: ScopeAnswers | null
   evidence_scope_answers_version: number | null
   evidence_scope_answers_is_editable: boolean
+  evidence_strategy_approved_at: string | null
+  evidence_strategy_is_editable: boolean
 }
 
 function jobKindLabel(job: Job) {
@@ -118,6 +120,7 @@ function jobKindLabel(job: Job) {
   if (job.kind === 'scope_readiness') return promptVersion >= 5 ? 'Framing check' : promptVersion >= 3 ? 'Framing readiness review' : 'Scope readiness review'
   if (job.kind === 'research_charter') return promptVersion >= 2 ? 'Peptide-discovery charter' : 'Research charter'
   if (job.kind === 'evidence_scope_questionnaire') return 'Evidence search scope'
+  if (job.kind === 'evidence_strategy') return 'Evidence-investigation strategy'
   return 'Question detailing'
 }
 

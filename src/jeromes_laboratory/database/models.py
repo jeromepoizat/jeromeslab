@@ -41,6 +41,8 @@ class Project(Base):
     research_charter_prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
     evidence_scope_prompt: Mapped[str] = mapped_column(Text, nullable=False)
     evidence_scope_prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    evidence_strategy_prompt: Mapped[str] = mapped_column(Text, nullable=False)
+    evidence_strategy_prompt_version: Mapped[str] = mapped_column(String(32), nullable=False)
 
 
 class Job(Base):
@@ -161,6 +163,19 @@ class ResearchCharterApproval(Base):
     """Append-only user approval of one exact charter artifact version."""
 
     __tablename__ = "research_charter_approvals"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), nullable=False)
+    artifact_version_id: Mapped[str] = mapped_column(
+        ForeignKey("artifact_versions.id"), nullable=False, unique=True
+    )
+    approved_at: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+class EvidenceStrategyApproval(Base):
+    """Append-only approval of one effective strategy artifact version."""
+
+    __tablename__ = "evidence_strategy_approvals"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), nullable=False)

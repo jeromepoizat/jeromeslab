@@ -1,6 +1,6 @@
 # Current status
 
-Last updated: 2026-09-23
+Last updated: 2026-09-25
 
 ## Current milestone
 
@@ -205,6 +205,13 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   a deterministic application-created empty answer artifact. The project UI
   keeps the prompt hidden by default, displays mandatory themes separately from
   decisions, and exposes the job in the global queue.
+- The next Milestone 7 slice generates a compact evidence-investigation strategy
+  after scope answers are confirmed. It snapshots the exact approved charter,
+  evidence themes, and effective answer version, then records prompt, model, call,
+  and Markdown output provenance. Original and edited versions remain immutable;
+  explicit approval applies only to the current effective version. Cancelled or
+  failed jobs may be retried from the retained input snapshot. Source-specific
+  query generation and retrieval are still future work.
 - Explicit regeneration creates a separate queued/call/artifact attempt. Active
   replacement blocks editing and downstream consumption, failed or cancelled
   replacement restores the prior completed charter and its approval, and
@@ -225,9 +232,12 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 
 ## Recently completed
 
+- Added the reviewable evidence-investigation strategy job, Markdown editor,
+  exact-version approval, and ADR 0017. The strategy organizes workstreams and
+  source categories without claiming to have searched a source.
 - Added the approved-charter evidence-search scope questionnaire and recorded the
   charter-theme/question boundary in ADR 0016. Evidence-strategy approval and
-  source-specific query generation remain separate future stages.
+  source-specific query generation are separate stages.
 - Extended the OpenAI text-generation model filter to include the GPT-6 family;
   compatible GPT-6 models returned by the user's account catalog can now be
   selected after refreshing the model list.

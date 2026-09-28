@@ -9,6 +9,7 @@ import { ScopeClarificationStage } from './ScopeClarificationStage'
 import { ScopeReadinessStage } from './ScopeReadinessStage'
 import { ResearchCharterStage } from './ResearchCharterStage'
 import { EvidenceScopeStage } from './EvidenceScopeStage'
+import { EvidenceStrategyStage } from './EvidenceStrategyStage'
 
 type Project = {
   id: string
@@ -33,6 +34,9 @@ type Project = {
   evidence_scope_prompt: string
   evidence_scope_prompt_version: string
   evidence_scope_prompt_is_editable: boolean
+  evidence_strategy_prompt: string
+  evidence_strategy_prompt_version: string
+  evidence_strategy_prompt_is_editable: boolean
 }
 
 type ClientState = { selected_project_id: string | null; scroll_top: number }
@@ -327,6 +331,9 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
   const evidenceScopeJob = selectedProject === null
     ? null
     : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'evidence_scope_questionnaire') ?? null
+  const evidenceStrategyJob = selectedProject === null
+    ? null
+    : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'evidence_strategy') ?? null
   const framingProducedNoQuestions = scopeJob?.status === 'completed'
     && scopeJob.scope_questions?.questions.length === 0
     && scopeJob.scope_answers !== null
@@ -451,6 +458,18 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
             nowMilliseconds={nowMilliseconds}
             onProjectUpdated={updated => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, ...updated } : project))}
             onProjectLocked={() => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, evidence_scope_prompt_is_editable: false } : project))}
+            onJobsChanged={onJobsChanged}
+            onOpenSettings={onOpenSettings}
+          />}
+          {((evidenceScopeJob?.evidence_scope_answers !== null && evidenceScopeJob?.evidence_scope_answers !== undefined) || evidenceStrategyJob !== null) && <EvidenceStrategyStage
+            key={`${selectedProject.id}:${evidenceStrategyJob?.id ?? 'new'}`}
+            project={selectedProject}
+            job={evidenceStrategyJob}
+            setupToken={setupToken}
+            llmSettings={llmSettings}
+            nowMilliseconds={nowMilliseconds}
+            onProjectUpdated={updated => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, ...updated } : project))}
+            onProjectLocked={() => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, evidence_strategy_prompt_is_editable: false } : project))}
             onJobsChanged={onJobsChanged}
             onOpenSettings={onOpenSettings}
           />}</> : <>
