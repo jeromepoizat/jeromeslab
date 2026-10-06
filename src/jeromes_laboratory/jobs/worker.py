@@ -7,8 +7,14 @@ from dataclasses import replace
 from pathlib import Path
 
 from jeromes_laboratory.database.jobs import JobRepository, provider_input_for_job
+from jeromes_laboratory.database.retrieval import RetrievalRepository
 from jeromes_laboratory.llm.generation import GenerationError, GenerationGateway
 from jeromes_laboratory.security.credentials import CredentialStore, CredentialStoreError
+from jeromes_laboratory.sources.europe_pmc import (
+    EuropePMCClient,
+    SourceSearchClient,
+    SourceSearchError,
+)
 from jeromes_laboratory.storage.workspace import (
     DATABASE_FILE_NAME,
     WorkspaceLocationError,
@@ -26,11 +32,13 @@ class JobWorker:
         generation_gateway: GenerationGateway,
         *,
         poll_interval: float = 0.5,
+        europe_pmc_client: SourceSearchClient | None = None,
     ) -> None:
         self._workspace_service = workspace_service
         self._credential_store = credential_store
         self._generation_gateway = generation_gateway
         self._poll_interval = poll_interval
+        self._europe_pmc_client = europe_pmc_client or EuropePMCClient()
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._recovered_database: Path | None = None
@@ -57,6 +65,19 @@ class JobWorker:
         job = repository.claim_next()
         if job is None:
             return False
+        if job.kind == "source_retrieval":
+            try:
+                RetrievalRepository(repository.database_path).run_job(
+                    job.id, self._europe_pmc_client
+                )
+            except SourceSearchError as error:
+                repository.fail(job.id, None, str(error))
+            except Exception:  # noqa: BLE001 - preserve the durable worker without leaking internals.
+                repository.fail(job.id, None, "An unexpected error stopped source retrieval.")
+            return True
+        if job.provider == "europe_pmc":
+            repository.fail(job.id, None, "A source provider cannot execute an LLM job.")
+            return True
         input_content = provider_input_for_job(job)
         prepared = self._generation_gateway.prepare(
             job.provider,

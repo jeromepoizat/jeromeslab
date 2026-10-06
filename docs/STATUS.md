@@ -1,6 +1,6 @@
 # Current status
 
-Last updated: 2026-09-25
+Last updated: 2026-10-06
 
 ## Current milestone
 
@@ -16,7 +16,9 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   design brief, candidate derivation, and modular in-silico evaluation. Existing
   generic infrastructure remains applicable. Peptide-specific defaults now cover
   the implemented direction, framing, framing-check, and charter stages; later
-  evidence and design stages are not yet implemented.
+  evidence extraction and design stages are not yet implemented; first-source
+  Europe PMC retrieval and an aggregate results overview now exist without
+  screening, canonical publication deduplication, or record-level review.
 - Source-of-truth product, architecture, workflow, data-model, roadmap, status,
   and decision documentation now exists.
 - Python dependencies are resolved in `uv.lock` and installed in the ignored
@@ -99,8 +101,8 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   and original usage, and sanitized failures in first-class `LLMCall` records.
 - Completed question-detailing output is deterministically wrapped in JSON and
   stored as an immutable artifact version with its UTF-8 byte length and SHA-256
-  digest. Cost is explicitly `unavailable` until trustworthy immutable pricing
-  snapshots are implemented.
+  digest. Older calls retain `unavailable` cost; new exact-model OpenAI calls
+  can attach a dated rate snapshot and a clearly labeled estimate.
 - The project page confirms enqueueing, displays live state and completed output,
   and disables cancellation once provider dispatch begins. A global header badge
   and right-side queue drawer expose work while navigating between projects.
@@ -211,7 +213,70 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   and Markdown output provenance. Original and edited versions remain immutable;
   explicit approval applies only to the current effective version. Cancelled or
   failed jobs may be retried from the retained input snapshot. Source-specific
-  query generation and retrieval are still future work.
+  query drafting is implemented separately from the later source worker action.
+- Europe PMC query drafting consumes the exact approved strategy and its upstream
+  charter, themes, and scope answers. An optional user note is included in the
+  immutable job input. Strict structured output proposes titled, described,
+  purpose-linked query expressions that have not been executed. Cards allow
+  per-query expansion, editing, and inclusion decisions. Every saved review
+  becomes a new immutable hashed version; approval requires included queries to
+  cover every mandatory theme. Drafting does not search. Approval now atomically
+  locks the exact version and queues Europe PMC retrieval (ADR 0019).
+- The first Europe PMC retrieval adapter runs included queries through the same
+  single-worker queue, pages through `core` metadata, and saves raw JSON pages
+  with SHA-256/size plus every query-to-record discovery link. Per-query hit and
+  saved-record counts, failures, and an explicit 5,000-record partial limit appear
+  in the project UI. Failed/interrupted attempts retain saved pages; retries
+  start new jobs from the same approved query snapshot. A read-only dashboard
+  now reports query hits versus saved rows, distinct Europe PMC source identities,
+  cross-query overlap, abstract availability, and collection mix without loading
+  article text into the browser. Distinct source identities are deliberately not
+  called unique publications. Screening, canonical publication deduplication,
+  and record-level review remain future work.
+- The retrieval overview is a separate section after the reviewed query list.
+  Query-volume bars explain their hit/saved scales on hover or keyboard focus;
+  Europe PMC source codes expose their collection names there too. Duplicate
+  counts use plain language that distinguishes repeat appearances from papers.
+- Query bars now also distinguish saved source IDs exclusive to each query,
+  calculated across all saved runs of the current retrieval. Their per-query
+  count appears beside the bar and in its hover/focus detail; the legend uses
+  a third color. Historical retrieval overviews gain the count automatically.
+- A completed retrieval now receives a read-only provisional same-article check
+  (ADR 0020), also for historical jobs such as `PROJ012`. It links different
+  source IDs by DOI, PMID, PMCID, or exact normalized title and flags groups
+  with differing identifiers, author, year, or journal metadata. Patent records
+  are not grouped on title alone. It makes no
+  new API calls, does not change immutable rows, and is not a verified publication
+  identity or screening decision.
+- After retrieval, relevance preparation previews a seeded, query ×
+  collection-balanced sample of distinct `(source, source_record_id)` records.
+  The researcher chooses a 1–30-record prompt-design sample and seed; the
+  first-run scoring count is deferred to the later scoring stage. The main queued job
+  generates a compact, reviewable relevance-scoring prompt from the exact
+  approved strategy/charter and sampled metadata. Original and edited prompts
+  are immutable artifact versions. A separate calibration can test the exact
+  effective prompt on that sample without resending the full strategy; it locks
+  the consumed prompt and preserves one validated 0–5 or `not_assessable`
+  outcome per sampled record, never a quality score. Historical calibration-only
+  jobs remain unchanged. Once the prompt exists, a rough token/USD estimate per
+  1,000 reports uses that same sample and the effective prompt. No bulk scoring is
+  started by this slice (ADRs 0021–0022).
+- The relevance-preparation controls now expose field-specific help and prepare
+  the selection/estimate automatically as values change. The job card retains
+  one visible prompt-generation action; the extra preview button and redundant
+  explanatory text are removed.
+- The preparation sample can be inspected as a title list with hover/focus
+  metadata (date, author, journal, abstract presence, collection, and query
+  discoveries). A first-run count and its estimate no longer appear in this
+  stage. Legacy jobs retain their historical cap snapshots.
+- Added the official `gpt-6-sol` Standard API rate to the exact-model estimate
+  table; preparation cost information is shown only after prompt generation.
+- Exact-model OpenAI Standard-rate snapshots checked on 2026-10-05 (with
+  `gpt-6-sol` checked on 2026-10-06) now support
+  rough preview estimates and estimated costs for new calls with matching
+  reported model and usable token usage. The rate snapshot is stored with the
+  call. Unknown or unmatched models, ambiguous long-context rates, and old calls
+  remain explicitly cost unavailable; this does not claim provider billing.
 - Explicit regeneration creates a separate queued/call/artifact attempt. Active
   replacement blocks editing and downstream consumption, failed or cancelled
   replacement restores the prior completed charter and its approval, and
@@ -232,6 +297,22 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 
 ## Recently completed
 
+- Moved relevance scoring-run sizing to the future scoring stage, made the
+  prompt-design sample the sole preparation selection and cost-estimate basis,
+  added hoverable sample coverage, and filled the verified `gpt-6-sol` rate.
+- Added query-exclusive source-ID counts to the retrieval overview without
+  changing saved records or interpreting them as verified unique papers.
+- Simplified relevance-preparation copy and controls while retaining the
+  read-only sample/cost calculation before the prompt-generation job is queued.
+- Added distinct-source relevance preparation, a generated/editable scoring
+  prompt informed by the seeded sample, optional compact calibration, and
+  model-aware token/cost estimates without starting bulk scoring (ADRs 0021–0022).
+- Combined query approval and retrieval queueing into one action, added the
+  Europe PMC source adapter and durable raw-page/source-record storage, and
+  recorded the amended decision in ADR 0019.
+- Added Europe PMC query drafting, reviewable query cards, exact-version approval,
+  and ADR 0018. User-visible scope/strategy headings now use scientific-source
+  terminology; historical prompts and artifacts are unchanged.
 - Added the reviewable evidence-investigation strategy job, Markdown editor,
   exact-version approval, and ADR 0017. The strategy organizes workstreams and
   source categories without claiming to have searched a source.
@@ -363,9 +444,12 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 ## Work in progress
 
 The documentation and implemented early-workflow prompts now reflect therapeutic
-peptide discovery. Direction, framing, bounded framing-check/follow-up, and
-first-investigation charter generation require evaluation across representative project
-starting points before scientific-source query generation is designed and built.
+peptide discovery. Direction, framing, bounded framing-check/follow-up, charter,
+query drafting, and first-source retrieval still need evaluation across
+representative project starting points. The aggregate retrieval overview and
+sample-informed prompt generation and optional relevance calibration exist;
+bulk record-level scoring, review, and
+quality assessment are deferred.
 
 ## Immediate next tasks
 
@@ -374,11 +458,13 @@ starting points before scientific-source query generation is designed and built.
    project.
 2. Refine only newly versioned defaults when evaluation exposes a reproducible
    failure; never rewrite consumed prompts or historical artifacts.
-3. Design the scientific-source investigation strategy and query-generation
-   stage that consumes the exact approved peptide-discovery charter.
-4. Select the first publication source and separately inventory candidate
+3. Evaluate generated scoring prompts and calibration on representative approved
+   investigations; design durable bounded scoring batches, stop-between-calls
+   behavior, a score/collection/query breakdown, and extension of unscored IDs.
+4. Separately inventory candidate
    protein, structure, interaction, bioactivity, peptide, and assay sources.
-5. Add immutable model-pricing snapshots and call/step/project cost aggregation.
+5. Extend pricing coverage and add call/step/project cost aggregation without
+   rewriting historical calls that lack a contemporaneous rate snapshot.
 
 ## Known issues and blockers
 

@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react'
 
-export function HelpTooltip({ children }: { children: string }) {
-  return <span className="section-help" tabIndex={0} aria-label="Section help">?<span className="section-help-tooltip" role="tooltip">{children}</span></span>
+export function HelpTooltip({ children, label = 'Section help' }: { children: string; label?: string }) {
+  return <span className="section-help" tabIndex={0} aria-label={label}>?<span className="section-help-tooltip" role="tooltip">{children}</span></span>
 }
 
 export function SectionTitle({ children, help }: { children: string; help: string }) {

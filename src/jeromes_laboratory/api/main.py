@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from secrets import token_urlsafe
-from typing import Annotated
+from typing import Annotated, cast
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.staticfiles import StaticFiles
@@ -12,9 +12,11 @@ from fastapi.staticfiles import StaticFiles
 from jeromes_laboratory.api.schemas import (
     ApproveEvidenceStrategyRequest,
     ApproveResearchCharterRequest,
+    ApproveSourceQueriesRequest,
     ClientStateResponse,
     CreateProjectRequest,
     EnqueueResearchCharterRequest,
+    EnqueueSourceQueriesRequest,
     FetchLLMModelsRequest,
     FetchLLMModelsResponse,
     FolderPickerResponse,
@@ -24,7 +26,14 @@ from jeromes_laboratory.api.schemas import (
     LLMProviderStatus,
     LLMSettingsResponse,
     ProjectResponse,
+    RelevanceCalibrationResponse,
+    RelevancePreviewRequest,
+    RelevancePreviewResponse,
+    RelevancePromptGenerationResponse,
     RenameProjectRequest,
+    RetrievalSummaryResponse,
+    SearchRunResponse,
+    StartRelevanceCalibrationRequest,
     SubmitEvidenceScopeAnswersRequest,
     SubmitIntentSelectionRequest,
     SubmitScopeAnswersRequest,
@@ -40,12 +49,15 @@ from jeromes_laboratory.api.schemas import (
     UpdateQuestionDetailingOutputRequest,
     UpdateQuestionDetailingPromptRequest,
     UpdateQuestionRequest,
+    UpdateRelevancePromptRequest,
     UpdateResearchCharterOutputRequest,
     UpdateResearchCharterPromptRequest,
     UpdateScopeAnswersRequest,
     UpdateScopeClarificationPromptRequest,
     UpdateScopeFollowUpAnswersRequest,
     UpdateScopeReadinessPromptRequest,
+    UpdateSourceQueriesPromptRequest,
+    UpdateSourceQueriesRequest,
     WorkspaceConfiguredResponse,
     WorkspaceForgottenResponse,
     WorkspaceMovedResponse,
@@ -54,6 +66,7 @@ from jeromes_laboratory.api.schemas import (
 )
 from jeromes_laboratory.database.jobs import JobError, JobRecord, JobRepository
 from jeromes_laboratory.database.projects import ProjectError, ProjectRecord, ProjectRepository
+from jeromes_laboratory.database.retrieval import RetrievalRepository
 from jeromes_laboratory.jobs.worker import JobWorker
 from jeromes_laboratory.llm.catalog import (
     PROVIDER_DISPLAY_NAMES,
@@ -63,6 +76,7 @@ from jeromes_laboratory.llm.catalog import (
     ProviderName,
 )
 from jeromes_laboratory.llm.generation import GenerationGateway, ProviderGenerationGateway
+from jeromes_laboratory.llm.pricing import estimate_standard_cost
 from jeromes_laboratory.llm.settings import LLMSettingsError, LLMSettingsService
 from jeromes_laboratory.security.credentials import (
     CredentialStore,
@@ -75,7 +89,12 @@ from jeromes_laboratory.storage.workspace import (
     WorkspaceLocationError,
     WorkspaceService,
 )
+from jeromes_laboratory.workflow.relevance import (
+    DEFAULT_PROMPT_GENERATION_INSTRUCTIONS,
+    DEFAULT_RELEVANCE_SCORING_PROMPT,
+)
 from jeromes_laboratory.workflow.scope_clarification import ScopeAnswer
+from jeromes_laboratory.workflow.source_queries import SourceQuerySet
 
 DEFAULT_FRONTEND_DIRECTORY = Path(__file__).resolve().parents[3] / "frontend" / "dist"
 
@@ -178,6 +197,9 @@ def create_app(
             evidence_strategy_prompt=record.evidence_strategy_prompt,
             evidence_strategy_prompt_version=record.evidence_strategy_prompt_version,
             evidence_strategy_prompt_is_editable=record.evidence_strategy_prompt_is_editable,
+            source_queries_prompt=record.source_queries_prompt,
+            source_queries_prompt_version=record.source_queries_prompt_version,
+            source_queries_prompt_is_editable=record.source_queries_prompt_is_editable,
         )
 
     def job_repository() -> JobRepository:
@@ -1160,6 +1182,296 @@ def create_app(
             )
         except JobError as error:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+    @application.patch(
+        "/api/projects/{project_id}/source-queries-prompt",
+        response_model=ProjectResponse,
+        tags=["projects"],
+    )
+    def update_source_queries_prompt(
+        project_id: str,
+        request: UpdateSourceQueriesPromptRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> ProjectResponse:
+        try:
+            return project_response(
+                project_repository().update_source_queries_prompt(project_id, request.prompt)
+            )
+        except ProjectError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+    @application.post(
+        "/api/projects/{project_id}/source-queries/jobs",
+        response_model=JobResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["jobs"],
+    )
+    def enqueue_source_queries(
+        project_id: str,
+        request: EnqueueSourceQueriesRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        """Draft Europe PMC queries; no scientific-source request is made here."""
+        try:
+            settings = application.state.llm_settings_service.read()
+            if settings.provider is None or settings.model is None:
+                raise JobError("Configure an LLM provider and model before starting this job.")
+            if application.state.credential_store.get_api_key(settings.provider) is None:
+                raise JobError("The selected provider API key is no longer available.")
+            return job_response(job_repository().enqueue_source_queries(
+                project_id, settings.provider, settings.model, request.note
+            ))
+        except (CredentialStoreError, LLMSettingsError, JobError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(error)
+            ) from error
+
+    @application.patch(
+        "/api/jobs/{job_id}/source-queries",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def edit_source_queries(
+        job_id: str,
+        request: UpdateSourceQueriesRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        try:
+            payload = SourceQuerySet.model_validate({"queries": request.queries})
+            return job_response(job_repository().edit_source_queries(
+                job_id, payload, request.base_version
+            ))
+        except (ValueError, JobError) as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+    @application.post(
+        "/api/jobs/{job_id}/source-queries-approval",
+        response_model=JobResponse,
+        tags=["jobs"],
+    )
+    def approve_source_queries(
+        job_id: str,
+        request: ApproveSourceQueriesRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        try:
+            return job_response(job_repository().approve_source_queries(
+                job_id, request.base_version
+            ))
+        except JobError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+    @application.get("/api/relevance/defaults", tags=["relevance"])
+    def relevance_defaults() -> dict[str, str]:
+        return {
+            "relevance_scoring_prompt": DEFAULT_RELEVANCE_SCORING_PROMPT,
+            "relevance_prompt_generation_prompt": DEFAULT_PROMPT_GENERATION_INSTRUCTIONS,
+        }
+
+    @application.post(
+        "/api/projects/{project_id}/relevance/preview",
+        response_model=RelevancePreviewResponse,
+        tags=["relevance"],
+    )
+    def relevance_preview(
+        project_id: str,
+        request: RelevancePreviewRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> RelevancePreviewResponse:
+        try:
+            preview = job_repository().relevance_preparation(
+                project_id, request.retrieval_job_id,
+                scoring_limit=request.scoring_limit,
+                calibration_count=request.calibration_count,
+                seed=request.seed,
+                instructions=request.instructions,
+            )
+            settings = application.state.llm_settings_service.read()
+            return RelevancePreviewResponse.model_validate({
+                **preview,
+                "provider": settings.provider,
+                "model": settings.model,
+                "calibration_cost": estimate_standard_cost(
+                    settings.provider or "", settings.model or "",
+                    cast(int, preview["calibration_input_tokens_estimate"]),
+                    cast(int, preview["estimated_calibration_output_tokens"]),
+                ),
+                "compact_calibration_cost": estimate_standard_cost(
+                    settings.provider or "", settings.model or "",
+                    cast(int, preview["compact_calibration_input_tokens_estimate"]),
+                    cast(int, preview["estimated_calibration_output_tokens"]),
+                ),
+                "prompt_generation_cost": estimate_standard_cost(
+                    settings.provider or "", settings.model or "",
+                    cast(int, preview["prompt_generation_input_tokens_estimate"]),
+                    cast(int, preview["estimated_prompt_generation_output_tokens"]),
+                ),
+                "scoring_cost": estimate_standard_cost(
+                    settings.provider or "", settings.model or "",
+                    cast(int, preview["estimated_scoring_input_tokens"]),
+                    cast(int, preview["estimated_scoring_output_tokens"]),
+                    aggregate_batches=True,
+                ),
+                "per_1000_cost": estimate_standard_cost(
+                    settings.provider or "", settings.model or "",
+                    cast(int, preview["per_1000_input_tokens_estimate"]),
+                    cast(int, preview["per_1000_output_tokens_estimate"]),
+                    aggregate_batches=True,
+                ),
+            })
+        except (JobError, LLMSettingsError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @application.post(
+        "/api/projects/{project_id}/relevance/prompt-generation/jobs",
+        response_model=JobResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["relevance"],
+    )
+    def start_relevance_prompt_generation(
+        project_id: str,
+        request: StartRelevanceCalibrationRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        try:
+            settings = application.state.llm_settings_service.read()
+            if settings.provider is None or settings.model is None:
+                raise JobError("Configure a provider and model before generating a scoring prompt.")
+            if (settings.provider, settings.model) != (
+                request.expected_provider, request.expected_model
+            ):
+                raise JobError("The selected model changed. Refresh the cost preview.")
+            if application.state.credential_store.get_api_key(settings.provider) is None:
+                raise JobError("The selected provider API key is no longer available.")
+            return job_response(job_repository().enqueue_relevance_prompt_generation(
+                project_id, request.retrieval_job_id,
+                provider=settings.provider, model=settings.model,
+                scoring_limit=request.scoring_limit,
+                calibration_count=request.calibration_count, seed=request.seed,
+                instructions=request.instructions,
+                expected_manifest_sha256=request.expected_manifest_sha256,
+            ))
+        except (JobError, LLMSettingsError, CredentialStoreError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @application.get(
+        "/api/jobs/{job_id}/relevance-prompt-generation",
+        response_model=RelevancePromptGenerationResponse,
+        tags=["relevance"],
+    )
+    def get_relevance_prompt_generation(job_id: str) -> RelevancePromptGenerationResponse:
+        job = job_repository().get_job(job_id)
+        if job.kind != "relevance_prompt_generation":
+            raise HTTPException(status_code=404, detail="No generated scoring prompt for this job.")
+        output = job_repository().get_relevance_prompt_generation(job_id)
+        if output is None:
+            raise HTTPException(status_code=404, detail="The scoring prompt is not completed yet.")
+        return RelevancePromptGenerationResponse.model_validate(output)
+
+    @application.patch(
+        "/api/jobs/{job_id}/relevance-prompt-generation",
+        response_model=JobResponse,
+        tags=["relevance"],
+    )
+    def edit_relevance_prompt_generation(
+        job_id: str,
+        request: UpdateRelevancePromptRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        try:
+            return job_response(job_repository().edit_relevance_prompt_generation(
+                job_id, request.scoring_prompt, request.base_version,
+            ))
+        except JobError as error:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+
+    @application.post(
+        "/api/projects/{project_id}/relevance/calibration/jobs",
+        response_model=JobResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["relevance"],
+    )
+    def start_relevance_calibration(
+        project_id: str,
+        request: StartRelevanceCalibrationRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        try:
+            settings = application.state.llm_settings_service.read()
+            if settings.provider is None or settings.model is None:
+                raise JobError("Configure a provider and model before calibration.")
+            if (settings.provider, settings.model) != (
+                request.expected_provider, request.expected_model
+            ):
+                raise JobError("The selected model changed. Refresh the cost preview.")
+            if application.state.credential_store.get_api_key(settings.provider) is None:
+                raise JobError("The selected provider API key is no longer available.")
+            return job_response(job_repository().enqueue_relevance_calibration(
+                project_id, request.retrieval_job_id,
+                provider=settings.provider, model=settings.model,
+                scoring_limit=request.scoring_limit,
+                calibration_count=request.calibration_count, seed=request.seed,
+                instructions=request.instructions,
+                expected_manifest_sha256=request.expected_manifest_sha256,
+                prompt_generation_job_id=request.prompt_generation_job_id,
+            ))
+        except (JobError, LLMSettingsError, CredentialStoreError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @application.get(
+        "/api/jobs/{job_id}/relevance-calibration",
+        response_model=RelevanceCalibrationResponse,
+        tags=["relevance"],
+    )
+    def get_relevance_calibration(job_id: str) -> RelevanceCalibrationResponse:
+        job = job_repository().get_job(job_id)
+        if job.kind != "relevance_calibration":
+            raise HTTPException(status_code=404, detail="No relevance calibration for this job.")
+        output = job_repository().get_relevance_calibration(job_id)
+        if output is None:
+            raise HTTPException(status_code=404, detail="Calibration is not completed yet.")
+        return RelevanceCalibrationResponse.model_validate(output)
+
+    @application.get(
+        "/api/jobs/{job_id}/search-runs",
+        response_model=list[SearchRunResponse],
+        tags=["jobs"],
+    )
+    def list_search_runs(job_id: str) -> list[SearchRunResponse]:
+        job = job_repository().get_job(job_id)
+        if job.kind != "source_retrieval":
+            raise HTTPException(status_code=404, detail="No search runs for this job.")
+        return [SearchRunResponse.model_validate(run) for run in RetrievalRepository(
+            job_repository().database_path
+        ).runs_for_job(job_id)]
+
+    @application.get(
+        "/api/jobs/{job_id}/retrieval-summary",
+        response_model=RetrievalSummaryResponse,
+        tags=["jobs"],
+    )
+    def get_retrieval_summary(job_id: str) -> RetrievalSummaryResponse:
+        job = job_repository().get_job(job_id)
+        if job.kind != "source_retrieval":
+            raise HTTPException(status_code=404, detail="No retrieval summary for this job.")
+        return RetrievalSummaryResponse.model_validate(
+            RetrievalRepository(job_repository().database_path).summary_for_job(job_id)
+        )
+
+    @application.post(
+        "/api/jobs/{job_id}/search-runs/retry",
+        response_model=JobResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["jobs"],
+    )
+    def retry_search_runs(
+        job_id: str,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> JobResponse:
+        try:
+            return job_response(job_repository().retry_source_retrieval(job_id))
+        except JobError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
     @application.get("/api/client-state", response_model=ClientStateResponse, tags=["client"])
     def get_client_state() -> ClientStateResponse:

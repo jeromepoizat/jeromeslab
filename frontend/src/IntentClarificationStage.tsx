@@ -2,6 +2,7 @@ import { useState, type RefObject } from 'react'
 import { readApiError } from './apiClient'
 import type { LLMSettings } from './LLMConfiguration'
 import { JobElapsedTime, JobStatusLabel, type Job } from './JobQueue'
+import { jobCostLabel } from './jobCost'
 import { ChangeModelIcon, JobPromptDisclosure, PromptToggleButton, SectionTitle } from './ProjectElements'
 import { promptVersionNumber } from './promptVersion'
 
@@ -184,7 +185,7 @@ export function IntentClarificationStage({ project, job, setupToken, llmSettings
         {selectedSecondary.length > 0 && <><p className="step-label confirmed-intent-secondary-label">{confirmedSecondaryLabel}</p><ul>{selectedSecondary.map(option => <li key={option.id}><strong>{option.label}</strong> — {option.description}</li>)}</ul></>}
         {job.intent_selection.note && <><p className="step-label confirmed-intent-secondary-label">User note</p><p className="intent-saved-note">{job.intent_selection.note}</p></>}
       </div>}
-      <div className="output-provenance intent-provenance"><span>{providerName(job.provider)} · {job.model}</span><span>{job.total_tokens !== null ? `${job.total_tokens.toLocaleString()} tokens` : 'Tokens unavailable'} · {job.duration_ms !== null ? `${(job.duration_ms / 1000).toFixed(1)} s` : 'Time unavailable'} · Cost unavailable</span></div>
+      <div className="output-provenance intent-provenance"><span>{providerName(job.provider)} · {job.model}</span><span>{job.total_tokens !== null ? `${job.total_tokens.toLocaleString()} tokens` : 'Tokens unavailable'} · {job.duration_ms !== null ? `${(job.duration_ms / 1000).toFixed(1)} s` : 'Time unavailable'} · {jobCostLabel(job)}</span></div>
       </section>}
       {error !== null && <p className="setup-error" role="alert">{error}</p>}
     </section>

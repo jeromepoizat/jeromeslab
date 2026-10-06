@@ -62,6 +62,19 @@ export type EvidenceScopeQuestions = {
   charter_evidence_themes: EvidenceTheme[]
   questions: EvidenceScopeQuestion[]
 }
+export type SourceQuery = {
+  id: string
+  title: string
+  description: string
+  theme_ids: string[]
+  query_text: string
+  included: boolean
+}
+export type SourceQuerySet = {
+  schema_version: 1
+  source: 'europe_pmc'
+  queries: SourceQuery[]
+}
 
 export type Job = {
   id: string
@@ -72,7 +85,7 @@ export type Job = {
   created_at: string
   started_at: string | null
   completed_at: string | null
-  provider: 'openai' | 'anthropic'
+  provider: 'openai' | 'anthropic' | 'europe_pmc'
   model: string
   scientific_question_snapshot: string
   prompt_snapshot: string
@@ -90,6 +103,7 @@ export type Job = {
   total_tokens: number | null
   duration_ms: number | null
   cost_status: string | null
+  estimated_cost: string | null
   intent_questions: IntentQuestions | null
   intent_selection: IntentSelection | null
   intent_selection_version: number | null
@@ -111,7 +125,12 @@ export type Job = {
   evidence_scope_answers_is_editable: boolean
   evidence_strategy_approved_at: string | null
   evidence_strategy_is_editable: boolean
+  source_queries: SourceQuerySet | null
+  original_source_queries: SourceQuerySet | null
+  source_queries_approved_at: string | null
+  source_queries_is_editable: boolean
 }
+
 
 function jobKindLabel(job: Job) {
   const promptVersion = promptVersionNumber(job.prompt_template_version)
@@ -119,8 +138,12 @@ function jobKindLabel(job: Job) {
   if (job.kind === 'scope_clarification_round_1') return promptVersion >= 5 ? 'Assumptions and boundaries' : promptVersion >= 3 ? 'Project framing' : 'Scope clarification'
   if (job.kind === 'scope_readiness') return promptVersion >= 5 ? 'Framing check' : promptVersion >= 3 ? 'Framing readiness review' : 'Scope readiness review'
   if (job.kind === 'research_charter') return promptVersion >= 2 ? 'Peptide-discovery charter' : 'Research charter'
-  if (job.kind === 'evidence_scope_questionnaire') return 'Evidence search scope'
-  if (job.kind === 'evidence_strategy') return 'Evidence-investigation strategy'
+  if (job.kind === 'evidence_scope_questionnaire') return 'Scientific-source scope'
+  if (job.kind === 'evidence_strategy') return 'Scientific-source investigation plan'
+  if (job.kind === 'source_queries') return 'Europe PMC query draft'
+  if (job.kind === 'source_retrieval') return 'Europe PMC retrieval'
+  if (job.kind === 'relevance_prompt_generation') return 'Relevance scoring prompt'
+  if (job.kind === 'relevance_calibration') return 'Relevance sample calibration'
   return 'Question detailing'
 }
 
@@ -132,8 +155,8 @@ const statusLabels: Record<JobStatus, string> = {
   cancelled: 'Cancelled',
 }
 
-export function JobStatusLabel({ status }: { status: JobStatus }) {
-  return <span className={`job-status job-status--${status}`}><span aria-hidden="true" />{statusLabels[status]}</span>
+export function JobStatusLabel({ status, sourceRetrieval = false }: { status: JobStatus; sourceRetrieval?: boolean }) {
+  return <span className={`job-status job-status--${status}`}><span aria-hidden="true" />{sourceRetrieval && status === 'awaiting_response' ? 'Searching Europe PMC' : statusLabels[status]}</span>
 }
 
 function timestampMilliseconds(value: string | null) {
@@ -193,9 +216,9 @@ export function JobQueueDrawer({ jobs, nowMilliseconds, onClose, onCancel, onOpe
     {jobs.length === 0 ? <p className="queue-empty">No jobs have been started yet.</p> : <div className="queue-list">
       {jobs.map(job => <article className="queue-job" key={job.id}>
         <button className="queue-job-open" type="button" onClick={() => onOpenJob(job)} aria-label={`Open ${job.project_tag} ${jobKindLabel(job)} job`}>
-          <div className="queue-job-heading"><strong>{job.project_tag}</strong><JobStatusLabel status={job.status} /></div>
+          <div className="queue-job-heading"><strong>{job.project_tag}</strong><JobStatusLabel status={job.status} sourceRetrieval={job.kind === 'source_retrieval'} /></div>
           <p>{jobKindLabel(job)}</p>
-          <div className="queue-job-details"><small>{job.provider === 'openai' ? 'OpenAI' : 'Anthropic'} · {job.model}</small><JobElapsedTime job={job} nowMilliseconds={nowMilliseconds} /></div>
+          <div className="queue-job-details"><small>{job.provider === 'openai' ? 'OpenAI' : job.provider === 'anthropic' ? 'Anthropic' : 'Europe PMC'} · {job.model}</small><JobElapsedTime job={job} nowMilliseconds={nowMilliseconds} /></div>
           {job.error && <p className="setup-error">{job.error}</p>}
         </button>
         {job.status === 'pending' && <button className="text-button" type="button" onClick={() => onCancel(job.id)}>Cancel queued job</button>}

@@ -2,6 +2,7 @@ import { useState, type RefObject } from 'react'
 import { readApiError } from './apiClient'
 import type { LLMSettings } from './LLMConfiguration'
 import { JobElapsedTime, JobStatusLabel, type Job, type ScopeAnswer } from './JobQueue'
+import { jobCostLabel } from './jobCost'
 import { ChangeModelIcon, JobPromptDisclosure, PromptToggleButton, SectionTitle } from './ProjectElements'
 import { promptVersionNumber } from './promptVersion'
 import { ScopeQuestionnaire } from './ScopeQuestionnaire'
@@ -127,7 +128,7 @@ export function ScopeClarificationStage({ project, job, setupToken, llmSettings,
         idPrefix={`scope-${job.id}`}
         onSave={saveAnswers}
       />}
-      <div className="output-provenance intent-provenance"><span>{providerName(job.provider)} · {job.model}</span><span>{job.total_tokens !== null ? `${job.total_tokens.toLocaleString()} tokens` : 'Tokens unavailable'} · {job.duration_ms !== null ? `${(job.duration_ms / 1000).toFixed(1)} s` : 'Time unavailable'} · Cost unavailable</span></div>
+      <div className="output-provenance intent-provenance"><span>{providerName(job.provider)} · {job.model}</span><span>{job.total_tokens !== null ? `${job.total_tokens.toLocaleString()} tokens` : 'Tokens unavailable'} · {job.duration_ms !== null ? `${(job.duration_ms / 1000).toFixed(1)} s` : 'Time unavailable'} · {jobCostLabel(job)}</span></div>
       </section>}
       {error !== null && <p className="setup-error" role="alert">{error}</p>}
     </section>

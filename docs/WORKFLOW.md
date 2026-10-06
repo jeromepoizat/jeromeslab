@@ -12,8 +12,9 @@ conditional bounded framing-check/follow-up, and first-investigation charter gen
 implemented with peptide-specific prompt defaults. Internal names retain
 `intent` and `scope` for data compatibility, while consumed older prompts remain
 preserved with their original wording and versions. The first scientific-source
-scope questionnaire and reviewable strategy approval are implemented. Query generation,
-retrieval, peptide evidence extraction, design, and in-silico stages remain
+scope questionnaire, reviewable strategy approval, Europe PMC query drafting,
+and first-source retrieval are implemented. Peptide evidence extraction,
+design, and in-silico stages remain
 planned or in design.
 
 ## Cross-cutting workflow rules
@@ -193,7 +194,7 @@ retain that exact interface, prompt, call provenance, Markdown output, and manua
 artifact versions. They are not silently converted to the new workflow. A future
 explicit transition or fork from a legacy output remains to be designed.
 
-### Step 4 — Scientific-source investigation strategy (questionnaire and strategy implemented)
+### Step 4 — Scientific-source investigation planning (scope, strategy, and Europe PMC queries implemented)
 
 This stage, not project framing, owns the scope of evidence acquisition. The user
 chooses enabled publication and structured-data sources and decides applicable
@@ -234,25 +235,85 @@ versions remain preserved; editing requires fresh approval. A cancelled or
 failed attempt can be retried with its original workflow input.
 
 The strategy describes proposed source categories without claiming that a named
-adapter or result exists. Source-specific query generation consumes the approved
-strategy and its exact charter, theme, and answer inputs in a later stage.
+adapter or result exists. Europe PMC query drafting consumes the approved
+strategy and its exact charter, theme, and answer inputs. PubMed and structured
+sources remain separate future adapters.
 
-The first retrieval slice is still expected to use Europe PMC, with PubMed later.
-Future adapters may cover protein/target annotation, structure, interaction,
-bioactivity, peptide, sequence/motif, and assay sources. Each source requires its
-own accepted identity, licensing, query, pagination, normalization, and
-provenance rules before implementation. The LLM generates purpose-labelled,
-source-specific query families rather than forcing target biology, known peptide
-modulators, interaction interfaces, efficacy, safety, stability, and delivery
-into one query. Exact generated queries are stored and reviewed through the same
-original/effective version mechanism.
+The Europe PMC LLM job drafts purpose-labelled source-specific queries rather
+than forcing target biology, known peptide modulators, interaction interfaces,
+efficacy, safety, stability, and delivery into one query. The optional user note
+is retained as exact job input. Each query is displayed as a titled, described,
+expandable card with editable literal text and an inclusion choice. Saving
+creates a new immutable effective version; the original remains available.
+Approval requires included queries to cover all mandatory themes and identifies
+one exact version. **Approve queries and run them** atomically records approval
+and queues a source job. Generation and editing do not send a scientific-source
+request. Source requests begin when the worker claims the queued job. Future
+adapters for protein/target
+annotation, structure, interaction, bioactivity, peptide, sequence/motif, and
+assay sources require their own identity, licensing, query, pagination,
+normalization, and provenance rules before execution.
 
-### Step 5 — Scientific-source retrieval (planned)
+### Step 5 — Scientific-source retrieval (Europe PMC first slice implemented)
 
 Each effective query is executed through its source adapter. A `SearchRun`
 preserves source, exact query/version, timestamps, request details, paging state,
 errors, and raw results where useful. Each returned record is represented and
 linked to the query that discovered it.
+
+The first Europe PMC implementation executes included queries sequentially with
+cursor pagination and `core` metadata. It retains every raw JSON page under the
+workspace artifacts directory with size and SHA-256, plus one source-record row
+per page item. Each query reports Europe PMC's total hit count and raw saved
+count. A V1 5,000-record-per-query safety limit is explicit: larger searches are
+marked partial, not complete. A failed or interrupted job retains saved pages;
+retry starts a new attempt from the same approved query snapshot. No automatic
+publication deduplication, screening, or full-text collection occurs yet.
+
+The retrieval overview derives aggregate counts from saved search runs and
+source-record identities. It distinguishes reported search hits, saved raw rows,
+and distinct `(source, source_record_id)` identities; the last is a preliminary
+within-source count, not a canonical publication count. It also displays
+cross-query overlap, abstract availability, and source-collection mix. These
+aggregates do not require LLM calls or transfer all records to the browser.
+Each query also shows how many distinct saved source IDs occur in that query
+and no other query in the same retrieval. Repeat appearances within one query
+count once. This is query-exclusive source-ID coverage, not a verified count
+of unique papers.
+When all queries finish, a read-only same-article check compares DOI, PMID,
+PMCID, and exact normalized title across distinct source IDs. Author, year,
+journal, and identifier differences are flagged. Historical completed jobs get
+the same check when viewed. Group counts are provisional and never delete or
+rewrite discovery records; human-reviewed identity resolution is still needed
+before using the groups as screening units (ADR 0020).
+
+### Relevance-scoring prompt generation and calibration (first slice implemented)
+
+After a completed retrieval, the researcher chooses a 1–30-record
+prompt-design/calibration sample and a reproducible seed. The seed and versioned
+query × collection balancing algorithm select each
+`(source, source_record_id)` at most once, while preserving all query discovery
+links. The preview exposes the sampled titles with metadata on hover/focus and
+the exact sample-ID manifest hash. It neither filters results nor starts bulk
+scoring. The first-run record count and full-run estimate will be chosen in the
+later scoring stage.
+
+The editable generation prompt and approved charter/plan are used once with the
+seeded metadata sample to draft a compact, standalone scoring prompt. The model
+also reports which sample patterns influenced its wording. The researcher can
+review and edit the generated prompt as immutable versions. A separate queued
+calibration job may then score only that same sample to test the exact effective
+prompt without resending the full charter/plan. Its validated outcome is 0–5 or
+**not assessable**; it never rates quality or scientific validity. The job
+snapshots the prompt artifact version, seed, metadata, call, and result. A
+calibration consumes and locks that prompt version. Existing calibration-only
+jobs remain historical records, not generated prompts. Once the generated prompt
+exists, a rough per-1,000-report token and Standard API USD estimate extrapolates
+from the same sampled records and the effective scoring prompt, assuming
+ten-record batches and 100 output tokens per report. It is not a spending cap or
+billing guarantee. Full scoring,
+interruptible between batches, score/count breakdowns, threshold selection,
+and extension to unscored records are the next slice (ADRs 0021–0022).
 
 Publication records are normalized without inventing missing values.
 Deduplication merges publication identity, not discovery history: every source

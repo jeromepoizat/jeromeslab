@@ -11,8 +11,10 @@ from pathlib import Path
 from typing import Literal, cast
 from uuid import uuid4
 
+from jeromes_laboratory.database.relevance import distinct_source_records
 from jeromes_laboratory.llm.catalog import ProviderName
 from jeromes_laboratory.llm.generation import GenerationResult, PreparedGeneration
+from jeromes_laboratory.llm.pricing import estimate_standard_cost
 from jeromes_laboratory.workflow.evidence_scope import (
     EvidenceScopeAnswers,
     EvidenceScopeError,
@@ -26,6 +28,20 @@ from jeromes_laboratory.workflow.intent_clarification import (
     IntentClarificationOutput,
     IntentSelection,
     parse_intent_clarification_output,
+)
+from jeromes_laboratory.workflow.relevance import (
+    CALIBRATION_TEMPLATE_VERSION,
+    DEFAULT_CALIBRATION_INSTRUCTIONS,
+    DEFAULT_COMPACT_CALIBRATION_INSTRUCTIONS,
+    DEFAULT_RELEVANCE_SCORING_PROMPT,
+    PROMPT_GENERATION_TEMPLATE_VERSION,
+    RELEVANCE_SCORING_PROMPT_VERSION,
+    RelevanceError,
+    build_preview,
+    estimate_scoring_per_1000_tokens,
+    estimate_text_tokens,
+    parse_calibration,
+    parse_prompt_generation,
 )
 from jeromes_laboratory.workflow.research_charter import research_charter_payload
 from jeromes_laboratory.workflow.scope_clarification import (
@@ -41,6 +57,12 @@ from jeromes_laboratory.workflow.scope_readiness import (
     ScopeReadinessOutput,
     parse_scope_readiness_output,
     validate_scope_readiness_against_input,
+)
+from jeromes_laboratory.workflow.source_queries import (
+    SourceQueryError,
+    SourceQuerySet,
+    parse_source_queries,
+    validate_edited_source_queries,
 )
 
 JobStatus = Literal["pending", "awaiting_response", "completed", "failed", "cancelled"]
@@ -62,7 +84,7 @@ class JobRecord:
     created_at: str
     started_at: str | None
     completed_at: str | None
-    provider: ProviderName
+    provider: ProviderName | Literal["europe_pmc"]
     model: str
     scientific_question_snapshot: str
     prompt_snapshot: str
@@ -80,6 +102,7 @@ class JobRecord:
     total_tokens: int | None
     duration_ms: int | None
     cost_status: str | None
+    estimated_cost: str | None
     intent_questions: dict[str, object] | None
     intent_selection: dict[str, object] | None
     intent_selection_version: int | None
@@ -101,6 +124,10 @@ class JobRecord:
     evidence_scope_answers_is_editable: bool
     evidence_strategy_approved_at: str | None
     evidence_strategy_is_editable: bool
+    source_queries: dict[str, object] | None
+    original_source_queries: dict[str, object] | None
+    source_queries_approved_at: str | None
+    source_queries_is_editable: bool
 
 
 class JobRepository:
@@ -900,12 +927,556 @@ class JobRepository:
             "strategy_input": json.loads(row["workflow_input_snapshot_json"]),
         }
 
+    def enqueue_source_queries(
+        self, project_id: str, provider: ProviderName, model: str, note: str = ""
+    ) -> JobRecord:
+        """Snapshot approved inputs and optional user guidance without searching Europe PMC."""
+        if len(note) > 10_000:
+            raise JobError("The query-generation note is too long.")
+        now = _timestamp()
+        job_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            project = connection.execute(
+                "SELECT scientific_question, source_queries_prompt, "
+                "source_queries_prompt_version FROM projects WHERE id = ?",
+                (project_id,),
+            ).fetchone()
+            if project is None:
+                raise JobError("The selected project no longer exists.")
+            previous = connection.execute(
+                "SELECT * FROM jobs WHERE project_id = ? AND kind = 'source_queries' "
+                "ORDER BY rowid DESC LIMIT 1",
+                (project_id,),
+            ).fetchone()
+            if previous is not None and previous["status"] not in {"failed", "cancelled"}:
+                raise JobError("Europe PMC query drafting has already been started.")
+            if previous is not None:
+                if previous["workflow_input_snapshot_json"] is None:
+                    raise JobError("The previous query input snapshot is missing.")
+                workflow_input = json.loads(previous["workflow_input_snapshot_json"])
+                workflow_input["retry_of_job_id"] = previous["id"]
+            else:
+                strategy = self.get_approved_evidence_strategy_input(
+                    project_id, connection=connection
+                )
+                workflow_input = {
+                    "schema_version": 1,
+                    "source": "europe_pmc",
+                    "approved_strategy": strategy,
+                    "user_note": note.strip(),
+                }
+            connection.execute(
+                "INSERT INTO jobs (id, project_id, kind, status, created_at, provider, model, "
+                "scientific_question_snapshot, prompt_snapshot, prompt_template_id, "
+                "prompt_template_version, workflow_input_snapshot_json) "
+                "VALUES (?, ?, 'source_queries', 'pending', ?, ?, ?, ?, ?, "
+                "'source-queries', ?, ?)",
+                (
+                    job_id, project_id, now, provider, model,
+                    project["scientific_question"], project["source_queries_prompt"],
+                    project["source_queries_prompt_version"], _json(workflow_input),
+                ),
+            )
+        return self.get_job(job_id)
+
+    @staticmethod
+    def _query_theme_ids(snapshot_json: str | None) -> set[str]:
+        if snapshot_json is None:
+            raise JobError("The query job input snapshot is missing.")
+        try:
+            snapshot = json.loads(snapshot_json)
+            themes = snapshot["approved_strategy"]["strategy_input"][
+                "evidence_scope_questions"
+            ]["charter_evidence_themes"]
+            ids = {theme["id"] for theme in themes}
+            if not ids:
+                raise ValueError("No required themes")
+            return ids
+        except (ValueError, KeyError, TypeError) as error:
+            raise JobError("The saved query themes are not valid.") from error
+
+    @staticmethod
+    def _editable_source_queries(
+        connection: sqlite3.Connection, job_id: str, base_version: int
+    ) -> sqlite3.Row:
+        current = connection.execute(
+            "SELECT jobs.project_id, jobs.rowid AS job_rowid, "
+            "jobs.workflow_input_snapshot_json, artifact.id AS artifact_id, "
+            "artifact.version_number, artifact.llm_call_id, artifact.content_json, "
+            "original.content_json AS original_json "
+            "FROM jobs JOIN artifact_effective_versions selected ON selected.job_id = jobs.id "
+            "JOIN artifact_versions artifact ON artifact.id = selected.artifact_version_id "
+            "AND artifact.kind = 'source_queries_output' "
+            "JOIN artifact_versions original ON original.job_id = jobs.id "
+            "AND original.kind = 'source_queries_output' AND original.version_number = 1 "
+            "WHERE jobs.id = ? AND jobs.kind = 'source_queries' "
+            "AND jobs.status = 'completed'",
+            (job_id,),
+        ).fetchone()
+        if current is None:
+            raise JobError("Only completed query drafts can be edited or approved.")
+        if current["version_number"] != base_version:
+            raise JobError("The queries were edited elsewhere. Reload before continuing.")
+        downstream = connection.execute(
+            "SELECT 1 FROM jobs WHERE project_id = ? AND rowid > ? LIMIT 1",
+            (current["project_id"], current["job_rowid"]),
+        ).fetchone()
+        if downstream is not None:
+            raise JobError("The queries are locked because a downstream job uses them.")
+        return cast(sqlite3.Row, current)
+
+    def edit_source_queries(
+        self, job_id: str, proposed: SourceQuerySet, base_version: int
+    ) -> JobRecord:
+        now = _timestamp()
+        artifact_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            current = self._editable_source_queries(connection, job_id, base_version)
+            original = SourceQuerySet.model_validate_json(current["original_json"])
+            themes = self._query_theme_ids(current["workflow_input_snapshot_json"])
+            try:
+                validate_edited_source_queries(proposed, original, themes)
+            except SourceQueryError as error:
+                raise JobError(str(error)) from error
+            self._insert_user_artifact(
+                connection, artifact_id=artifact_id, project_id=current["project_id"],
+                job_id=job_id, llm_call_id=current["llm_call_id"],
+                kind="source_queries_output", content_json=_json(proposed.model_dump(mode="json")),
+                version=base_version + 1, created_at=now,
+            )
+            connection.execute(
+                "UPDATE artifact_effective_versions SET artifact_version_id = ?, "
+                "selected_at = ?, selection_reason = 'user_edit' WHERE job_id = ?",
+                (artifact_id, now, job_id),
+            )
+        return self.get_job(job_id)
+
+    def approve_source_queries(self, job_id: str, base_version: int) -> JobRecord:
+        """Atomically approve the exact version and queue its first search run."""
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            current = self._editable_source_queries(connection, job_id, base_version)
+            payload = SourceQuerySet.model_validate_json(current["content_json"])
+            required = self._query_theme_ids(current["workflow_input_snapshot_json"])
+            covered = {
+                theme for query in payload.queries if query.included for theme in query.theme_ids
+            }
+            if not any(query.included for query in payload.queries):
+                raise JobError("Include at least one query before approval.")
+            if covered != required:
+                raise JobError(
+                    "Included queries must cover every mandatory theme before approval."
+                )
+            approval_id = str(uuid4())
+            now = _timestamp()
+            connection.execute(
+                "INSERT INTO source_queries_approvals "
+                "(id, job_id, artifact_version_id, approved_at) VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(artifact_version_id) DO NOTHING",
+                (approval_id, job_id, current["artifact_id"], now),
+            )
+            approval = connection.execute(
+                "SELECT id, approved_at FROM source_queries_approvals "
+                "WHERE artifact_version_id = ?", (current["artifact_id"],),
+            ).fetchone()
+            existing = connection.execute(
+                "SELECT 1 FROM jobs WHERE project_id = ? AND kind = 'source_retrieval' "
+                "AND json_extract(workflow_input_snapshot_json, '$.query_artifact_id') = ?",
+                (current["project_id"], current["artifact_id"]),
+            ).fetchone()
+            if existing is not None:
+                raise JobError("This approved query version already has a retrieval job.")
+            snapshot = {
+                "schema_version": 1,
+                "source": "europe_pmc",
+                "query_job_id": job_id,
+                "query_artifact_id": current["artifact_id"],
+                "query_version": base_version,
+                "query_approval_id": approval["id"],
+                "approved_at": approval["approved_at"],
+                "query_set": payload.model_dump(mode="json"),
+            }
+            connection.execute(
+                "INSERT INTO jobs (id, project_id, kind, status, created_at, provider, "
+                "model, scientific_question_snapshot, prompt_snapshot, "
+                "prompt_template_id, prompt_template_version, workflow_input_snapshot_json) "
+                "SELECT ?, jobs.project_id, 'source_retrieval', 'pending', ?, "
+                "'europe_pmc', 'rest-v1', jobs.scientific_question_snapshot, '', "
+                "'europe-pmc-retrieval', '1', ? FROM jobs WHERE jobs.id = ?",
+                (str(uuid4()), now, _json(snapshot), job_id),
+            )
+        return self.get_job(job_id)
+
+    def get_approved_source_queries_input(
+        self, project_id: str, *, connection: sqlite3.Connection | None = None
+    ) -> dict[str, object]:
+        """Resolve one exact approved set for future execution, without executing it."""
+        if connection is None:
+            with self._connect() as owned:
+                return self.get_approved_source_queries_input(project_id, connection=owned)
+        row = connection.execute(
+            "SELECT jobs.id AS job_id, artifact.id AS artifact_id, "
+            "artifact.version_number, artifact.content_json, approval.id AS approval_id, "
+            "approval.approved_at, jobs.workflow_input_snapshot_json "
+            "FROM jobs JOIN artifact_effective_versions selected ON selected.job_id = jobs.id "
+            "JOIN artifact_versions artifact ON artifact.id = selected.artifact_version_id "
+            "AND artifact.kind = 'source_queries_output' "
+            "JOIN source_queries_approvals approval ON approval.job_id = jobs.id "
+            "AND approval.artifact_version_id = artifact.id "
+            "WHERE jobs.project_id = ? AND jobs.kind = 'source_queries' "
+            "AND jobs.status = 'completed' ORDER BY jobs.rowid DESC LIMIT 1",
+            (project_id,),
+        ).fetchone()
+        if row is None:
+            raise JobError("Approve the current Europe PMC queries before running them.")
+        return {
+            "schema_version": 1,
+            "source": "europe_pmc",
+            "query_job_id": row["job_id"],
+            "query_artifact_id": row["artifact_id"],
+            "query_version": row["version_number"],
+            "query_approval_id": row["approval_id"],
+            "approved_at": row["approved_at"],
+            "query_set": json.loads(row["content_json"]),
+            "query_input": json.loads(row["workflow_input_snapshot_json"]),
+        }
+
+    def relevance_preparation(
+        self, project_id: str, retrieval_job_id: str, *, scoring_limit: int | None,
+        calibration_count: int, seed: int, instructions: str,
+    ) -> dict[str, object]:
+        """Preview an exact, reproducible manifest; perform no provider call."""
+        with self._connect() as connection:
+            retrieval = connection.execute(
+                "SELECT status, workflow_input_snapshot_json FROM jobs "
+                "WHERE id = ? AND project_id = ? "
+                "AND kind = 'source_retrieval'",
+                (retrieval_job_id, project_id),
+            ).fetchone()
+            if retrieval is None or retrieval["status"] != "completed":
+                raise JobError("Complete the selected retrieval before preparing relevance scoring.")
+            try:
+                retrieval_input = json.loads(retrieval["workflow_input_snapshot_json"])
+                query_job = connection.execute(
+                    "SELECT workflow_input_snapshot_json FROM jobs "
+                    "WHERE id = ? AND project_id = ? AND kind = 'source_queries'",
+                    (retrieval_input["query_job_id"], project_id),
+                ).fetchone()
+                if query_job is None:
+                    raise ValueError("The originating query job is missing.")
+                strategy = json.loads(query_job["workflow_input_snapshot_json"])[
+                    "approved_strategy"
+                ]
+                if not isinstance(strategy, dict) or not strategy.get("strategy_artifact_id"):
+                    raise ValueError("The approved strategy reference is missing.")
+            except (ValueError, TypeError, KeyError) as error:
+                raise JobError("The retrieval's approved strategy link is invalid.") from error
+        try:
+            preview = build_preview(
+                distinct_source_records(self.database_path, retrieval_job_id),
+                retrieval_job_id, scoring_limit=scoring_limit,
+                calibration_count=calibration_count, seed=seed, instructions=instructions,
+            )
+        except RelevanceError as error:
+            raise JobError(str(error)) from error
+        preview["approved_strategy"] = strategy
+        preview["relevance_instructions"] = instructions.strip()
+        calibration_input = {
+            "schema_version": 1,
+            "approved_strategy": strategy,
+            "retrieval_job_id": retrieval_job_id,
+            "selected_manifest_sha256": preview["selected_manifest_sha256"],
+            "relevance_instructions": instructions.strip(),
+            "calibration_records": preview["calibration_records"],
+        }
+        preview["calibration_input_tokens_estimate"] = estimate_text_tokens(
+            DEFAULT_CALIBRATION_INSTRUCTIONS + _json(calibration_input)
+        )
+        compact_input = {
+            "schema_version": 1,
+            "relevance_instructions": instructions.strip(),
+            "calibration_records": preview["calibration_records"],
+        }
+        preview["compact_calibration_input_tokens_estimate"] = estimate_text_tokens(
+            DEFAULT_COMPACT_CALIBRATION_INSTRUCTIONS + _json(compact_input)
+        )
+        # Future batches use the approved compact scoring prompt, not the full strategy.
+        # Until generation completes this estimate uses the editable starting instructions.
+        preview["estimated_scoring_output_tokens"] = len(
+            cast(list[dict[str, object]], preview["calibration_records"])
+        ) * 100
+        per_1000_input, per_1000_output = estimate_scoring_per_1000_tokens(
+            cast(list[dict[str, object]], preview["calibration_records"]), instructions,
+        )
+        preview["per_1000_input_tokens_estimate"] = per_1000_input
+        preview["per_1000_output_tokens_estimate"] = per_1000_output
+        preview["estimated_calibration_output_tokens"] = calibration_count * 100 + 100
+        preview["prompt_generation_input_tokens_estimate"] = estimate_text_tokens(
+            instructions + _json({**calibration_input,
+                                  "relevance_instructions": DEFAULT_RELEVANCE_SCORING_PROMPT})
+        )
+        preview["estimated_prompt_generation_output_tokens"] = 1600
+        return preview
+
+    def enqueue_relevance_prompt_generation(
+        self, project_id: str, retrieval_job_id: str, *, provider: ProviderName,
+        model: str, scoring_limit: int | None, calibration_count: int, seed: int,
+        instructions: str, expected_manifest_sha256: str,
+    ) -> JobRecord:
+        preview = self.relevance_preparation(
+            project_id, retrieval_job_id, scoring_limit=scoring_limit,
+            calibration_count=calibration_count, seed=seed, instructions=instructions,
+        )
+        if preview["selected_manifest_sha256"] != expected_manifest_sha256:
+            raise JobError("The sample has changed. Refresh the preview before generation.")
+        workflow_input = {
+            "schema_version": 1,
+            "algorithm_version": preview["algorithm_version"],
+            "retrieval_job_id": retrieval_job_id,
+            "seed": seed,
+            "available_distinct_source_records": preview["available_distinct_source_records"],
+            "scoring_limit": preview["scoring_limit"],
+            "selected_manifest": preview["selected_manifest"],
+            "selected_manifest_sha256": preview["selected_manifest_sha256"],
+            "selected_metadata_sha256": preview["selected_metadata_sha256"],
+            "selected_by_collection": preview["selected_by_collection"],
+            "selected_by_query": preview["selected_by_query"],
+            "approved_strategy": preview["approved_strategy"],
+            "relevance_prompt_starting_template_version": RELEVANCE_SCORING_PROMPT_VERSION,
+            "relevance_instructions": DEFAULT_RELEVANCE_SCORING_PROMPT,
+            "generation_prompt": instructions.strip(),
+            "calibration_records": preview["calibration_records"],
+        }
+        job_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                "SELECT 1 FROM jobs WHERE project_id = ? "
+                "AND kind = 'relevance_prompt_generation' "
+                "AND status IN ('pending', 'awaiting_response')", (project_id,),
+            ).fetchone()
+            if existing is not None:
+                raise JobError("A scoring-prompt generation job is already active for this project.")
+            project = connection.execute(
+                "SELECT scientific_question FROM projects WHERE id = ?", (project_id,),
+            ).fetchone()
+            if project is None:
+                raise JobError("The selected project no longer exists.")
+            connection.execute(
+                "INSERT INTO jobs (id, project_id, kind, status, created_at, provider, model, "
+                "scientific_question_snapshot, prompt_snapshot, prompt_template_id, "
+                "prompt_template_version, workflow_input_snapshot_json) "
+                "VALUES (?, ?, 'relevance_prompt_generation', 'pending', ?, ?, ?, ?, ?, "
+                "'relevance-prompt-generation', ?, ?)",
+                (job_id, project_id, _timestamp(), provider, model,
+                 project["scientific_question"], instructions.strip(),
+                 PROMPT_GENERATION_TEMPLATE_VERSION, _json(workflow_input)),
+            )
+        return self.get_job(job_id)
+
+    def get_relevance_prompt_generation(self, job_id: str) -> dict[str, object] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT artifact.content_json FROM artifact_versions artifact "
+                "JOIN artifact_effective_versions selected ON selected.artifact_version_id = artifact.id "
+                "JOIN jobs ON jobs.id = artifact.job_id "
+                "WHERE jobs.id = ? AND jobs.kind = 'relevance_prompt_generation' "
+                "AND artifact.kind = 'relevance_prompt_generation_output'", (job_id,),
+            ).fetchone()
+        return json.loads(row["content_json"]) if row is not None else None
+
+    def edit_relevance_prompt_generation(
+        self, job_id: str, scoring_prompt: str, base_version: int,
+    ) -> JobRecord:
+        if not 100 <= len(scoring_prompt.strip()) <= 12_000:
+            raise JobError("The scoring prompt must contain 100–12,000 characters.")
+        lowered = scoring_prompt.lower()
+        if "not_assessable" not in lowered or not all(str(score) in lowered for score in range(6)):
+            raise JobError("The scoring prompt must define 0–5 and not_assessable.")
+        now = _timestamp()
+        artifact_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            row = connection.execute(
+                "SELECT jobs.project_id, jobs.rowid AS job_rowid, artifact.version_number, "
+                "artifact.llm_call_id, artifact.content_json FROM jobs "
+                "JOIN artifact_effective_versions selected ON selected.job_id = jobs.id "
+                "JOIN artifact_versions artifact ON artifact.id = selected.artifact_version_id "
+                "AND artifact.kind = 'relevance_prompt_generation_output' "
+                "WHERE jobs.id = ? AND jobs.kind = 'relevance_prompt_generation' "
+                "AND jobs.status = 'completed'", (job_id,),
+            ).fetchone()
+            if row is None:
+                raise JobError("Only a completed generated scoring prompt can be edited.")
+            if row["version_number"] != base_version:
+                raise JobError("The scoring prompt was edited elsewhere. Reload before continuing.")
+            downstream = connection.execute(
+                "SELECT 1 FROM jobs WHERE project_id = ? AND rowid > ? LIMIT 1",
+                (row["project_id"], row["job_rowid"]),
+            ).fetchone()
+            if downstream is not None:
+                raise JobError("This prompt is locked because a later job may use it.")
+            payload = json.loads(row["content_json"])
+            payload["scoring_prompt"] = scoring_prompt.strip()
+            self._insert_user_artifact(
+                connection, artifact_id=artifact_id, project_id=row["project_id"],
+                job_id=job_id, llm_call_id=row["llm_call_id"],
+                kind="relevance_prompt_generation_output", content_json=_json(payload),
+                version=base_version + 1, created_at=now,
+            )
+            connection.execute(
+                "UPDATE artifact_effective_versions SET artifact_version_id = ?, "
+                "selected_at = ?, selection_reason = 'user_edit' WHERE job_id = ?",
+                (artifact_id, now, job_id),
+            )
+        return self.get_job(job_id)
+
+    def enqueue_relevance_calibration(
+        self, project_id: str, retrieval_job_id: str, *, provider: ProviderName,
+        model: str, scoring_limit: int | None, calibration_count: int, seed: int,
+        instructions: str, expected_manifest_sha256: str,
+        prompt_generation_job_id: str | None = None,
+    ) -> JobRecord:
+        preview = self.relevance_preparation(
+            project_id, retrieval_job_id, scoring_limit=scoring_limit,
+            calibration_count=calibration_count, seed=seed, instructions=instructions,
+        )
+        if preview["selected_manifest_sha256"] != expected_manifest_sha256:
+            raise JobError("The sample has changed. Refresh the preview before calibration.")
+        prompt_source: dict[str, object] | None = None
+        if prompt_generation_job_id is not None:
+            with self._connect() as connection:
+                source = connection.execute(
+                    "SELECT artifact.id, artifact.version_number, artifact.content_json, "
+                    "jobs.workflow_input_snapshot_json FROM jobs "
+                    "JOIN artifact_effective_versions selected ON selected.job_id = jobs.id "
+                    "JOIN artifact_versions artifact ON artifact.id = selected.artifact_version_id "
+                    "AND artifact.kind = 'relevance_prompt_generation_output' "
+                    "WHERE jobs.id = ? AND jobs.project_id = ? "
+                    "AND jobs.kind = 'relevance_prompt_generation' AND jobs.status = 'completed'",
+                    (prompt_generation_job_id, project_id),
+                ).fetchone()
+            if source is None:
+                raise JobError("The generated scoring prompt is unavailable.")
+            origin = json.loads(source["workflow_input_snapshot_json"])
+            if (origin["retrieval_job_id"] != retrieval_job_id
+                    or origin["selected_manifest_sha256"] != expected_manifest_sha256
+                    or origin["selected_metadata_sha256"] != preview["selected_metadata_sha256"]
+                    or origin["seed"] != seed
+                    or origin["scoring_limit"] != preview["scoring_limit"]
+                    or origin["calibration_records"] != preview["calibration_records"]
+                    or json.loads(source["content_json"])["scoring_prompt"] != instructions.strip()):
+                raise JobError("The generated prompt or sample changed. Refresh the preview.")
+            prompt_source = {
+                "job_id": prompt_generation_job_id,
+                "artifact_id": source["id"],
+                "version": source["version_number"],
+            }
+        workflow_input = {
+            "schema_version": 1,
+            "algorithm_version": preview["algorithm_version"],
+            "retrieval_job_id": retrieval_job_id,
+            "seed": seed,
+            "available_distinct_source_records": preview["available_distinct_source_records"],
+            "scoring_limit": preview["scoring_limit"],
+            "selected_manifest": preview["selected_manifest"],
+            "selected_manifest_sha256": preview["selected_manifest_sha256"],
+            "selected_metadata_sha256": preview["selected_metadata_sha256"],
+            "selected_by_collection": preview["selected_by_collection"],
+            "selected_by_query": preview["selected_by_query"],
+            "approved_strategy": preview["approved_strategy"],
+            "relevance_prompt_starting_template_version": RELEVANCE_SCORING_PROMPT_VERSION,
+            "relevance_instructions": instructions.strip(),
+            "generated_prompt_source": prompt_source,
+            "calibration_records": preview["calibration_records"],
+        }
+        job_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            if prompt_source is not None:
+                current_prompt = connection.execute(
+                    "SELECT selected.artifact_version_id FROM artifact_effective_versions selected "
+                    "JOIN jobs ON jobs.id = selected.job_id "
+                    "WHERE jobs.id = ? AND jobs.project_id = ? AND jobs.status = 'completed'",
+                    (prompt_generation_job_id, project_id),
+                ).fetchone()
+                if (current_prompt is None
+                        or current_prompt["artifact_version_id"] != prompt_source["artifact_id"]):
+                    raise JobError("The generated prompt changed. Refresh the preview.")
+            existing = connection.execute(
+                "SELECT 1 FROM jobs WHERE project_id = ? AND kind = 'relevance_calibration' "
+                "AND status IN ('pending', 'awaiting_response')", (project_id,),
+            ).fetchone()
+            if existing is not None:
+                raise JobError("A relevance calibration is already active for this project.")
+            project = connection.execute(
+                "SELECT scientific_question FROM projects WHERE id = ?", (project_id,),
+            ).fetchone()
+            if project is None:
+                raise JobError("The selected project no longer exists.")
+            connection.execute(
+                "INSERT INTO jobs (id, project_id, kind, status, created_at, provider, model, "
+                "scientific_question_snapshot, prompt_snapshot, prompt_template_id, "
+                "prompt_template_version, workflow_input_snapshot_json) "
+                "VALUES (?, ?, 'relevance_calibration', 'pending', ?, ?, ?, ?, ?, "
+                "'relevance-calibration', ?, ?)",
+                (job_id, project_id, _timestamp(), provider, model,
+                 project["scientific_question"],
+                 DEFAULT_COMPACT_CALIBRATION_INSTRUCTIONS if prompt_source else DEFAULT_CALIBRATION_INSTRUCTIONS,
+                 "2" if prompt_source else CALIBRATION_TEMPLATE_VERSION, _json(workflow_input)),
+            )
+        return self.get_job(job_id)
+
+    def get_relevance_calibration(self, job_id: str) -> dict[str, object] | None:
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT artifact.content_json FROM artifact_versions artifact "
+                "JOIN jobs ON jobs.id = artifact.job_id "
+                "WHERE jobs.id = ? AND jobs.kind = 'relevance_calibration' "
+                "AND artifact.kind = 'relevance_calibration_output' "
+                "AND artifact.version_number = 1", (job_id,),
+            ).fetchone()
+        return json.loads(row["content_json"]) if row is not None else None
+
+    def retry_source_retrieval(self, job_id: str) -> JobRecord:
+        """Retry the exact approved query snapshot without changing prior runs."""
+        retry_id = str(uuid4())
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            previous = connection.execute(
+                "SELECT * FROM jobs WHERE id = ? AND kind = 'source_retrieval'",
+                (job_id,),
+            ).fetchone()
+            if previous is None or previous["status"] not in {"failed", "cancelled"}:
+                raise JobError("Only failed or cancelled retrieval can be retried.")
+            latest = connection.execute(
+                "SELECT id FROM jobs WHERE project_id = ? AND kind = 'source_retrieval' "
+                "ORDER BY rowid DESC LIMIT 1", (previous["project_id"],),
+            ).fetchone()
+            if latest is None or latest["id"] != job_id:
+                raise JobError("A newer retrieval attempt already exists.")
+            snapshot = json.loads(previous["workflow_input_snapshot_json"])
+            snapshot["retry_of_job_id"] = job_id
+            connection.execute(
+                "INSERT INTO jobs (id, project_id, kind, status, created_at, provider, "
+                "model, scientific_question_snapshot, prompt_snapshot, "
+                "prompt_template_id, prompt_template_version, workflow_input_snapshot_json) "
+                "VALUES (?, ?, 'source_retrieval', 'pending', ?, 'europe_pmc', 'rest-v1', "
+                "?, '', 'europe-pmc-retrieval', '1', ?)",
+                (retry_id, previous["project_id"], _timestamp(),
+                 previous["scientific_question_snapshot"], _json(snapshot)),
+            )
+        return self.get_job(retry_id)
+
     def list_jobs(self) -> list[JobRecord]:
         with self._connect() as connection:
             rows = connection.execute(
                 self._select_sql(
                     self._table_exists(connection, "research_charter_approvals"),
                     self._table_exists(connection, "evidence_strategy_approvals"),
+                    self._table_exists(connection, "source_queries_approvals"),
                 )
                 + " ORDER BY jobs.created_at DESC"
             ).fetchall()
@@ -917,6 +1488,7 @@ class JobRepository:
                 self._select_sql(
                     self._table_exists(connection, "research_charter_approvals"),
                     self._table_exists(connection, "evidence_strategy_approvals"),
+                    self._table_exists(connection, "source_queries_approvals"),
                 )
                 + " WHERE jobs.id = ?",
                 (job_id,),
@@ -941,7 +1513,7 @@ class JobRepository:
                 if row is None:
                     raise JobError("The selected job no longer exists.")
                 raise JobError(
-                    "This job can no longer be cancelled because provider dispatch began."
+                    "This job can no longer be cancelled because external execution began."
                 )
         return self.get_job(job_id)
 
@@ -1011,6 +1583,15 @@ class JobRepository:
         elif job.kind == "evidence_strategy":
             prompt_template_id = "evidence-strategy"
             purpose = "Draft a reviewable evidence-investigation strategy from approved inputs"
+        elif job.kind == "source_queries":
+            prompt_template_id = "source-queries"
+            purpose = "Draft reviewable Europe PMC queries without executing them"
+        elif job.kind == "relevance_prompt_generation":
+            prompt_template_id = "relevance-prompt-generation"
+            purpose = "Generate a compact relevance-scoring prompt from approved context and a seeded sample"
+        elif job.kind == "relevance_calibration":
+            prompt_template_id = "relevance-calibration"
+            purpose = "Calibrate relevance-only scores on distinct source records"
         else:
             raise JobError(f"Unsupported LLM job kind: {job.kind}")
         with self._connect() as connection:
@@ -1041,6 +1622,16 @@ class JobRepository:
     def complete(self, job_id: str, call_id: str, result: GenerationResult) -> JobRecord:
         now = _timestamp()
         job = self.get_job(job_id)
+        pricing = estimate_standard_cost(
+            job.provider,
+            result.reported_model if result.reported_model == job.model else "",
+            result.input_tokens or 0,
+            result.output_tokens or 0,
+            result.cached_input_tokens or 0,
+        ) if result.input_tokens is not None and result.output_tokens is not None else {
+            "status": "unavailable", "usd": None
+        }
+        price_available = pricing["status"] == "estimated"
         automatically_confirm_empty_scope = False
         automatically_confirm_empty_evidence_scope = False
         if job.kind == "intent_clarification":
@@ -1095,6 +1686,42 @@ class JobRepository:
             except ValueError as error:
                 raise JobError(str(error)) from error
             artifact_kind = "evidence_strategy_output"
+        elif job.kind == "source_queries":
+            try:
+                theme_ids = self._query_theme_ids(job.workflow_input_snapshot_json)
+                artifact_payload = parse_source_queries(
+                    result.output_text, theme_ids
+                ).model_dump(mode="json")
+            except SourceQueryError as error:
+                raise JobError(str(error)) from error
+            artifact_kind = "source_queries_output"
+        elif job.kind == "relevance_prompt_generation":
+            try:
+                artifact_payload = parse_prompt_generation(result.output_text)
+            except RelevanceError as error:
+                raise JobError(str(error)) from error
+            artifact_kind = "relevance_prompt_generation_output"
+        elif job.kind == "relevance_calibration":
+            if job.workflow_input_snapshot_json is None:
+                raise JobError("The calibration input snapshot is missing.")
+            calibration_records = json.loads(job.workflow_input_snapshot_json)["calibration_records"]
+            expected_keys = [
+                (str(record["source"]), str(record["source_record_id"]))
+                for record in calibration_records
+            ]
+            try:
+                artifact_payload = parse_calibration(result.output_text, expected_keys)
+            except RelevanceError as error:
+                raise JobError(str(error)) from error
+            by_key = {
+                (str(record["source"]), str(record["source_record_id"])): record
+                for record in calibration_records
+            }
+            for decision in cast(list[dict[str, object]], artifact_payload["calibration"]):
+                record = by_key[(str(decision["source"]), str(decision["source_record_id"]))]
+                if not record.get("title") and not record.get("abstract") and decision["outcome"] != "not_assessable":
+                    raise JobError("A record without title or abstract must be not assessable.")
+            artifact_kind = "relevance_calibration_output"
         else:
             raise JobError(f"Unsupported LLM job kind: {job.kind}")
         content_json = _json(artifact_payload)
@@ -1113,7 +1740,8 @@ class JobRepository:
                 "UPDATE llm_calls SET reported_model = ?, raw_response = ?, parsed_output_json = ?, "
                 "provider_request_id = ?, completed_at = ?, duration_ms = ?, status = 'completed', "
                 "usage_json = ?, input_tokens = ?, output_tokens = ?, total_tokens = ?, "
-                "cached_input_tokens = ?, reasoning_tokens = ?, provider_metadata_json = ? "
+                "cached_input_tokens = ?, reasoning_tokens = ?, provider_metadata_json = ?, "
+                "pricing_snapshot_json = ?, estimated_cost = ?, currency = ?, cost_status = ? "
                 "WHERE id = ?",
                 (
                     result.reported_model,
@@ -1129,6 +1757,10 @@ class JobRepository:
                     result.cached_input_tokens,
                     result.reasoning_tokens,
                     _json(result.provider_metadata),
+                    _json(pricing) if price_available else None,
+                    str(pricing["usd"]) if price_available else None,
+                    "USD" if price_available else None,
+                    pricing["status"],
                     call_id,
                 ),
             )
@@ -1209,7 +1841,10 @@ class JobRepository:
                     "VALUES (?, ?, ?, 'no_evidence_scope_questions')",
                     (job_id, answers_id, now),
                 )
-            if job.kind in {"question_detailing", "research_charter", "evidence_strategy"}:
+            if job.kind in {
+                "question_detailing", "research_charter", "evidence_strategy", "source_queries",
+                "relevance_prompt_generation",
+            }:
                 connection.execute(
                     "INSERT INTO artifact_effective_versions "
                     "(job_id, artifact_version_id, selected_at, selection_reason) "
@@ -1812,22 +2447,34 @@ class JobRepository:
         return self.get_job(job_id)
 
     def fail_interrupted_jobs(self) -> int:
-        """Never replay an ambiguous request that may already have been billed."""
+        """Never replay an ambiguous external request after restart."""
         now = _timestamp()
         message = "The application stopped while awaiting the provider response; this job was not retried."
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             cursor = connection.execute(
                 "UPDATE jobs SET status = 'failed', completed_at = ?, error = ? "
-                "WHERE status = 'awaiting_response'",
+                "WHERE status = 'awaiting_response' AND kind != 'source_retrieval'",
                 (now, message),
+            )
+            source_cursor = connection.execute(
+                "UPDATE jobs SET status = 'failed', completed_at = ?, "
+                "error = 'The application stopped during retrieval. Saved pages remain available; retry creates a new run.' "
+                "WHERE status = 'awaiting_response' AND kind = 'source_retrieval'",
+                (now,),
             )
             connection.execute(
                 "UPDATE llm_calls SET status = 'failed', completed_at = ?, error = ? "
                 "WHERE status = 'started'",
                 (now, message),
             )
-        return cursor.rowcount
+            if self._table_exists(connection, "search_runs"):
+                connection.execute(
+                    "UPDATE search_runs SET status = 'interrupted', completed_at = ?, "
+                    "error = 'The application stopped during retrieval; saved pages remain available.' "
+                    "WHERE status = 'running'", (now,),
+                )
+        return cursor.rowcount + source_cursor.rowcount
 
     @staticmethod
     def _table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
@@ -1837,7 +2484,9 @@ class JobRepository:
 
     @staticmethod
     def _select_sql(
-        has_charter_approvals: bool = True, has_strategy_approvals: bool = True
+        has_charter_approvals: bool = True,
+        has_strategy_approvals: bool = True,
+        has_source_approvals: bool = True,
     ) -> str:
         charter_columns = (
             "charter_approval.approved_at AS charter_approved_at, "
@@ -1874,10 +2523,18 @@ class JobRepository:
             "ON strategy_approval.job_id = jobs.id "
             "AND strategy_approval.artifact_version_id = effective.id "
         ) if has_strategy_approvals else ""
+        source_columns = (
+            "source_approval.approved_at AS source_queries_approved_at, "
+        ) if has_source_approvals else "NULL AS source_queries_approved_at, "
+        source_join = (
+            "LEFT JOIN source_queries_approvals source_approval "
+            "ON source_approval.job_id = jobs.id "
+            "AND source_approval.artifact_version_id = effective.id "
+        ) if has_source_approvals else ""
         return (
             "SELECT jobs.*, projects.tag AS project_tag, llm_calls.id AS llm_call_id, "
             "llm_calls.input_tokens, llm_calls.output_tokens, llm_calls.total_tokens, "
-            "llm_calls.duration_ms, llm_calls.cost_status, "
+            "llm_calls.duration_ms, llm_calls.cost_status, llm_calls.estimated_cost, "
             "original.content_json AS original_content_json, "
             "effective.content_json AS effective_content_json, "
             "effective.version_number AS effective_version_number, "
@@ -1895,6 +2552,7 @@ class JobRepository:
             "evidence_scope_answers.version_number AS evidence_scope_answers_version, "
             + charter_columns
             + strategy_columns
+            + source_columns
             +
             "NOT EXISTS (SELECT 1 FROM jobs downstream WHERE "
             "downstream.project_id = jobs.project_id AND downstream.id != jobs.id "
@@ -1904,7 +2562,9 @@ class JobRepository:
             "LEFT JOIN artifact_versions original ON original.job_id = jobs.id "
             "AND original.kind = CASE WHEN jobs.kind = 'research_charter' "
             "THEN 'research_charter_output' WHEN jobs.kind = 'evidence_strategy' "
-            "THEN 'evidence_strategy_output' ELSE 'question_detailing_output' END "
+            "THEN 'evidence_strategy_output' WHEN jobs.kind = 'source_queries' "
+            "THEN 'source_queries_output' WHEN jobs.kind = 'relevance_prompt_generation' "
+            "THEN 'relevance_prompt_generation_output' ELSE 'question_detailing_output' END "
             "AND original.version_number = 1 "
             "LEFT JOIN artifact_effective_versions selection ON selection.job_id = jobs.id "
             "LEFT JOIN artifact_versions effective ON effective.id = selection.artifact_version_id "
@@ -1935,6 +2595,7 @@ class JobRepository:
             "AND evidence_scope_answers.kind = 'evidence_scope_answers' "
             + charter_join
             + strategy_join
+            + source_join
         )
 
     @staticmethod
@@ -1970,6 +2631,7 @@ class JobRepository:
             total_tokens=row["total_tokens"],
             duration_ms=row["duration_ms"],
             cost_status=row["cost_status"],
+            estimated_cost=row["estimated_cost"],
             intent_questions=_object_from_json(row["intent_questions_json"]),
             intent_selection=_object_from_json(row["intent_selection_json"]),
             intent_selection_version=row["intent_selection_version"],
@@ -2025,6 +2687,20 @@ class JobRepository:
                 and row["status"] == "completed"
                 and bool(row["no_downstream_job"])
             ),
+            source_queries=(
+                _object_from_json(row["effective_content_json"])
+                if row["kind"] == "source_queries" else None
+            ),
+            original_source_queries=(
+                _object_from_json(row["original_content_json"])
+                if row["kind"] == "source_queries" else None
+            ),
+            source_queries_approved_at=row["source_queries_approved_at"],
+            source_queries_is_editable=(
+                row["kind"] == "source_queries"
+                and row["status"] == "completed"
+                and bool(row["no_downstream_job"])
+            ),
         )
 
     def _connect(self) -> sqlite3.Connection:
@@ -2040,12 +2716,27 @@ def provider_input(scientific_question: str) -> str:
 
 def provider_input_for_job(job: JobRecord) -> str:
     """Return the immutable input prepared for this exact job kind."""
+    if job.kind in {"relevance_calibration", "relevance_prompt_generation"}:
+        if job.workflow_input_snapshot_json is None:
+            raise JobError("The calibration input snapshot is missing.")
+        snapshot = json.loads(job.workflow_input_snapshot_json)
+        compact = {
+            "schema_version": 1,
+            "relevance_instructions": snapshot["relevance_instructions"],
+            "calibration_records": snapshot["calibration_records"],
+        }
+        if job.kind == "relevance_prompt_generation" or not snapshot.get("generated_prompt_source"):
+            compact["approved_strategy"] = snapshot["approved_strategy"]
+        heading = "Relevance prompt-generation" if job.kind == "relevance_prompt_generation" else "Relevance calibration"
+        return f"{heading} input (JSON):\n\n{_json(compact)}"
     if job.kind in {
         "scope_clarification_round_1",
         "scope_readiness",
         "research_charter",
         "evidence_scope_questionnaire",
         "evidence_strategy",
+        "source_queries",
+        "relevance_calibration",
     }:
         if job.workflow_input_snapshot_json is None:
             raise JobError("The structured workflow input snapshot is missing.")
@@ -2172,6 +2863,7 @@ def _markdown_from_json(content_json: str | None) -> str | None:
             payload.get("detailed_question")
             or payload.get("research_charter")
             or payload.get("evidence_strategy")
+            or payload.get("scoring_prompt")
         )
     except (AttributeError, json.JSONDecodeError):
         return None

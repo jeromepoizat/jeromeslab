@@ -36,6 +36,10 @@ from jeromes_laboratory.workflow.scope_readiness import (
     DEFAULT_SCOPE_READINESS_PROMPT,
     SCOPE_READINESS_PROMPT_VERSION,
 )
+from jeromes_laboratory.workflow.source_queries import (
+    DEFAULT_SOURCE_QUERIES_PROMPT,
+    SOURCE_QUERIES_PROMPT_VERSION,
+)
 
 
 class ProjectError(ValueError):
@@ -73,6 +77,9 @@ class ProjectRecord:
     evidence_strategy_prompt: str
     evidence_strategy_prompt_version: str
     evidence_strategy_prompt_is_editable: bool
+    source_queries_prompt: str
+    source_queries_prompt_version: str
+    source_queries_prompt_is_editable: bool
 
 
 class ProjectRepository:
@@ -92,6 +99,7 @@ class ProjectRepository:
                 "research_charter_prompt, research_charter_prompt_version, "
                 "evidence_scope_prompt, evidence_scope_prompt_version, "
                 "evidence_strategy_prompt, evidence_strategy_prompt_version, "
+                "source_queries_prompt, source_queries_prompt_version, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id) "
                 "AS question_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
@@ -106,7 +114,9 @@ class ProjectRepository:
                 + ", NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
                 "AND jobs.kind = 'evidence_scope_questionnaire') AS evidence_scope_prompt_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
-                "AND jobs.kind = 'evidence_strategy') AS evidence_strategy_prompt_is_editable "
+                "AND jobs.kind = 'evidence_strategy') AS evidence_strategy_prompt_is_editable, "
+                "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
+                "AND jobs.kind = 'source_queries') AS source_queries_prompt_is_editable "
                 + "FROM projects ORDER BY created_at"
             ).fetchall()
         return [self._record_from_row(row) for row in rows]
@@ -122,6 +132,7 @@ class ProjectRepository:
                 "research_charter_prompt, research_charter_prompt_version, "
                 "evidence_scope_prompt, evidence_scope_prompt_version, "
                 "evidence_strategy_prompt, evidence_strategy_prompt_version, "
+                "source_queries_prompt, source_queries_prompt_version, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id) "
                 "AS question_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
@@ -136,7 +147,9 @@ class ProjectRepository:
                 + ", NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
                 "AND jobs.kind = 'evidence_scope_questionnaire') AS evidence_scope_prompt_is_editable, "
                 "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
-                "AND jobs.kind = 'evidence_strategy') AS evidence_strategy_prompt_is_editable "
+                "AND jobs.kind = 'evidence_strategy') AS evidence_strategy_prompt_is_editable, "
+                "NOT EXISTS (SELECT 1 FROM jobs WHERE jobs.project_id = projects.id "
+                "AND jobs.kind = 'source_queries') AS source_queries_prompt_is_editable "
                 + "FROM projects WHERE id = ?",
                 (project_id,),
             ).fetchone()
@@ -163,6 +176,9 @@ class ProjectRepository:
             has_evidence_strategy_columns = self._column_exists(
                 connection, "projects", "evidence_strategy_prompt"
             )
+            has_source_queries_columns = self._column_exists(
+                connection, "projects", "source_queries_prompt"
+            )
             charter_columns = (
                 ", research_charter_prompt, research_charter_prompt_version"
                 if has_charter_columns
@@ -181,6 +197,11 @@ class ProjectRepository:
                 else ""
             )
             evidence_strategy_placeholders = ", ?, ?" if has_evidence_strategy_columns else ""
+            source_queries_columns = (
+                ", source_queries_prompt, source_queries_prompt_version"
+                if has_source_queries_columns else ""
+            )
+            source_queries_placeholders = ", ?, ?" if has_source_queries_columns else ""
             values: tuple[object, ...] = (
                 project_id,
                 tag,
@@ -202,6 +223,8 @@ class ProjectRepository:
                 values += (DEFAULT_EVIDENCE_SCOPE_PROMPT, EVIDENCE_SCOPE_PROMPT_VERSION)
             if has_evidence_strategy_columns:
                 values += (DEFAULT_EVIDENCE_STRATEGY_PROMPT, EVIDENCE_STRATEGY_PROMPT_VERSION)
+            if has_source_queries_columns:
+                values += (DEFAULT_SOURCE_QUERIES_PROMPT, SOURCE_QUERIES_PROMPT_VERSION)
             connection.execute(
                 "INSERT INTO projects (id, tag, scientific_question, created_at, updated_at, "
                 "question_detailing_prompt, question_detailing_prompt_version, "
@@ -211,10 +234,12 @@ class ProjectRepository:
                 + charter_columns
                 + evidence_scope_columns
                 + evidence_strategy_columns
+                + source_queries_columns
                 + ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?"
                 + charter_placeholders
                 + evidence_scope_placeholders
                 + evidence_strategy_placeholders
+                + source_queries_placeholders
                 + ")",
                 values,
             )
@@ -251,6 +276,9 @@ class ProjectRepository:
             evidence_strategy_prompt=DEFAULT_EVIDENCE_STRATEGY_PROMPT,
             evidence_strategy_prompt_version=EVIDENCE_STRATEGY_PROMPT_VERSION,
             evidence_strategy_prompt_is_editable=True,
+            source_queries_prompt=DEFAULT_SOURCE_QUERIES_PROMPT,
+            source_queries_prompt_version=SOURCE_QUERIES_PROMPT_VERSION,
+            source_queries_prompt_is_editable=True,
         )
 
     def rename_project(self, project_id: str, tag_value: str) -> ProjectRecord:
@@ -470,6 +498,30 @@ class ProjectRepository:
             raise ProjectError("The selected project no longer exists.")
         return self.get_project(project_id)
 
+    def update_source_queries_prompt(self, project_id: str, prompt_value: str) -> ProjectRecord:
+        """Save the query-drafting prompt before the first query job is queued."""
+        prompt = self._required_text(prompt_value, "Enter a prompt before saving.")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = connection.execute(
+                "SELECT 1 FROM jobs WHERE project_id = ? AND kind = 'source_queries'",
+                (project_id,),
+            ).fetchone()
+            if existing is not None:
+                raise ProjectError("The query prompt is locked because a job already uses it.")
+            cursor = connection.execute(
+                "UPDATE projects SET source_queries_prompt = ?, "
+                "source_queries_prompt_version = CASE "
+                "WHEN source_queries_prompt_version LIKE 'custom%' "
+                "THEN source_queries_prompt_version "
+                "ELSE 'custom:' || source_queries_prompt_version END, "
+                "updated_at = ? WHERE id = ?",
+                (prompt, self._timestamp(), project_id),
+            )
+        if cursor.rowcount == 0:
+            raise ProjectError("The selected project no longer exists.")
+        return self.get_project(project_id)
+
     @staticmethod
     def _charter_prompt_editable_sql() -> str:
         return (
@@ -543,6 +595,9 @@ class ProjectRepository:
             evidence_strategy_prompt=row["evidence_strategy_prompt"],
             evidence_strategy_prompt_version=row["evidence_strategy_prompt_version"],
             evidence_strategy_prompt_is_editable=bool(row["evidence_strategy_prompt_is_editable"]),
+            source_queries_prompt=row["source_queries_prompt"],
+            source_queries_prompt_version=row["source_queries_prompt_version"],
+            source_queries_prompt_is_editable=bool(row["source_queries_prompt_is_editable"]),
         )
 
     @staticmethod

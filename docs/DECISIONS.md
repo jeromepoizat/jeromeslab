@@ -22,6 +22,11 @@ unresolved ideas in other documentation are not decisions.
 | [0015](adr/0015-specialize-in-therapeutic-peptide-discovery.md) | Specialize the product in evidence-guided therapeutic peptide discovery | Accepted |
 | [0016](adr/0016-charter-derived-evidence-scope.md) | Separate charter-derived evidence themes from user-controlled search scope before query generation | Accepted |
 | [0017](adr/0017-reviewed-evidence-investigation-strategy.md) | Approve a reviewable evidence-investigation strategy before source-specific queries | Accepted |
+| [0018](adr/0018-reviewed-europe-pmc-query-drafts.md) | Review Europe PMC query drafts before execution | Amended by 0019 |
+| [0019](adr/0019-approve-and-run-europe-pmc-queries.md) | Approval atomically queues exact-version Europe PMC retrieval | Accepted |
+| [0020](adr/0020-provisional-same-article-check.md) | Read-only provisional same-article grouping after retrieval | Accepted |
+| [0021](adr/0021-relevance-preparation-and-bounded-scoring.md) | Distinct-source sampling, relevance-only calibration, and bounded future scoring | Accepted |
+| [0022](adr/0022-sample-informed-relevance-scoring-prompt.md) | Generate and review a compact relevance prompt from approved context and a seeded sample before calibration | Accepted; amends 0021 |
 
 Routine implementation choices belong in code and tests. Add an ADR when a
 choice constrains future architecture, security, scientific validity, data

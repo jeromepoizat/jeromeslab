@@ -2,6 +2,7 @@ import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { readApiError } from './apiClient'
 import { JobElapsedTime, JobStatusLabel, type Job } from './JobQueue'
+import { jobCostLabel } from './jobCost'
 import type { LLMSettings } from './LLMConfiguration'
 import { ChangeModelIcon, EditableField, JobPromptDisclosure, PromptToggleButton, SectionTitle } from './ProjectElements'
 import { promptVersionNumber } from './promptVersion'
@@ -29,7 +30,7 @@ const providerName = (provider: Job['provider']) => provider === 'openai' ? 'Ope
 function CharterProvenance({ job }: { job: Job }) {
   return <div className="output-provenance">
     <span>{providerName(job.provider)} · {job.model}</span>
-    <span>{job.total_tokens !== null ? `${job.total_tokens.toLocaleString()} tokens` : 'Tokens unavailable'} · {job.duration_ms !== null ? `${(job.duration_ms / 1000).toFixed(1)} s` : 'Time unavailable'} · Cost unavailable</span>
+    <span>{job.total_tokens !== null ? `${job.total_tokens.toLocaleString()} tokens` : 'Tokens unavailable'} · {job.duration_ms !== null ? `${(job.duration_ms / 1000).toFixed(1)} s` : 'Time unavailable'} · {jobCostLabel(job)}</span>
   </div>
 }
 

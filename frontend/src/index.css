@@ -24,6 +24,7 @@
   --tooltip-background: #202b26;
   --tooltip-text: #e8f0eb;
   --focus: #60c995;
+  --retrieval-unique: #e4b45d;
   --card-shadow: 0 1.25rem 4rem rgba(0, 0, 0, 0.24);
 }
 
@@ -46,6 +47,7 @@
   --tooltip-background: #17221d;
   --tooltip-text: #ffffff;
   --focus: #27835b;
+  --retrieval-unique: #9b6419;
   --card-shadow: 0 1.25rem 4rem rgba(37, 45, 41, 0.07);
 }
 

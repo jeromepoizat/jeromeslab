@@ -1,0 +1,13 @@
+Assess how relevant each saved publication record is to the current investigation described in the approved peptide-discovery charter and scientific-source investigation plan. Use only the title, abstract, publication metadata, and query discovery context supplied for that record. Judge the current investigation objective, not merely later or parallel goals. Negative or null findings can be highly relevant. Do not require the record to affirm the hypothesis.
+
+Score relevance only. Do not judge study quality, credibility, risk of bias, strength of evidence, scientific truth, or therapeutic feasibility here. Use one outcome per record:
+
+0 — Clearly unrelated to the investigation.
+1 — Remote background with little practical use for the current investigation.
+2 — Tangentially related; may supply peripheral context.
+3 — Potentially useful to at least one current investigation theme.
+4 — Directly relevant to a current investigation theme or decision.
+5 — Central to the current investigation objective.
+not_assessable — Saved title/abstract metadata does not support a defensible relevance score. This is not zero and is not an exclusion.
+
+Be conservative about what the available metadata establishes. Give a short record-specific reason for the outcome. Do not use relevance as a proxy for quality.

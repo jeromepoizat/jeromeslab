@@ -77,7 +77,8 @@ on each target OS rather than treating it as a cross-compiled artifact.
 - Token-usage capture and provider-specific usage normalization without losing
   original categories.
 - Immutable pricing snapshots and honest reported/estimated/unavailable cost
-  accounting.
+  accounting (exact-model OpenAI Standard-rate estimate first slice implemented;
+  other providers, tier handling, and historical policy remain).
 - Step-level and project-level usage, duration, call-count, and cost aggregation.
 - UI summaries and inspection of individual call input, raw response, parsed
   output, usage, timing, errors, and cost basis.
@@ -114,22 +115,25 @@ on each target OS rather than treating it as a cross-compiled artifact.
   version confirmed answers until downstream consumption (implemented).
 - Generate and approve a compact evidence-investigation strategy from the exact
   approved charter, themes, and effective scope answers (implemented).
-- Source selection across publications and relevant structured scientific data,
-  beginning with one publication source for retrieval prototyping.
+- Europe PMC selected as the first publication source for query drafting
+  (implemented); other sources remain independent future adapters.
 - Explicitly decide data-search and screening scope here, including applicable
   species or populations, evidence stages, study designs, publication types,
   dates, languages, outcomes, and inclusion or exclusion rules.
-- Source-specific queries with purpose and exact LLM provenance.
-- Purpose-labelled query families for broad exploratory evidence mapping.
+- Source-specific query drafts with purpose and exact LLM provenance (implemented).
+- Purpose-labelled query families for broad exploratory evidence mapping (implemented).
 - Peptide-relevant query purposes such as target biology, mechanism, known peptide
   modulators, interaction interfaces, efficacy, safety, stability, and delivery.
-- Original/effective query versions and pre-execution review.
+- Original/effective query versions, per-query inclusion, and pre-execution
+  review/approval (implemented). Approval now queues retrieval in one action.
 
 ## Milestone 8 — Scientific-source retrieval prototype
 
-- Start with one source, provisionally Europe PMC.
-- Query execution, pagination, raw-response artifacts, and external-error handling.
-- Normalized publication metadata without invented fields.
+- Start with the approved Europe PMC queries (implemented).
+- Query execution, pagination, raw-response artifacts, and external-error handling
+  (first Europe PMC slice implemented, with a visibly partial 5,000-record limit).
+- Source-record metadata without invented fields (implemented); canonical
+  publication identities remain future work.
 - Conservative deduplication with every discovery relationship preserved.
 - Defined/tested retrieval statistics, progress, and expandable publication UI.
 - Add PubMed and cross-source overlap only after the single-source path is sound.
@@ -139,6 +143,9 @@ on each target OS rather than treating it as a cross-compiled artifact.
 ## Milestone 9 — Peptide evidence extraction and synthesis
 
 - Design publication screening and full-text/access resolution.
+- Use the implemented seeded distinct-source preparation, generated reviewable
+  scoring prompt, and optional 1–30-record calibration as input to later bounded batch scoring, pause-between-calls,
+  score/collection/query summaries, and extension to unscored records.
 - Define atomic peptide-relevant evidence with explicit source location and
   observed/annotated/inferred/predicted type.
 - Reconcile supporting, contradictory, negative, and missing evidence without an

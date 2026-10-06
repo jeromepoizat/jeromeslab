@@ -129,6 +129,9 @@ class ProjectResponse(BaseModel):
     evidence_strategy_prompt: str
     evidence_strategy_prompt_version: str
     evidence_strategy_prompt_is_editable: bool
+    source_queries_prompt: str
+    source_queries_prompt_version: str
+    source_queries_prompt_is_editable: bool
 
 
 class CreateProjectRequest(BaseModel):
@@ -207,6 +210,31 @@ class UpdateEvidenceStrategyOutputRequest(BaseModel):
 
 class ApproveEvidenceStrategyRequest(BaseModel):
     """Approve the effective strategy version reviewed by the user."""
+
+    base_version: int = Field(ge=1)
+
+
+class UpdateSourceQueriesPromptRequest(BaseModel):
+    """Instructions for the Europe PMC query-drafting job."""
+
+    prompt: str = Field(min_length=1, max_length=20_000)
+
+
+class EnqueueSourceQueriesRequest(BaseModel):
+    """Optional user guidance captured exactly in the immutable job input."""
+
+    note: str = Field(default="", max_length=10_000)
+
+
+class UpdateSourceQueriesRequest(BaseModel):
+    """One reviewed query-set version with inclusion decisions."""
+
+    queries: list[dict[str, object]] = Field(min_length=1, max_length=16)
+    base_version: int = Field(ge=1)
+
+
+class ApproveSourceQueriesRequest(BaseModel):
+    """Approve only the current effective query-set version."""
 
     base_version: int = Field(ge=1)
 
@@ -403,7 +431,7 @@ class JobResponse(BaseModel):
     created_at: str
     started_at: str | None
     completed_at: str | None
-    provider: LLMProviderName
+    provider: LLMProviderName | Literal["europe_pmc"]
     model: str
     scientific_question_snapshot: str
     prompt_snapshot: str
@@ -421,6 +449,7 @@ class JobResponse(BaseModel):
     total_tokens: int | None
     duration_ms: int | None
     cost_status: str | None
+    estimated_cost: str | None
     intent_questions: IntentQuestionsResponse | None
     intent_selection: IntentSelectionResponse | None
     intent_selection_version: int | None
@@ -442,6 +471,113 @@ class JobResponse(BaseModel):
     evidence_scope_answers_is_editable: bool
     evidence_strategy_approved_at: str | None
     evidence_strategy_is_editable: bool
+    source_queries: dict[str, object] | None
+    original_source_queries: dict[str, object] | None
+    source_queries_approved_at: str | None
+    source_queries_is_editable: bool
+
+
+class SearchRunResponse(BaseModel):
+    """Progress and completeness of one included Europe PMC query."""
+
+    query_id: str
+    query_title: str
+    status: str
+    total_hits: int | None
+    retrieved_count: int
+    truncated: bool
+    started_at: str | None
+    completed_at: str | None
+    error: str | None
+
+
+class RetrievalQuerySummaryResponse(SearchRunResponse):
+    """One query's saved source IDs not found by another query in this job."""
+
+    unique_to_query: int
+
+
+class RetrievalSourceCountResponse(BaseModel):
+    source: str
+    unique_records: int
+    raw_records: int
+
+
+class RetrievalSummaryResponse(BaseModel):
+    """Saved discoveries and provisional, read-only same-article matching."""
+
+    runs: list[RetrievalQuerySummaryResponse]
+    reported_hits: int
+    raw_saved_records: int
+    distinct_source_records: int
+    repeat_discoveries: int
+    records_in_multiple_queries: int
+    distinct_records_with_abstract: int
+    provisional_record_groups: int | None
+    additional_source_ids_grouped: int | None
+    groups_with_metadata_differences: int | None
+    sources: list[RetrievalSourceCountResponse]
+
+
+class RelevancePreviewRequest(BaseModel):
+    retrieval_job_id: str
+    scoring_limit: int | None = Field(default=None, ge=1, le=100_000)
+    calibration_count: int = Field(ge=1, le=30)
+    seed: int = Field(ge=0, le=2_147_483_647)
+    instructions: str = Field(min_length=40, max_length=20_000)
+
+
+class StartRelevanceCalibrationRequest(RelevancePreviewRequest):
+    expected_manifest_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    expected_provider: LLMProviderName
+    expected_model: str
+    prompt_generation_job_id: str | None = None
+
+
+class UpdateRelevancePromptRequest(BaseModel):
+    scoring_prompt: str = Field(min_length=100, max_length=12_000)
+    base_version: int = Field(ge=1)
+
+
+class RelevancePreviewResponse(BaseModel):
+    provider: LLMProviderName | None
+    model: str | None
+    algorithm_version: str
+    retrieval_job_id: str
+    seed: int
+    available_distinct_source_records: int
+    scoring_limit: int | None
+    calibration_count: int
+    selected_manifest_sha256: str
+    selected_metadata_sha256: str
+    calibration_records: list[dict[str, object]]
+    selected_by_collection: list[dict[str, object]]
+    selected_by_query: list[dict[str, object]]
+    calibration_input_tokens_estimate: int
+    compact_calibration_input_tokens_estimate: int
+    estimated_calibration_output_tokens: int
+    prompt_generation_input_tokens_estimate: int
+    estimated_prompt_generation_output_tokens: int
+    estimated_scoring_input_tokens: int
+    estimated_scoring_output_tokens: int
+    calibration_cost: dict[str, object]
+    compact_calibration_cost: dict[str, object]
+    prompt_generation_cost: dict[str, object]
+    scoring_cost: dict[str, object]
+    per_1000_input_tokens_estimate: int
+    per_1000_output_tokens_estimate: int
+    per_1000_cost: dict[str, object]
+
+
+class RelevanceCalibrationResponse(BaseModel):
+    schema_version: Literal[1]
+    calibration: list[dict[str, object]]
+
+
+class RelevancePromptGenerationResponse(BaseModel):
+    schema_version: Literal[1]
+    scoring_prompt: str
+    sample_observations: list[str]
 
 
 class ClientStateResponse(BaseModel):

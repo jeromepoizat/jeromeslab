@@ -151,7 +151,7 @@ Publication services normalize without inventing missing fields and deduplicate
 publication identities while retaining a `PublicationSource` record for every
 discovery through every query and search run.
 
-Europe PMC is the proposed first retrieval adapter. PubMed follows after the
+Europe PMC is the implemented first retrieval adapter. PubMed follows after the
 single-source publication pipeline works. The peptide-discovery scope will later
 require separately designed adapters for relevant protein/target annotations,
 structures, molecular interactions, bioactivity, peptides, sequences/motifs, and

@@ -4,12 +4,15 @@ import { readApiError } from './apiClient'
 import { IntentClarificationStage } from './IntentClarificationStage'
 import type { LLMSettings } from './LLMConfiguration'
 import { JobElapsedTime, JobStatusLabel, type Job } from './JobQueue'
+import { jobCostLabel } from './jobCost'
 import { ChangeModelIcon, EditableField, SectionTitle } from './ProjectElements'
 import { ScopeClarificationStage } from './ScopeClarificationStage'
 import { ScopeReadinessStage } from './ScopeReadinessStage'
 import { ResearchCharterStage } from './ResearchCharterStage'
 import { EvidenceScopeStage } from './EvidenceScopeStage'
 import { EvidenceStrategyStage } from './EvidenceStrategyStage'
+import { SourceQueriesStage } from './SourceQueriesStage'
+import { RelevancePreparationStage } from './RelevancePreparationStage'
 
 type Project = {
   id: string
@@ -37,6 +40,9 @@ type Project = {
   evidence_strategy_prompt: string
   evidence_strategy_prompt_version: string
   evidence_strategy_prompt_is_editable: boolean
+  source_queries_prompt: string
+  source_queries_prompt_version: string
+  source_queries_prompt_is_editable: boolean
 }
 
 type ClientState = { selected_project_id: string | null; scroll_top: number }
@@ -334,6 +340,18 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
   const evidenceStrategyJob = selectedProject === null
     ? null
     : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'evidence_strategy') ?? null
+  const sourceQueriesJob = selectedProject === null
+    ? null
+    : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'source_queries') ?? null
+  const sourceRetrievalJob = selectedProject === null
+    ? null
+    : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'source_retrieval') ?? null
+  const relevanceCalibrationJob = selectedProject === null
+    ? null
+    : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'relevance_calibration') ?? null
+  const relevancePromptJob = selectedProject === null
+    ? null
+    : jobs.find(job => job.project_id === selectedProject.id && job.kind === 'relevance_prompt_generation') ?? null
   const framingProducedNoQuestions = scopeJob?.status === 'completed'
     && scopeJob.scope_questions?.questions.length === 0
     && scopeJob.scope_answers !== null
@@ -472,6 +490,31 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
             onProjectLocked={() => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, evidence_strategy_prompt_is_editable: false } : project))}
             onJobsChanged={onJobsChanged}
             onOpenSettings={onOpenSettings}
+          />}
+          {(evidenceStrategyJob?.evidence_strategy_approved_at || sourceQueriesJob !== null) && <SourceQueriesStage
+            key={`${selectedProject.id}:${sourceQueriesJob?.id ?? 'new'}:${sourceQueriesJob?.effective_output_version ?? 0}`}
+            project={selectedProject}
+            job={sourceQueriesJob}
+            retrievalJob={sourceRetrievalJob}
+            setupToken={setupToken}
+            llmSettings={llmSettings}
+            nowMilliseconds={nowMilliseconds}
+            onProjectUpdated={updated => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, ...updated } : project))}
+            onProjectLocked={() => setProjects(previous => previous.map(project => project.id === selectedProject.id ? { ...project, source_queries_prompt_is_editable: false } : project))}
+            onJobsChanged={onJobsChanged}
+            onOpenSettings={onOpenSettings}
+          />}
+          {sourceRetrievalJob?.status === 'completed' && <RelevancePreparationStage
+            key={`${selectedProject.id}:${sourceRetrievalJob.id}:${relevancePromptJob?.id ?? 'new'}:${relevanceCalibrationJob?.id ?? 'new'}`}
+            projectId={selectedProject.id}
+            retrievalJob={sourceRetrievalJob}
+            promptJob={relevancePromptJob}
+            calibrationJob={relevanceCalibrationJob}
+            setupToken={setupToken}
+            llmSettings={llmSettings}
+            nowMilliseconds={nowMilliseconds}
+            onJobsChanged={onJobsChanged}
+            onOpenSettings={onOpenSettings}
           />}</> : <>
           <section className="project-section">
             <SectionTitle help="Instructions used to turn this question into a structured research plan for later literature searches.">Question-detailing prompt</SectionTitle>
@@ -520,7 +563,7 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
               onEdit={() => { setEditedOutput(selectedJob.effective_output_markdown ?? ''); setIsEditingOutput(true) }}
               editLabel="Edit detailed scientific question"
               sideActions={selectedJob.output_was_edited ? <button className="version-toggle-button" type="button" onClick={() => setIsShowingOriginalOutput(!isShowingOriginalOutput)}>{isShowingOriginalOutput ? 'Show edited version' : 'Show original output'}</button> : null}
-              footer={<div className="output-provenance"><span>{selectedJob.provider === 'openai' ? 'OpenAI' : 'Anthropic'} · {selectedJob.model}</span><span>{selectedJob.total_tokens !== null ? `${selectedJob.total_tokens.toLocaleString()} tokens` : 'Tokens unavailable'} · {selectedJob.duration_ms !== null ? `${(selectedJob.duration_ms / 1000).toFixed(1)} s` : 'Time unavailable'} · Cost unavailable</span></div>}
+              footer={<div className="output-provenance"><span>{selectedJob.provider === 'openai' ? 'OpenAI' : 'Anthropic'} · {selectedJob.model}</span><span>{selectedJob.total_tokens !== null ? `${selectedJob.total_tokens.toLocaleString()} tokens` : 'Tokens unavailable'} · {selectedJob.duration_ms !== null ? `${(selectedJob.duration_ms / 1000).toFixed(1)} s` : 'Time unavailable'} · {jobCostLabel(selectedJob)}</span></div>}
               actions={<><button className="primary-button" type="button" onClick={() => void saveDetailedQuestion(selectedJob)} disabled={isSavingOutput}>{isSavingOutput ? 'Saving…' : 'Save edited version'}</button><button className="text-button" type="button" onClick={() => setIsEditingOutput(false)} disabled={isSavingOutput}>Cancel</button></>}
             />
           </section>}

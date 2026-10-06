@@ -171,6 +171,20 @@ exact artifact version. Editing makes the current version unapproved without
 deleting prior approvals. Later query work must consume the exact approval and
 the structured upstream themes and answers retained in the job snapshot.
 
+### Europe PMC query drafts and retrieval (implemented)
+
+Projects store a versioned `source_queries_prompt`. A `source_queries` job
+snapshots the exact approved strategy (including its charter, themes, and scope
+answers), source identifier, and optional user note. Provider output is validated
+as a structured `source_queries_output` artifact containing 1–16 proposed query
+cards with stable IDs, titles, descriptions, mandatory-theme links, literal query
+text, and default inclusion. User edits and inclusion choices append immutable
+hashed versions while preserving the original provider output. The effective
+version is explicitly approved in `source_queries_approvals` only if included
+queries cover every mandatory theme. Approval atomically creates a pending
+`source_retrieval` job with the exact query artifact and approval IDs. Query
+drafting itself creates no `SearchRun` or external request.
+
 ### Proposed integrity-verification behavior
 
 Each immutable `ArtifactVersion` (including a workflow step or job output) should
@@ -268,6 +282,12 @@ The initial implementation stores normalized nullable fields on `llm_calls` and
 also preserves the complete provider usage object as canonical JSON. This can be
 normalized into related tables later without discarding provider categories.
 
+New OpenAI calls with an exact model match and usable usage may now store an
+estimated USD cost plus the dated Standard-rate snapshot used to calculate it.
+Older calls are not retroactively repriced; unknown model/tier/long-context
+cases remain unavailable. The preview estimate for a future scoring plan is
+not itself a completed-call cost record.
+
 ### PricingSnapshot
 
 Immutable rates used for a cost calculation. Expected fields include provider,
@@ -298,6 +318,43 @@ One execution of one effective query against one source. Records the exact query
 version, source/adapter version, request parameters, start/completion time, paging,
 counts, status/errors, retrieval timestamp, raw-response artifacts, and job/run
 links.
+
+The implemented `search_runs`, `search_pages`, and `publication_source_records`
+tables preserve one run per included Europe PMC query, raw response page file
+path/size/SHA-256/cursor/request URL, and one row per returned item linked to its
+run and page. A retry gets a new job and new runs; failed attempts are not
+overwritten. Source-native identity (`source`, `id`) is required, while missing
+title, abstract, DOI, PMID, and PMCID remain null. The V1 per-query 5,000-record
+limit sets `truncated` when total hits exceed saved records.
+The retrieval summary is a read-only aggregation of these immutable rows; it
+does not create a new publication identity or screening decision. Its distinct
+record key is `(source, source_record_id)`, which may still represent the same
+publication as a different key in another collection.
+For completed jobs, the overview derives provisional record groups from exact
+normalized DOI, PMID, PMCID, or title matches. This read-only calculation does
+not create `Publication` rows or change source records. Available first-author,
+year, journal, and identifier disagreements are counted for later review. A
+screening-ready identity version and correction model remain undesigned (ADR 0020).
+
+Relevance preparation reuses immutable `jobs`, `llm_calls`, and
+`artifact_versions`. A `relevance_prompt_generation` job snapshots the approved
+strategy/charter reference, retrieval ID, sample algorithm version and seed,
+exact prompt-design distinct-source-ID sample manifest/hash and metadata hash,
+generation prompt, and sample records. Its structured output holds a standalone
+scoring prompt and sample observations. The original and manually edited prompt
+are separate immutable `relevance_prompt_generation_output` versions with an
+effective pointer. A later calibration snapshot references the exact generated
+prompt artifact/version it consumes; its provider request uses that compact
+prompt without repeating the full strategy. A `relevance_calibration_output`
+artifact contains one relevance-only outcome (0–5 or `not_assessable`) and reason
+per sample ID. Legacy calibration-only jobs remain unchanged. These sample
+outcomes are not bulk screening decisions; durable per-batch and per-record
+scoring decisions are still to be designed (ADRs 0021–0022).
+Older preparation and calibration jobs retain their historical first-run cap
+snapshot; new prompt-generation jobs have no cap. A later scoring-run decision
+will choose its own record limit. The per-1,000-report estimate is derived from
+the exact prompt-design sample and current effective scoring prompt, not stored
+as a completed LLM call or enforced spending limit.
 
 ### Publication
 

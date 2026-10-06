@@ -19,10 +19,16 @@ the provenance and cost of every LLM-assisted transformation.
 **The product is now specialized in evidence-guided therapeutic peptide
 discovery.** The local application already implements research-direction and
 project-framing through charter approval, the evidence-search scope questionnaire,
-and reviewable strategy approval with immutable provenance. New and
+reviewable strategy approval, Europe PMC query drafting, and first-source
+retrieval with immutable provenance. New and
 unused stages now use peptide-specific direction, framing, framing-check, and
 charter prompts; consumed prompts and historical projects remain unchanged.
-Query generation, retrieval, design, and in-silico stages remain planned. See
+After retrieval, relevance preparation previews a seeded distinct-source sample,
+generates a reviewable investigation-specific scoring prompt, estimates tokens
+and API cost per 1,000 reports from that same sample, and can calibrate the prompt.
+The first-run record limit belongs to the later scoring stage. Bulk screening, evidence
+extraction, design, and in-silico stages
+remain planned. See
 [current status](docs/STATUS.md) before starting work.
 
 ## Intended workflow
@@ -153,10 +159,18 @@ attempts. Approval unlocks an evidence-search scope questionnaire. It displays
 mandatory evidence themes derived from the charter separately from remaining
 user-controlled retrieval and screening decisions. Recommendations are advisory;
 answers may use suggested choices, a note, or explicit uncertainty. Exact queries
-are not generated yet. The next job drafts an evidence-investigation strategy
+are not generated yet. The next job drafts a scientific-source investigation plan
 from the exact charter, mandatory themes, and confirmed answers. Its Markdown
 can be reviewed, edited, and approved as an exact version before later
-source-specific query work.
+source-specific query work. After plan approval, the application can draft
+purpose-labelled Europe PMC publication queries. An optional note guides that
+generation, and each query appears in an expandable card with an inclusion
+checkbox and editable text. Saving edits preserves exact versions. **Approve
+queries and run them** atomically approves the selected version and queues Europe
+PMC retrieval. Source requests begin when the single worker claims that job;
+query generation itself does not search. Raw response pages and every
+query-to-record discovery are saved. A query exceeding the V1 5,000-record
+safety limit is marked partial. Screening and interpretation remain future work.
 Existing projects with completed question-detailing outputs retain their original
 Markdown and manual versions as a compatibility path.
 
