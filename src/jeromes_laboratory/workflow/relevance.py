@@ -95,6 +95,100 @@ def parse_calibration(raw: str, expected_keys: list[tuple[str, str]]) -> dict[st
     return result.model_dump(mode="json")
 
 
+def parse_scoring_batch(raw: str, expected_keys: list[tuple[str, str]]) -> dict[str, object]:
+    """Reject missing, extra, duplicated, or non-relevance decisions."""
+    try:
+        value = json.loads(raw)
+        if not isinstance(value, dict) or set(value) != {"schema_version", "scores"}:
+            raise ValueError("Return only schema_version and scores.")
+        result = CalibrationOutput.model_validate({
+            "schema_version": value["schema_version"], "calibration": value["scores"],
+        })
+        actual = [(item.source, item.source_record_id) for item in result.calibration]
+        if len(actual) != len(set(actual)) or set(actual) != set(expected_keys):
+            raise ValueError("Scores must match exactly the requested source identities.")
+    except (ValueError, KeyError, ValidationError) as error:
+        raise RelevanceError(f"Invalid relevance scoring batch: {error}") from error
+    return {"schema_version": 1, "scores": [item.model_dump(mode="json") for item in result.calibration]}
+
+
+def scoring_slot_schema(records: list[dict[str, object]]) -> dict[str, object]:
+    """Require every numbered record slot in an OpenAI Structured Output."""
+    slots = [str(record["slot"]) for record in records]
+    if not slots or len(slots) != len(set(slots)):
+        raise RelevanceError("Scoring slots must be nonempty and distinct.")
+    decision = {
+        "type": "object",
+        "properties": {
+            "outcome": {"type": ["integer", "string"], "enum": [0, 1, 2, 3, 4, 5, "not_assessable"]},
+            "reason": {"type": "string"},
+        },
+        "required": ["outcome", "reason"],
+        "additionalProperties": False,
+    }
+    return {
+        "type": "object",
+        "properties": {
+            "schema_version": {"type": "integer", "enum": [2]},
+            "scores": {
+                "type": "object",
+                "properties": {slot: decision for slot in slots},
+                "required": slots,
+                "additionalProperties": False,
+            },
+        },
+        "required": ["schema_version", "scores"],
+        "additionalProperties": False,
+    }
+
+
+def parse_scoring_batch_slots(raw: str, records: list[dict[str, object]]) -> dict[str, object]:
+    """Map exact slot decisions back to frozen source IDs; never invent missing scores."""
+    try:
+        value = json.loads(raw)
+        if not isinstance(value, dict) or set(value) != {"schema_version", "scores"}:
+            raise ValueError("Return only schema_version and scores.")
+        if value["schema_version"] != 2 or not isinstance(value["scores"], dict):
+            raise ValueError("Expected scoring slot schema version 2.")
+        slots = [str(record["slot"]) for record in records]
+        if len(slots) != len(set(slots)) or set(value["scores"]) != set(slots):
+            raise ValueError("Scores must match exactly the requested record slots.")
+        decisions = []
+        for record in records:
+            slot = str(record["slot"])
+            score = value["scores"][slot]
+            if not isinstance(score, dict) or set(score) != {"outcome", "reason"}:
+                raise ValueError("Every score must contain only outcome and reason.")
+            decisions.append(CalibrationDecision.model_validate({
+                "source": record["source"],
+                "source_record_id": record["source_record_id"],
+                **score,
+            }))
+    except (ValueError, KeyError, TypeError, ValidationError) as error:
+        raise RelevanceError(f"Invalid relevance scoring batch: {error}") from error
+    return {"schema_version": 1, "scores": [item.model_dump(mode="json") for item in decisions]}
+
+
+def scoring_batches(records: list[dict[str, object]], prompt: str) -> list[list[dict[str, object]]]:
+    """Keep each call to ten records and a conservative estimated input budget."""
+    batches: list[list[dict[str, object]]] = []
+    current: list[dict[str, object]] = []
+    current_tokens = estimate_text_tokens(prompt) + 250
+    for record in records:
+        tokens = estimate_text_tokens(_canonical(record))
+        if tokens + estimate_text_tokens(prompt) + 250 > 12_000:
+            raise RelevanceError("One record exceeds the scoring request budget.")
+        if current and (len(current) == 10 or current_tokens + tokens > 12_000):
+            batches.append(current)
+            current = []
+            current_tokens = estimate_text_tokens(prompt) + 250
+        current.append(record)
+        current_tokens += tokens
+    if current:
+        batches.append(current)
+    return batches
+
+
 def _canonical(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 

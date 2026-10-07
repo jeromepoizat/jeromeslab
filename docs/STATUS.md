@@ -1,6 +1,6 @@
 # Current status
 
-Last updated: 2026-10-06
+Last updated: 2026-10-07
 
 ## Current milestone
 
@@ -254,21 +254,57 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   first-run scoring count is deferred to the later scoring stage. The main queued job
   generates a compact, reviewable relevance-scoring prompt from the exact
   approved strategy/charter and sampled metadata. Original and edited prompts
-  are immutable artifact versions. A separate calibration can test the exact
-  effective prompt on that sample without resending the full strategy; it locks
-  the consumed prompt and preserves one validated 0–5 or `not_assessable`
-  outcome per sampled record, never a quality score. Historical calibration-only
-  jobs remain unchanged. Once the prompt exists, a rough token/USD estimate per
-  1,000 reports uses that same sample and the effective prompt. No bulk scoring is
-  started by this slice (ADRs 0021–0022).
+  are immutable artifact versions. Existing optional sample-calibration jobs
+  remain readable, but preparation no longer offers a new calibration call:
+  prompt generation does not score its sample. The former per-1,000-report
+  estimate is no longer shown in preparation (ADRs 0021–0022).
 - The relevance-preparation controls now expose field-specific help and prepare
   the selection/estimate automatically as values change. The job card retains
   one visible prompt-generation action; the extra preview button and redundant
   explanatory text are removed.
 - The preparation sample can be inspected as a title list with hover/focus
   metadata (date, author, journal, abstract presence, collection, and query
-  discoveries). A first-run count and its estimate no longer appear in this
-  stage. Legacy jobs retain their historical cap snapshots.
+  discoveries). The sample-ID manifest/hash stay in saved provenance but are no
+  longer displayed. The seed is shown only in its input, while the selection
+  algorithm version is available in its helper. Provider/model appears only in
+  the standard job card. A first-run count and its estimate no longer appear in
+  this stage. Legacy jobs retain their historical cap snapshots.
+- Generated scoring-prompt output now uses the same provider/model-left and
+  tokens/duration/cost-right provenance footer as other LLM jobs.
+- A separate scoring section now chooses the number of distinct source records
+  to score and a reproducible seed. Its preview shows the exact selected count,
+  and batch sizes without a pre-run usage/cost estimate. Starting
+  freezes the effective prompt artifact, provider/model, selected metadata,
+  selection manifest digest, and bounded batch plan (at most ten records and a
+  conservative estimated input budget per request).
+- The scoring count and seed controls share the preparation form's horizontal
+  layout. The scoring job card now uses the common model-change control and
+  shows only the selected provider/model, not per-token rates. Both provider/model
+  pickers still show dated exact-model Standard rates when available; unknown
+  rates are labeled unavailable, not guessed. Remaining usage/cost estimates
+  appear in the active run only after its first completed batch, using observed
+  usage rather than the initial planning projection.
+- Each scoring batch is a separate persistent single-worker LLM job. Validated
+  exact 0–5 or not-assessable decisions, raw responses, call provenance, and
+  hashed output artifacts persist atomically with batch completion. The project
+  UI polls scored/remaining records and batches, live counts per score/source
+  collection, observed tokens/cost, and a revised remaining estimate. A pause
+  stops after any in-flight call; explicit resume never silently retries an
+  ambiguous or failed request. The same paused or failed run may resume its
+  unscored batches, but a second run or extension is disallowed in the same
+  project. The selected count and seed stay
+  visible but locked; the start card disappears, and progress uses one animated
+  current-batch label plus vertical score rows with title samples on hover/focus.
+  Forking and first-class scored-set approval remain future work (ADR 0023).
+- New scoring-batch attempts use version-2 numbered record slots. For OpenAI,
+  the request includes a strict Structured Outputs schema with every slot
+  required; the application maps each decision back to its frozen source ID
+  and still rejects any missing, extra, or invalid score. This addresses
+  observed complete-but-omitted responses in `PROJ012`. Explicit resume of an
+  existing failed run creates a new version-2 attempt without changing its
+  selected records, prompt, prior calls, or completed scores. The running app
+  must be restarted to load this code before resuming; no paid live call has
+  been used to verify provider behavior.
 - Added the official `gpt-6-sol` Standard API rate to the exact-model estimate
   table; preparation cost information is shown only after prompt generation.
 - Exact-model OpenAI Standard-rate snapshots checked on 2026-10-05 (with
@@ -297,6 +333,10 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 
 ## Recently completed
 
+- Clarified prompt design versus scoring in the relevance UI: removed redundant
+  hash/seed/model text and the new sample-calibration action while preserving
+  historical calibration results. ADR 0023 records the future bounded scoring,
+  between-call interruption, progress, and downstream-freeze rules.
 - Moved relevance scoring-run sizing to the future scoring stage, made the
   prompt-design sample the sole preparation selection and cost-estimate basis,
   added hoverable sample coverage, and filled the verified `gpt-6-sol` rate.
@@ -447,9 +487,10 @@ The documentation and implemented early-workflow prompts now reflect therapeutic
 peptide discovery. Direction, framing, bounded framing-check/follow-up, charter,
 query drafting, and first-source retrieval still need evaluation across
 representative project starting points. The aggregate retrieval overview and
-sample-informed prompt generation and optional relevance calibration exist;
-bulk record-level scoring, review, and
-quality assessment are deferred.
+sample-informed prompt generation and historical optional relevance calibration exist;
+bounded record-level relevance scoring now exists. Publication-level identity
+resolution, reviewed screening, quality assessment, and evidence extraction are
+deferred.
 
 ## Immediate next tasks
 
@@ -458,9 +499,9 @@ quality assessment are deferred.
    project.
 2. Refine only newly versioned defaults when evaluation exposes a reproducible
    failure; never rewrite consumed prompts or historical artifacts.
-3. Evaluate generated scoring prompts and calibration on representative approved
-   investigations; design durable bounded scoring batches, stop-between-calls
-   behavior, a score/collection/query breakdown, and extension of unscored IDs.
+3. Evaluate generated scoring prompts and bounded batch decisions on representative
+   approved investigations; design an approved scored-set checkpoint, later
+   screening/quality steps, and project forking before downstream consumption.
 4. Separately inventory candidate
    protein, structure, interaction, bioactivity, peptide, and assay sources.
 5. Extend pricing coverage and add call/step/project cost aggregation without

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 from dataclasses import replace
 from pathlib import Path
@@ -20,6 +21,7 @@ from jeromes_laboratory.storage.workspace import (
     WorkspaceLocationError,
     WorkspaceService,
 )
+from jeromes_laboratory.workflow.relevance import scoring_slot_schema
 
 
 class JobWorker:
@@ -85,6 +87,19 @@ class JobWorker:
             job.prompt_snapshot,
             input_content,
         )
+        if job.kind == "relevance_scoring_batch" and job.provider == "openai":
+            snapshot = json.loads(job.workflow_input_snapshot_json or "{}")
+            if snapshot.get("schema_version") == 2:
+                response_format = {
+                    "type": "json_schema", "name": "relevance_scoring_batch_v2",
+                    "strict": True, "schema": scoring_slot_schema(snapshot["records"]),
+                }
+                prepared = replace(
+                    prepared,
+                    request_body={**prepared.request_body, "text": {"format": response_format}},
+                    generation_settings={**prepared.generation_settings,
+                                         "response_format": "relevance_scoring_batch_v2"},
+                )
         call_id = repository.begin_llm_call(job, prepared)
         api_key: str | None = None
         try:
@@ -108,7 +123,7 @@ class JobWorker:
             try:
                 repository.complete(job.id, call_id, result)
             except ValueError as error:
-                repository.fail(job.id, call_id, str(error), result.raw_response)
+                repository.fail(job.id, call_id, str(error), result.raw_response, result=result)
         return True
 
     def _run(self) -> None:

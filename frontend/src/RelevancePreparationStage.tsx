@@ -51,6 +51,7 @@ type Props = {
   retrievalJob: Job
   promptJob: Job | null
   calibrationJob: Job | null
+  scoringStarted: boolean
   setupToken: string
   llmSettings: LLMSettings
   nowMilliseconds: number
@@ -58,13 +59,11 @@ type Props = {
   onOpenSettings: () => void
 }
 
-function costLabel(cost: Cost) {
-  if (cost.status !== 'estimated' || cost.usd === null) return 'Cost unavailable for this exact model'
-  if (cost.usd > 0 && cost.usd < 0.0001) return '<$0.0001 USD (estimate)'
-  return `~$${cost.usd < 0.01 ? cost.usd.toFixed(4) : cost.usd.toFixed(2)} USD`
+function providerName(provider: Job['provider'] | null | undefined) {
+  return provider === 'openai' ? 'OpenAI' : provider === 'anthropic' ? 'Anthropic' : 'Not configured'
 }
 
-export function RelevancePreparationStage({ projectId, retrievalJob, promptJob, calibrationJob, setupToken, llmSettings, nowMilliseconds, onJobsChanged, onOpenSettings }: Props) {
+export function RelevancePreparationStage({ projectId, retrievalJob, promptJob, calibrationJob, scoringStarted, setupToken, llmSettings, nowMilliseconds, onJobsChanged, onOpenSettings }: Props) {
   const [instructions, setInstructions] = useState('')
   const [editedInstructions, setEditedInstructions] = useState('')
   const [isPromptVisible, setIsPromptVisible] = useState(false)
@@ -137,7 +136,6 @@ export function RelevancePreparationStage({ projectId, retrievalJob, promptJob, 
   const active = promptJob?.status === 'pending' || promptJob?.status === 'awaiting_response'
   const canGenerate = promptJob === null || promptJob.status === 'failed' || promptJob.status === 'cancelled'
   const calibrationActive = currentCalibrationJob?.status === 'pending' || currentCalibrationJob?.status === 'awaiting_response'
-  const canCalibrate = currentCalibrationJob === null || currentCalibrationJob.status === 'failed' || currentCalibrationJob.status === 'cancelled'
   useEffect(() => {
     if (active || calibrationActive || isEditingInstructions || isEditingOutput
       || effectiveInstructions.length < 40 || !Number.isInteger(calibrationCount)
@@ -195,21 +193,6 @@ export function RelevancePreparationStage({ projectId, retrievalJob, promptJob, 
     } finally { setIsSavingOutput(false) }
   }
 
-  const calibrate = async () => {
-    if (preview?.provider == null || preview.model == null) return
-    setIsStarting(true); setError(null)
-    try {
-      const response = await fetch(`/api/projects/${projectId}/relevance/calibration/jobs`, {
-        method: 'POST', headers: requestHeaders,
-        body: JSON.stringify({ retrieval_job_id: retrievalJob.id, scoring_limit: preview.scoring_limit, calibration_count: preview.calibration_count, seed: preview.seed, instructions: effectiveInstructions, expected_manifest_sha256: preview.selected_manifest_sha256, expected_provider: preview.provider, expected_model: preview.model, prompt_generation_job_id: promptJob?.id }),
-      })
-      if (!response.ok) throw new Error(await readApiError(response))
-      await onJobsChanged()
-    } catch (startError: unknown) {
-      setError(startError instanceof Error ? startError.message : 'Calibration could not be queued.')
-    } finally { setIsStarting(false) }
-  }
-
   const cancel = async () => {
     if (!promptJob) return
     setError(null)
@@ -231,22 +214,19 @@ export function RelevancePreparationStage({ projectId, retrievalJob, promptJob, 
   }
 
   return <section className="project-section relevance-preparation">
-    <SectionTitle help="Generate a compact relevance-scoring prompt from the approved investigation and a seeded sample of retrieved titles and abstracts. Review the generated prompt before optional calibration or later batch scoring. This step does not score the full record set or judge study quality. Not assessable is separate from zero.">Prepare relevance scoring</SectionTitle>
+    <SectionTitle help="Generate a compact relevance-scoring prompt from the approved charter, investigation plan, and a seeded sample of retrieved titles and abstracts. The sample helps the model account for variation in saved records; it is not scored in this step. Review and edit the prompt before scoring records in the next stage.">Prepare relevance scoring</SectionTitle>
     <div className="relevance-controls">
-      <label><span className="relevance-control-label">Prompt-design sample <HelpTooltip label="Prompt-design sample help">How many distinct source records the model examines to tailor the prompt. This same sample is used for the per-1,000-report cost estimate and optional calibration.</HelpTooltip></span><input type="number" min={1} max={30} value={calibrationCount} disabled={!canGenerate} onChange={event => changeCount(Number(event.target.value))} /></label>
-      <label><span className="relevance-control-label">Reproducible selection seed <HelpTooltip label="Selection seed help">This number makes the balanced prompt-design sample repeatable. Changing it can select different records.</HelpTooltip></span><input type="number" min={0} max={2147483647} value={seed} disabled={!canGenerate} onChange={event => changeSeed(Number(event.target.value))} /></label>
+      <label><span className="relevance-control-label">Prompt-design sample <HelpTooltip label="Prompt-design sample help">How many distinct source records the model examines to tailor the prompt. No records are scored here.</HelpTooltip></span><input type="number" min={1} max={30} value={calibrationCount} disabled={!canGenerate} onChange={event => changeCount(Number(event.target.value))} /></label>
+      <label><span className="relevance-control-label">Reproducible selection seed <HelpTooltip label="Selection seed help">{`This number makes the balanced prompt-design sample repeatable. Changing it can select different records.${preview ? ` Selection method: ${preview.algorithm_version}.` : ''}`}</HelpTooltip></span><input type="number" min={0} max={2147483647} value={seed} disabled={!canGenerate} onChange={event => changeSeed(Number(event.target.value))} /></label>
       {canGenerate && <button className="text-button" type="button" onClick={() => changeSeed(Math.floor(Math.random() * 2147483647))}>Generate seed</button>}
     </div>
     {preview && <div className="relevance-preview">
       <strong>{preview.calibration_count.toLocaleString()} of {preview.available_distinct_source_records.toLocaleString()} distinct source records in the prompt-design sample</strong>
-      <p>Seed {preview.seed} · {preview.algorithm_version}</p>
-      <p>Selected model: {preview.provider ?? 'Not configured'} · {preview.model ?? 'No model selected'}</p>
       <details className="relevance-coverage"><summary>Inspect selection coverage</summary><ol>{preview.calibration_records.map(record => <li key={`${record.source}:${record.source_record_id}`}><span className="relevance-sample-title retrieval-tooltip-target" tabIndex={0}>{record.title || 'Untitled record'}<span className="retrieval-data-tooltip" role="tooltip">Date: {record.publication_date || 'Not recorded'}<br />Author: {record.author_string || 'Not recorded'}<br />Journal: {record.journal_title || 'Not recorded'}<br />Abstract: {record.abstract ? 'Available' : 'Not saved'}<br />Source collection: {record.source}<br />Found by: {record.queries.map(query => query.title).join(', ') || 'No query recorded'}</span></span></li>)}</ol></details>
-      <p>Sample-ID manifest SHA-256: <code>{preview.selected_manifest_sha256}</code></p>
     </div>}
     <div id={promptJob ? `job-card-${promptJob.id}` : undefined} className={`llm-job-provider ${isConfirmingJob ? 'llm-job-provider--confirming' : ''} ${active ? 'llm-job-provider--active' : ''}`}>
       {promptJob?.status === 'completed' ? <div className="completed-job-card"><span>Scoring-prompt generation</span><JobStatusLabel status="completed" /></div> : <>
-        <div className="llm-job-model"><div className="llm-job-model-label"><span>Model for this job</span>{!active && <button className="model-change-button" type="button" onClick={onOpenSettings} title="Change model" aria-label="Change model for future jobs"><ChangeModelIcon /></button>}</div><strong>{active ? `${promptJob?.provider} · ${promptJob?.model}` : llmSettings.configured ? `${llmSettings.providers.find(provider => provider.id === llmSettings.selected_provider)?.display_name} · ${llmSettings.selected_model}` : 'Not configured'}</strong></div>
+        <div className="llm-job-model"><div className="llm-job-model-label"><span>Model for this job</span>{!active && <button className="model-change-button" type="button" onClick={onOpenSettings} title="Change model" aria-label="Change model for future jobs"><ChangeModelIcon /></button>}</div><strong>{active ? `${providerName(promptJob?.provider)} · ${promptJob?.model}` : llmSettings.configured ? `${llmSettings.providers.find(provider => provider.id === llmSettings.selected_provider)?.display_name} · ${llmSettings.selected_model}` : 'Not configured'}</strong></div>
         {canGenerate && !isConfirmingJob && <button className="primary-button model-job-start" type="button" disabled={!preview || !llmSettings.configured || isEditingInstructions} onClick={() => setIsConfirmingJob(true)}>{promptJob ? 'Retry prompt generation' : 'Generate scoring prompt'}</button>}
         {canGenerate && isConfirmingJob && <div className="job-confirmation job-confirmation--inline"><p>This snapshots the approved investigation, seeded sample, instructions, provider, and model. Only prompt generation starts; no records are scored in bulk.</p><div><button className="primary-button" type="button" disabled={isStarting || !preview} onClick={() => void generatePrompt()}>{isStarting ? 'Queueing…' : 'Confirm and start'}</button><button className="text-button" type="button" onClick={() => setIsConfirmingJob(false)}>Cancel</button></div></div>}
         {active && promptJob && <div className="active-job-summary"><div className="active-job-heading"><strong>Scoring-prompt generation</strong><div><JobStatusLabel status={promptJob.status} /><JobElapsedTime job={promptJob} nowMilliseconds={nowMilliseconds} /></div></div>{promptJob.status === 'pending' && <button className="text-button" type="button" onClick={() => void cancel()}>Cancel queued job</button>}</div>}
@@ -256,9 +236,7 @@ export function RelevancePreparationStage({ projectId, retrievalJob, promptJob, 
     </div>
     <JobPromptDisclosure visible={isPromptVisible} isEditing={isEditingInstructions} canEdit={canGenerate} prompt={canGenerate ? instructions : promptJob?.prompt_snapshot ?? instructions} editedPrompt={editedInstructions} isSaving={false} ariaLabel="Relevance-prompt generation instructions" editLabel="Edit scoring-prompt generation instructions" onEditedPromptChange={setEditedInstructions} onEdit={() => { setEditedInstructions(instructions); setIsEditingInstructions(true) }} onCancel={() => setIsEditingInstructions(false)} onSave={() => { changeInstructions(editedInstructions); setIsEditingInstructions(false) }} />
     {promptJob?.error && <p className="setup-error">{promptJob.error}</p>}
-    {generatedPrompt && promptJob?.status === 'completed' && <div id={`job-output-${promptJob.id}`} className="job-output-section relevance-generated-output"><h3>Generated relevance-scoring prompt</h3><p className="evidence-themes-helper">Review these standalone rules before calibrating them on the seeded sample. The full charter and plan were used to generate this prompt, but will not be repeated in each future scoring batch.</p>{promptJob.output_was_edited && <button className="text-button" type="button" onClick={() => setIsShowingOriginal(!isShowingOriginal)}>{isShowingOriginal ? 'Show edited version' : 'Show original output'}</button>}<EditableField variant="multiline" isEditing={isEditingOutput} canEdit={!currentCalibrationJob && !isShowingOriginal && promptJob.effective_output_version !== null} display={<pre className="question-detailing-prompt">{isShowingOriginal ? promptJob.original_output_markdown : generatedPrompt.scoring_prompt}</pre>} editor={<textarea value={editedOutput} onChange={event => setEditedOutput(event.target.value)} aria-label="Edit generated relevance-scoring prompt" maxLength={12000} />} onEdit={() => { setEditedOutput(generatedPrompt.scoring_prompt); setIsEditingOutput(true) }} editLabel="Edit generated scoring prompt" actions={<><button className="primary-button" type="button" disabled={isSavingOutput || editedOutput.trim().length < 100} onClick={() => void saveGeneratedPrompt()}>{isSavingOutput ? 'Saving…' : 'Save edited version'}</button><button className="text-button" type="button" disabled={isSavingOutput} onClick={() => setIsEditingOutput(false)}>Cancel</button></>} /><details><summary>How the sample informed the original draft</summary><ul>{generatedPrompt.sample_observations.map((observation, index) => <li key={index}>{observation}</li>)}</ul></details><p>{promptJob.total_tokens !== null ? `${promptJob.total_tokens.toLocaleString()} tokens` : 'Tokens unavailable'} · {promptJob.duration_ms !== null ? `${(promptJob.duration_ms / 1000).toFixed(1)} s` : 'Time unavailable'} · {jobCostLabel(promptJob)}</p></div>}
-    {generatedPrompt && promptJob?.status === 'completed' && preview && <div className="relevance-per-1000-estimate"><strong>Estimated scoring cost per 1,000 reports</strong><p>~{(preview.per_1000_input_tokens_estimate + preview.per_1000_output_tokens_estimate).toLocaleString()} tokens ({preview.per_1000_input_tokens_estimate.toLocaleString()} input + {preview.per_1000_output_tokens_estimate.toLocaleString()} output) · {costLabel(preview.per_1000_cost)}</p><small>Projected from the same {preview.calibration_count} sampled reports and the current scoring prompt, assuming 10 reports per request and 100 output tokens per report. Actual usage and charges may differ.</small>{preview.per_1000_cost.source_url && <p><a href={preview.per_1000_cost.source_url} target="_blank" rel="noreferrer">OpenAI Standard API rate</a> checked {preview.per_1000_cost.captured_on}.</p>}</div>}
-    {generatedPrompt && canCalibrate && <div className="query-actions"><button className="primary-button" type="button" disabled={!preview || isStarting || isEditingOutput || !llmSettings.configured} onClick={() => void calibrate()}>{isStarting ? 'Queueing…' : currentCalibrationJob ? 'Retry sample calibration' : 'Calibrate generated prompt on sample'}</button>{isShowingOriginal && <small>Calibration uses the active edited version shown above when you switch back.</small>}</div>}
+    {generatedPrompt && promptJob?.status === 'completed' && <div id={`job-output-${promptJob.id}`} className="job-output-section relevance-generated-output"><h3>Generated relevance-scoring prompt</h3><p className="evidence-themes-helper">Review these standalone rules before using them to score records in the next stage. The full charter and plan informed this prompt but will not be repeated in each scoring batch.</p>{promptJob.output_was_edited && <button className="text-button" type="button" onClick={() => setIsShowingOriginal(!isShowingOriginal)}>{isShowingOriginal ? 'Show edited version' : 'Show original output'}</button>}<EditableField variant="multiline" isEditing={isEditingOutput} canEdit={!currentCalibrationJob && !scoringStarted && !isShowingOriginal && promptJob.effective_output_version !== null} display={<pre className="question-detailing-prompt">{isShowingOriginal ? promptJob.original_output_markdown : generatedPrompt.scoring_prompt}</pre>} editor={<textarea value={editedOutput} onChange={event => setEditedOutput(event.target.value)} aria-label="Edit generated relevance-scoring prompt" maxLength={12000} />} onEdit={() => { setEditedOutput(generatedPrompt.scoring_prompt); setIsEditingOutput(true) }} editLabel="Edit generated scoring prompt" actions={<><button className="primary-button" type="button" disabled={isSavingOutput || editedOutput.trim().length < 100} onClick={() => void saveGeneratedPrompt()}>{isSavingOutput ? 'Saving…' : 'Save edited version'}</button><button className="text-button" type="button" disabled={isSavingOutput} onClick={() => setIsEditingOutput(false)}>Cancel</button></>} /><details><summary>How the sample informed the original draft</summary><ul>{generatedPrompt.sample_observations.map((observation, index) => <li key={index}>{observation}</li>)}</ul></details><div className="output-provenance"><span>{providerName(promptJob.provider)} · {promptJob.model}</span><span>{promptJob.total_tokens !== null ? `${promptJob.total_tokens.toLocaleString()} tokens` : 'Tokens unavailable'} · {promptJob.duration_ms !== null ? `${(promptJob.duration_ms / 1000).toFixed(1)} s` : 'Time unavailable'} · {jobCostLabel(promptJob)}</span></div></div>}
     {currentCalibrationJob && <div id={`job-card-${currentCalibrationJob.id}`} className="llm-job-provider relevance-calibration-status"><strong>Sample calibration · {currentCalibrationJob.provider} · {currentCalibrationJob.model}</strong><JobStatusLabel status={currentCalibrationJob.status} />{calibrationActive && <JobElapsedTime job={currentCalibrationJob} nowMilliseconds={nowMilliseconds} />}{currentCalibrationJob.status === 'pending' && <button className="text-button" type="button" onClick={() => void cancelCalibration()}>Cancel queued calibration</button>}</div>}
     {currentCalibrationJob?.error && <p className="setup-error">{currentCalibrationJob.error}</p>}
     {decisions && <div id={currentCalibrationJob ? `job-output-${currentCalibrationJob.id}` : undefined} className="relevance-calibration-output"><h3>Calibration results</h3><p>This pilot tests how the model interprets the rubric. These records are not a completed full screening run.</p>{decisions.map(decision => <article key={`${decision.source}:${decision.source_record_id}`}><strong>{decision.source}:{decision.source_record_id} — {decision.outcome === 'not_assessable' ? 'Not assessable' : `Relevance ${decision.outcome}/5`}</strong><p>{decision.reason}</p></article>)}{currentCalibrationJob && <p>{currentCalibrationJob.total_tokens !== null ? `${currentCalibrationJob.total_tokens.toLocaleString()} tokens` : 'Tokens unavailable'} · {currentCalibrationJob.duration_ms !== null ? `${(currentCalibrationJob.duration_ms / 1000).toFixed(1)} s` : 'Time unavailable'} · {jobCostLabel(currentCalibrationJob)}</p>}</div>}

@@ -275,3 +275,51 @@ class PublicationSourceRecord(Base):
     pmcid: Mapped[str | None] = mapped_column(String(64))
     abstract_text: Mapped[str | None] = mapped_column(Text)
     is_preprint: Mapped[bool | None] = mapped_column(Boolean)
+
+
+class RelevanceScoringRun(Base):
+    """Frozen selection and batch plan for one controlled scoring run."""
+
+    __tablename__ = "relevance_scoring_runs"
+    __table_args__ = (Index("ix_relevance_runs_project", "project_id", "created_at"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    retrieval_job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), nullable=False)
+    prompt_artifact_id: Mapped[str] = mapped_column(ForeignKey("artifact_versions.id"), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    model: Mapped[str] = mapped_column(String(255), nullable=False)
+    seed: Mapped[int] = mapped_column(Integer, nullable=False)
+    algorithm_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    manifest_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    batches_json: Mapped[str] = mapped_column(Text, nullable=False)
+    batch_sizes_json: Mapped[str] = mapped_column(Text, nullable=False)
+    selected_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    estimated_input_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    estimated_output_tokens: Mapped[int] = mapped_column(Integer, nullable=False)
+    estimate_method: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    stop_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    next_batch_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[str] = mapped_column(String(32), nullable=False)
+    completed_at: Mapped[str | None] = mapped_column(String(32))
+
+
+class RelevanceScoringBatchJob(Base):
+    __tablename__ = "relevance_scoring_batch_jobs"
+    __table_args__ = (Index("ix_relevance_batch_run", "run_id", "batch_index"),)
+
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("relevance_scoring_runs.id"), nullable=False)
+    batch_index: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class RelevanceScore(Base):
+    __tablename__ = "relevance_scores"
+
+    run_id: Mapped[str] = mapped_column(ForeignKey("relevance_scoring_runs.id"), primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), primary_key=True)
+    source_record_id: Mapped[str] = mapped_column(String(255), primary_key=True)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(32), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)

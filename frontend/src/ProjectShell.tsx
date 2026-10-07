@@ -13,6 +13,7 @@ import { EvidenceScopeStage } from './EvidenceScopeStage'
 import { EvidenceStrategyStage } from './EvidenceStrategyStage'
 import { SourceQueriesStage } from './SourceQueriesStage'
 import { RelevancePreparationStage } from './RelevancePreparationStage'
+import { RelevanceScoringStage } from './RelevanceScoringStage'
 
 type Project = {
   id: string
@@ -510,9 +511,19 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
             retrievalJob={sourceRetrievalJob}
             promptJob={relevancePromptJob}
             calibrationJob={relevanceCalibrationJob}
+            scoringStarted={jobs.some(job => job.project_id === selectedProject.id && job.kind === 'relevance_scoring_batch')}
             setupToken={setupToken}
             llmSettings={llmSettings}
             nowMilliseconds={nowMilliseconds}
+            onJobsChanged={onJobsChanged}
+            onOpenSettings={onOpenSettings}
+          />}
+          {sourceRetrievalJob?.status === 'completed' && relevancePromptJob?.status === 'completed' && <RelevanceScoringStage
+            projectId={selectedProject.id}
+            retrievalJob={sourceRetrievalJob}
+            promptJob={relevancePromptJob}
+            setupToken={setupToken}
+            llmSettings={llmSettings}
             onJobsChanged={onJobsChanged}
             onOpenSettings={onOpenSettings}
           />}</> : <>

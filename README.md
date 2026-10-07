@@ -24,10 +24,13 @@ retrieval with immutable provenance. New and
 unused stages now use peptide-specific direction, framing, framing-check, and
 charter prompts; consumed prompts and historical projects remain unchanged.
 After retrieval, relevance preparation previews a seeded distinct-source sample,
-generates a reviewable investigation-specific scoring prompt, estimates tokens
-and API cost per 1,000 reports from that same sample, and can calibrate the prompt.
-The first-run record limit belongs to the later scoring stage. Bulk screening, evidence
-extraction, design, and in-silico stages
+generates a reviewable investigation-specific scoring prompt. It does not score sample records.
+The next section chooses a record count and seed, then scores distinct source
+records in resumable, bounded batches with live progress. A remaining-usage
+estimate appears after the first completed batch. The original record count and
+seed are locked once the single scoring run starts; a paused or failed run can
+resume, but a second scoring run cannot be started in the same project.
+Study-quality assessment, evidence extraction, design, and in-silico stages
 remain planned. See
 [current status](docs/STATUS.md) before starting work.
 

@@ -12,6 +12,7 @@ from typing import Literal, cast
 from uuid import uuid4
 
 from jeromes_laboratory.database.relevance import distinct_source_records
+from jeromes_laboratory.database.scoring import enqueue_next_batch
 from jeromes_laboratory.llm.catalog import ProviderName
 from jeromes_laboratory.llm.generation import GenerationResult, PreparedGeneration
 from jeromes_laboratory.llm.pricing import estimate_standard_cost
@@ -42,6 +43,8 @@ from jeromes_laboratory.workflow.relevance import (
     estimate_text_tokens,
     parse_calibration,
     parse_prompt_generation,
+    parse_scoring_batch,
+    parse_scoring_batch_slots,
 )
 from jeromes_laboratory.workflow.research_charter import research_charter_payload
 from jeromes_laboratory.workflow.scope_clarification import (
@@ -1501,6 +1504,13 @@ class JobRepository:
         now = _timestamp()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            if self._table_exists(connection, "relevance_scoring_batch_jobs"):
+                connection.execute(
+                    "UPDATE relevance_scoring_runs SET status = 'failed' WHERE id IN "
+                    "(SELECT links.run_id FROM relevance_scoring_batch_jobs links "
+                    "JOIN jobs ON jobs.id = links.job_id WHERE jobs.kind = 'relevance_scoring_batch' "
+                    "AND jobs.status = 'awaiting_response') AND status = 'running'",
+                )
             cursor = connection.execute(
                 "UPDATE jobs SET status = 'cancelled', completed_at = ? "
                 "WHERE id = ? AND status = 'pending'",
@@ -1514,6 +1524,14 @@ class JobRepository:
                     raise JobError("The selected job no longer exists.")
                 raise JobError(
                     "This job can no longer be cancelled because external execution began."
+                )
+            link = connection.execute(
+                "SELECT run_id FROM relevance_scoring_batch_jobs WHERE job_id = ?", (job_id,),
+            ).fetchone() if self._table_exists(connection, "relevance_scoring_batch_jobs") else None
+            if link is not None:
+                connection.execute(
+                    "UPDATE relevance_scoring_runs SET status = 'paused', stop_requested = 1 "
+                    "WHERE id = ?", (link["run_id"],),
                 )
         return self.get_job(job_id)
 
@@ -1592,6 +1610,9 @@ class JobRepository:
         elif job.kind == "relevance_calibration":
             prompt_template_id = "relevance-calibration"
             purpose = "Calibrate relevance-only scores on distinct source records"
+        elif job.kind == "relevance_scoring_batch":
+            prompt_template_id = "relevance-scoring-batch"
+            purpose = "Score a bounded batch of distinct source records for relevance only"
         else:
             raise JobError(f"Unsupported LLM job kind: {job.kind}")
         with self._connect() as connection:
@@ -1722,6 +1743,28 @@ class JobRepository:
                 if not record.get("title") and not record.get("abstract") and decision["outcome"] != "not_assessable":
                     raise JobError("A record without title or abstract must be not assessable.")
             artifact_kind = "relevance_calibration_output"
+        elif job.kind == "relevance_scoring_batch":
+            if job.workflow_input_snapshot_json is None:
+                raise JobError("The scoring batch snapshot is missing.")
+            snapshot = json.loads(job.workflow_input_snapshot_json)
+            records = snapshot["records"]
+            expected_keys = [(str(record["source"]), str(record["source_record_id"]))
+                             for record in records]
+            try:
+                artifact_payload = (
+                    parse_scoring_batch_slots(result.output_text, records)
+                    if snapshot["schema_version"] == 2
+                    else parse_scoring_batch(result.output_text, expected_keys)
+                )
+            except RelevanceError as error:
+                raise JobError(str(error)) from error
+            by_key = {(str(record["source"]), str(record["source_record_id"])): record
+                      for record in records}
+            for decision in cast(list[dict[str, object]], artifact_payload["scores"]):
+                record = by_key[(str(decision["source"]), str(decision["source_record_id"]))]
+                if not record.get("title") and not record.get("abstract") and decision["outcome"] != "not_assessable":
+                    raise JobError("A record without title or abstract must be not assessable.")
+            artifact_kind = "relevance_scoring_batch_output"
         else:
             raise JobError(f"Unsupported LLM job kind: {job.kind}")
         content_json = _json(artifact_payload)
@@ -1855,6 +1898,35 @@ class JobRepository:
                 "UPDATE jobs SET status = 'completed', completed_at = ? WHERE id = ?",
                 (now, job_id),
             )
+            if job.kind == "relevance_scoring_batch":
+                link = connection.execute(
+                    "SELECT run_id, batch_index FROM relevance_scoring_batch_jobs WHERE job_id = ?",
+                    (job_id,),
+                ).fetchone()
+                if link is None:
+                    raise JobError("The scoring run no longer contains this batch.")
+                for decision in cast(list[dict[str, object]], artifact_payload["scores"]):
+                    connection.execute(
+                        "INSERT INTO relevance_scores (run_id, job_id, source, source_record_id, "
+                        "outcome, reason) VALUES (?, ?, ?, ?, ?, ?)",
+                        (link["run_id"], job_id, decision["source"], decision["source_record_id"],
+                         str(decision["outcome"]), decision["reason"]),
+                    )
+                connection.execute(
+                    "UPDATE relevance_scoring_runs SET next_batch_index = ? WHERE id = ? "
+                    "AND next_batch_index = ?",
+                    (link["batch_index"] + 1, link["run_id"], link["batch_index"]),
+                )
+                run = connection.execute(
+                    "SELECT stop_requested FROM relevance_scoring_runs WHERE id = ?", (link["run_id"],),
+                ).fetchone()
+                if run["stop_requested"]:
+                    connection.execute(
+                        "UPDATE relevance_scoring_runs SET status = 'paused' WHERE id = ?",
+                        (link["run_id"],),
+                    )
+                else:
+                    enqueue_next_batch(connection, link["run_id"])
         return self.get_job(job_id)
 
     def submit_intent_selection(
@@ -2425,9 +2497,17 @@ class JobRepository:
         return self.get_job(job_id)
 
     def fail(
-        self, job_id: str, call_id: str | None, error: str, raw_response: str | None = None
+        self, job_id: str, call_id: str | None, error: str, raw_response: str | None = None,
+        *, result: GenerationResult | None = None,
     ) -> JobRecord:
         now = _timestamp()
+        pricing: dict[str, object] | None = None
+        if result is not None and result.input_tokens is not None and result.output_tokens is not None:
+            job = self.get_job(job_id)
+            pricing = estimate_standard_cost(
+                job.provider, result.reported_model if result.reported_model == job.model else "",
+                result.input_tokens, result.output_tokens, result.cached_input_tokens or 0,
+            )
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             if call_id is not None:
@@ -2435,15 +2515,41 @@ class JobRepository:
                     "SELECT started_at FROM llm_calls WHERE id = ?", (call_id,)
                 ).fetchone()
                 duration_ms = _duration_ms(started["started_at"], now) if started else None
-                connection.execute(
-                    "UPDATE llm_calls SET raw_response = ?, completed_at = ?, duration_ms = ?, "
-                    "status = 'failed', error = ? WHERE id = ?",
-                    (raw_response, now, duration_ms, error, call_id),
-                )
+                if result is None:
+                    connection.execute(
+                        "UPDATE llm_calls SET raw_response = ?, completed_at = ?, duration_ms = ?, "
+                        "status = 'failed', error = ? WHERE id = ?",
+                        (raw_response, now, duration_ms, error, call_id),
+                    )
+                else:
+                    priced = pricing is not None and pricing["status"] == "estimated"
+                    connection.execute(
+                        "UPDATE llm_calls SET raw_response = ?, completed_at = ?, duration_ms = ?, "
+                        "status = 'failed', error = ?, reported_model = ?, provider_request_id = ?, "
+                        "usage_json = ?, input_tokens = ?, output_tokens = ?, total_tokens = ?, "
+                        "cached_input_tokens = ?, reasoning_tokens = ?, provider_metadata_json = ?, "
+                        "pricing_snapshot_json = ?, estimated_cost = ?, currency = ?, cost_status = ? "
+                        "WHERE id = ?",
+                        (raw_response, now, duration_ms, error, result.reported_model,
+                         result.provider_request_id,
+                         _json(result.usage) if result.usage is not None else None,
+                         result.input_tokens, result.output_tokens, result.total_tokens,
+                         result.cached_input_tokens, result.reasoning_tokens,
+                         _json(result.provider_metadata), _json(pricing) if priced else None,
+                         str(pricing["usd"]) if priced and pricing is not None else None,
+                         "USD" if priced else None, "estimated" if priced else "unavailable",
+                         call_id),
+                    )
             connection.execute(
                 "UPDATE jobs SET status = 'failed', completed_at = ?, error = ? WHERE id = ?",
                 (now, error, job_id),
             )
+            if self._table_exists(connection, "relevance_scoring_batch_jobs"):
+                connection.execute(
+                    "UPDATE relevance_scoring_runs SET status = 'failed' WHERE id IN "
+                    "(SELECT run_id FROM relevance_scoring_batch_jobs WHERE job_id = ?)",
+                    (job_id,),
+                )
         return self.get_job(job_id)
 
     def fail_interrupted_jobs(self) -> int:
@@ -2716,6 +2822,11 @@ def provider_input(scientific_question: str) -> str:
 
 def provider_input_for_job(job: JobRecord) -> str:
     """Return the immutable input prepared for this exact job kind."""
+    if job.kind == "relevance_scoring_batch":
+        if job.workflow_input_snapshot_json is None:
+            raise JobError("The scoring batch snapshot is missing.")
+        snapshot = json.loads(job.workflow_input_snapshot_json)
+        return f"Relevance scoring records (JSON):\n\n{_json({'schema_version': snapshot['schema_version'], 'records': snapshot['records']})}"
     if job.kind in {"relevance_calibration", "relevance_prompt_generation"}:
         if job.workflow_input_snapshot_json is None:
             raise JobError("The calibration input snapshot is missing.")

@@ -144,6 +144,7 @@ function jobKindLabel(job: Job) {
   if (job.kind === 'source_retrieval') return 'Europe PMC retrieval'
   if (job.kind === 'relevance_prompt_generation') return 'Relevance scoring prompt'
   if (job.kind === 'relevance_calibration') return 'Relevance sample calibration'
+  if (job.kind === 'relevance_scoring_batch') return 'Relevance scoring batch'
   return 'Question detailing'
 }
 

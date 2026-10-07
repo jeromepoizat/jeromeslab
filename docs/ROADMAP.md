@@ -143,9 +143,13 @@ on each target OS rather than treating it as a cross-compiled artifact.
 ## Milestone 9 — Peptide evidence extraction and synthesis
 
 - Design publication screening and full-text/access resolution.
-- Use the implemented seeded distinct-source preparation, generated reviewable
-  scoring prompt, and optional 1–30-record calibration as input to later bounded batch scoring, pause-between-calls,
-  score/collection/query summaries, and extension to unscored records.
+- Use the implemented seeded distinct-source prompt-design sample and generated
+  reviewable scoring prompt in a separate bounded scoring section (implemented:
+  requested count, seeded selection, post-first-batch remaining estimate,
+  token-bounded batches, between-call pause, live score/collection summaries,
+  and explicit resume of the single run; additional runs are disallowed).
+  A first-class approved scored-set version and
+  checkpoint forking remain future work (ADR 0023).
 - Define atomic peptide-relevant evidence with explicit source location and
   observed/annotated/inferred/predicted type.
 - Reconcile supporting, contradictory, negative, and missing evidence without an

@@ -167,10 +167,14 @@ async def test_llm_configuration_saves_secret_outside_plaintext_settings(tmp_pat
         )
 
     assert initial.json()["onboarding_complete"] is False
-    assert fetched.json() == {"provider": "openai", "models": ["gpt-5.6-sol"]}
+    assert fetched.json()["provider"] == "openai"
+    assert fetched.json()["models"] == ["gpt-5.6-sol"]
+    assert fetched.json()["model_rates"]["gpt-5.6-sol"]["input_per_million_usd"] == 4.0
+    assert fetched.json()["model_rates"]["gpt-5.6-sol"]["output_per_million_usd"] == 20.0
     assert credentials.keys == {"openai": "top-secret-key"}
     assert saved.json()["configured"] is True
     assert saved.json()["selected_model"] == "gpt-5.6-sol"
+    assert saved.json()["providers"][0]["model_rates"]["gpt-5.6-sol"]["captured_on"]
     settings_text = settings.settings_file.read_text(encoding="utf-8")
     assert "top-secret-key" not in settings_text
     assert json.loads(settings_text)["provider"] == "openai"

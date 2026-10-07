@@ -27,6 +27,7 @@ unresolved ideas in other documentation are not decisions.
 | [0020](adr/0020-provisional-same-article-check.md) | Read-only provisional same-article grouping after retrieval | Accepted |
 | [0021](adr/0021-relevance-preparation-and-bounded-scoring.md) | Distinct-source sampling, relevance-only calibration, and bounded future scoring | Accepted |
 | [0022](adr/0022-sample-informed-relevance-scoring-prompt.md) | Generate and review a compact relevance prompt from approved context and a seeded sample before calibration | Accepted; amends 0021 |
+| [0023](adr/0023-bounded-relevance-scoring-and-freeze.md) | Separate prompt design from bounded scoring; pause between calls and freeze consumed score sets | Accepted design; amends 0021–0022 |
 
 Routine implementation choices belong in code and tests. Add an ADR when a
 choice constrains future architecture, security, scientific validity, data

@@ -343,18 +343,30 @@ exact prompt-design distinct-source-ID sample manifest/hash and metadata hash,
 generation prompt, and sample records. Its structured output holds a standalone
 scoring prompt and sample observations. The original and manually edited prompt
 are separate immutable `relevance_prompt_generation_output` versions with an
-effective pointer. A later calibration snapshot references the exact generated
+effective pointer. Historical calibration snapshots reference the exact generated
 prompt artifact/version it consumes; its provider request uses that compact
 prompt without repeating the full strategy. A `relevance_calibration_output`
 artifact contains one relevance-only outcome (0–5 or `not_assessable`) and reason
-per sample ID. Legacy calibration-only jobs remain unchanged. These sample
-outcomes are not bulk screening decisions; durable per-batch and per-record
-scoring decisions are still to be designed (ADRs 0021–0022).
+per sample ID. These existing sample outcomes are not bulk screening decisions;
+the normal preparation UI no longer creates new calibration jobs. Durable
+`relevance_scoring_runs` now freezes the effective prompt artifact, provider/model,
+seed, selection algorithm, source-record metadata, ordered batch plan, and
+manifest digest. It also stores planned batch sizes, estimated input/output
+tokens, and the estimate-method version so the live dashboard need not parse
+every record on each poll. Every batch is a normal `jobs`/`llm_calls` pair linked by
+`relevance_scoring_batch_jobs`. Its validated original output is an immutable
+`relevance_scoring_batch_output` artifact. `relevance_scores` records one 0–5 or
+not-assessable decision/reason per selected source identity, linked to that
+batch job. Batch artifact, score rows, job completion, and next-batch enqueueing
+share one transaction. A pause flag takes effect between calls; failure leaves
+the current batch unscored for explicit resume. No downstream scoring consumer
+or first-class scored-set approval/version exists yet (ADR 0023).
 Older preparation and calibration jobs retain their historical first-run cap
 snapshot; new prompt-generation jobs have no cap. A later scoring-run decision
 will choose its own record limit. The per-1,000-report estimate is derived from
-the exact prompt-design sample and current effective scoring prompt, not stored
-as a completed LLM call or enforced spending limit.
+the exact prompt-design sample and current effective scoring prompt but is no
+longer displayed during preparation. The scoring stage instead estimates the
+selected run and revises its remaining estimate from observed completed calls.
 
 ### Publication
 

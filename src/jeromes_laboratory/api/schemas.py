@@ -59,6 +59,16 @@ class WorkspaceMovedResponse(BaseModel):
 LLMProviderName = Literal["openai", "anthropic"]
 
 
+class ModelRateResponse(BaseModel):
+    """Dated Standard text-token rates, in USD per million tokens."""
+
+    input_per_million_usd: float
+    cached_input_per_million_usd: float
+    output_per_million_usd: float
+    source_url: str
+    captured_on: str
+
+
 class LLMProviderStatus(BaseModel):
     """Non-secret configuration and cached models for one provider."""
 
@@ -66,6 +76,7 @@ class LLMProviderStatus(BaseModel):
     display_name: str
     api_key_configured: bool
     models: list[str]
+    model_rates: dict[str, ModelRateResponse] = Field(default_factory=dict)
 
 
 class LLMSettingsResponse(BaseModel):
@@ -90,6 +101,7 @@ class FetchLLMModelsResponse(BaseModel):
 
     provider: LLMProviderName
     models: list[str]
+    model_rates: dict[str, ModelRateResponse] = Field(default_factory=dict)
 
 
 class UpdateLLMSettingsRequest(BaseModel):
@@ -578,6 +590,20 @@ class RelevancePromptGenerationResponse(BaseModel):
     schema_version: Literal[1]
     scoring_prompt: str
     sample_observations: list[str]
+
+
+class RelevanceScoringPreviewRequest(BaseModel):
+    retrieval_job_id: str
+    prompt_job_id: str
+    count: int = Field(ge=1, le=100_000)
+    seed: int = Field(ge=0, le=2_147_483_647)
+
+
+class StartRelevanceScoringRequest(RelevanceScoringPreviewRequest):
+    expected_manifest_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    expected_prompt_artifact_id: str
+    expected_provider: LLMProviderName
+    expected_model: str
 
 
 class ClientStateResponse(BaseModel):

@@ -33,6 +33,11 @@ _RATES: dict[str, TextRate] = {
 }
 
 
+def standard_text_rate(provider: str, model: str) -> TextRate | None:
+    """Return a dated exact-model Standard rate, never a guessed alias rate."""
+    return _RATES.get(model) if provider == "openai" else None
+
+
 def estimate_standard_cost(
     provider: str, model: str, input_tokens: int, output_tokens: int,
     cached_input_tokens: int = 0, *, aggregate_batches: bool = False,

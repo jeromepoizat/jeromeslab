@@ -25,15 +25,18 @@ from jeromes_laboratory.api.schemas import (
     LLMProviderName,
     LLMProviderStatus,
     LLMSettingsResponse,
+    ModelRateResponse,
     ProjectResponse,
     RelevanceCalibrationResponse,
     RelevancePreviewRequest,
     RelevancePreviewResponse,
     RelevancePromptGenerationResponse,
+    RelevanceScoringPreviewRequest,
     RenameProjectRequest,
     RetrievalSummaryResponse,
     SearchRunResponse,
     StartRelevanceCalibrationRequest,
+    StartRelevanceScoringRequest,
     SubmitEvidenceScopeAnswersRequest,
     SubmitIntentSelectionRequest,
     SubmitScopeAnswersRequest,
@@ -67,6 +70,7 @@ from jeromes_laboratory.api.schemas import (
 from jeromes_laboratory.database.jobs import JobError, JobRecord, JobRepository
 from jeromes_laboratory.database.projects import ProjectError, ProjectRecord, ProjectRepository
 from jeromes_laboratory.database.retrieval import RetrievalRepository
+from jeromes_laboratory.database.scoring import ScoringError, ScoringRepository
 from jeromes_laboratory.jobs.worker import JobWorker
 from jeromes_laboratory.llm.catalog import (
     PROVIDER_DISPLAY_NAMES,
@@ -76,7 +80,7 @@ from jeromes_laboratory.llm.catalog import (
     ProviderName,
 )
 from jeromes_laboratory.llm.generation import GenerationGateway, ProviderGenerationGateway
-from jeromes_laboratory.llm.pricing import estimate_standard_cost
+from jeromes_laboratory.llm.pricing import estimate_standard_cost, standard_text_rate
 from jeromes_laboratory.llm.settings import LLMSettingsError, LLMSettingsService
 from jeromes_laboratory.security.credentials import (
     CredentialStore,
@@ -232,6 +236,13 @@ def create_app(
                 detail="The local setup token is missing or invalid.",
             )
 
+    def model_rates(provider: str, models: list[str]) -> dict[str, ModelRateResponse]:
+        return {
+            model: ModelRateResponse.model_validate(rate, from_attributes=True)
+            for model in models
+            if (rate := standard_text_rate(provider, model)) is not None
+        }
+
     def llm_settings_response() -> LLMSettingsResponse:
         """Return global LLM defaults and key presence without exposing secrets."""
         try:
@@ -255,6 +266,7 @@ def create_app(
                     display_name=PROVIDER_DISPLAY_NAMES[provider],
                     api_key_configured=has_api_key,
                     models=settings.model_cache[provider],
+                    model_rates=model_rates(provider, settings.model_cache[provider]),
                 )
             )
         selected_has_key = any(
@@ -318,7 +330,9 @@ def create_app(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=str(error),
             ) from error
-        return FetchLLMModelsResponse(provider=provider, models=models)
+        return FetchLLMModelsResponse(
+            provider=provider, models=models, model_rates=model_rates(provider, models)
+        )
 
     @application.put("/api/llm/settings", response_model=LLMSettingsResponse, tags=["llm"])
     def update_llm_settings(
@@ -1431,6 +1445,80 @@ def create_app(
         if output is None:
             raise HTTPException(status_code=404, detail="Calibration is not completed yet.")
         return RelevanceCalibrationResponse.model_validate(output)
+
+    @application.post("/api/projects/{project_id}/relevance/scoring/preview", tags=["relevance"])
+    def relevance_scoring_preview(
+        project_id: str,
+        request: RelevanceScoringPreviewRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> dict[str, object]:
+        try:
+            plan = ScoringRepository(job_repository().database_path).preview(
+                project_id, request.retrieval_job_id, request.prompt_job_id,
+                request.count, request.seed,
+            )
+            settings = application.state.llm_settings_service.read()
+            return {
+                **{key: value for key, value in plan.items() if key != "batches"},
+                "provider": settings.provider, "model": settings.model,
+                "cost": estimate_standard_cost(
+                    settings.provider or "", settings.model or "",
+                    cast(int, plan["estimated_input_tokens"]),
+                    cast(int, plan["estimated_output_tokens"]), aggregate_batches=True,
+                ),
+            }
+        except (ScoringError, LLMSettingsError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @application.post(
+        "/api/projects/{project_id}/relevance/scoring/runs",
+        status_code=status.HTTP_201_CREATED, tags=["relevance"],
+    )
+    def start_relevance_scoring(
+        project_id: str,
+        request: StartRelevanceScoringRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> dict[str, str]:
+        try:
+            settings = application.state.llm_settings_service.read()
+            if settings.provider is None or settings.model is None:
+                raise ScoringError("Configure a provider and model before scoring.")
+            if (settings.provider, settings.model) != (request.expected_provider, request.expected_model):
+                raise ScoringError("The selected model changed. Review the estimate again.")
+            if application.state.credential_store.get_api_key(settings.provider) is None:
+                raise ScoringError("The selected provider API key is no longer available.")
+            run_id = ScoringRepository(job_repository().database_path).start(
+                project_id, request.retrieval_job_id, request.prompt_job_id,
+                request.count, request.seed, settings.provider, settings.model,
+                request.expected_manifest_sha256, request.expected_prompt_artifact_id,
+            )
+            return {"id": run_id}
+        except (ScoringError, LLMSettingsError, CredentialStoreError) as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @application.get("/api/projects/{project_id}/relevance/scoring/runs", tags=["relevance"])
+    def relevance_scoring_runs(project_id: str) -> list[dict[str, object]]:
+        return ScoringRepository(job_repository().database_path).progress(project_id)
+
+    @application.post("/api/projects/{project_id}/relevance/scoring/runs/{run_id}/pause", tags=["relevance"])
+    def pause_relevance_scoring(
+        project_id: str, run_id: str, _: Annotated[None, Depends(require_setup_token)],
+    ) -> dict[str, str]:
+        try:
+            ScoringRepository(job_repository().database_path).pause(run_id, project_id)
+            return {"status": "pause_requested"}
+        except ScoringError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @application.post("/api/projects/{project_id}/relevance/scoring/runs/{run_id}/resume", tags=["relevance"])
+    def resume_relevance_scoring(
+        project_id: str, run_id: str, _: Annotated[None, Depends(require_setup_token)],
+    ) -> dict[str, str]:
+        try:
+            ScoringRepository(job_repository().database_path).resume(run_id, project_id)
+            return {"status": "running"}
+        except ScoringError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
     @application.get(
         "/api/jobs/{job_id}/search-runs",

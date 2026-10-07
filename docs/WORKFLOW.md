@@ -287,33 +287,50 @@ the same check when viewed. Group counts are provisional and never delete or
 rewrite discovery records; human-reviewed identity resolution is still needed
 before using the groups as screening units (ADR 0020).
 
-### Relevance-scoring prompt generation and calibration (first slice implemented)
+### Relevance-scoring prompt generation and bounded execution
 
 After a completed retrieval, the researcher chooses a 1–30-record
-prompt-design/calibration sample and a reproducible seed. The seed and versioned
+prompt-design sample and a reproducible seed. The seed and versioned
 query × collection balancing algorithm select each
 `(source, source_record_id)` at most once, while preserving all query discovery
-links. The preview exposes the sampled titles with metadata on hover/focus and
-the exact sample-ID manifest hash. It neither filters results nor starts bulk
-scoring. The first-run record count and full-run estimate will be chosen in the
-later scoring stage.
+links. The preview exposes the sampled titles with metadata on hover/focus.
+The exact sample-ID manifest hash remains in the job snapshot, not on the
+ordinary project screen. It neither filters results nor starts scoring. The
+record count and run-specific estimate are chosen in the next section.
 
 The editable generation prompt and approved charter/plan are used once with the
-seeded metadata sample to draft a compact, standalone scoring prompt. The model
+seeded metadata sample to draft a compact, standalone scoring prompt. Before
+supporting larger samples or smaller-context models, generation must enforce a
+model-specific context budget rather than silently truncate source metadata. The model
 also reports which sample patterns influenced its wording. The researcher can
-review and edit the generated prompt as immutable versions. A separate queued
-calibration job may then score only that same sample to test the exact effective
-prompt without resending the full charter/plan. Its validated outcome is 0–5 or
-**not assessable**; it never rates quality or scientific validity. The job
-snapshots the prompt artifact version, seed, metadata, call, and result. A
-calibration consumes and locks that prompt version. Existing calibration-only
-jobs remain historical records, not generated prompts. Once the generated prompt
-exists, a rough per-1,000-report token and Standard API USD estimate extrapolates
-from the same sampled records and the effective scoring prompt, assuming
-ten-record batches and 100 output tokens per report. It is not a spending cap or
-billing guarantee. Full scoring,
-interruptible between batches, score/count breakdowns, threshold selection,
-and extension to unscored records are the next slice (ADRs 0021–0022).
+review and edit the generated prompt as immutable versions. Prompt preparation
+does **not** score the sample. Previous optional calibration jobs and their
+0–5 or **not assessable** results remain readable as history, but the ordinary
+preparation interface no longer starts one. Once the generated prompt
+exists, the next section chooses a count of previously unscored distinct source
+records and a seed. The app plans batches internally without displaying a pre-run
+usage estimate. After the first batch completes, it shows estimated remaining
+usage and exact-model Standard API cost when a rate is available; these are not a
+spending cap or billing guarantee. Starting freezes the exact effective prompt artifact,
+provider/model, selected metadata, and a batch plan capped at ten records and a
+conservative estimated input budget. Each batch is a separate queued provider
+call with its own raw response, usage, timing, and immutable validated 0–5 or
+not-assessable decisions. Results update after each completed batch, including
+source-collection counts per score. A pause stops before the next call; it does
+not cancel an in-flight request. Failed or interrupted calls are never retried
+automatically; explicit resume makes a new attempt only for unscored records.
+New attempts address records by numbered slots rather than asking the model to
+copy source IDs. OpenAI requests require every slot in a strict JSON schema;
+the application maps decisions back to the exact frozen identities and validates
+them again. Earlier attempts retain their original prompts, requests, responses,
+and schema versions. This changes neither the selected record set nor the
+investigation-specific scoring rules on resume.
+The original count and seed remain visible but locked once the run starts. The
+project permits one scoring run, including its bounded batch jobs; pause/resume
+continues that run, but a second run or extension cannot start in the same
+project. The live view shows one current-batch status and vertical counts by
+score, with a few saved record titles on hover or keyboard focus. Later work
+locks resume until checkpoint forking exists (ADR 0023).
 
 Publication records are normalized without inventing missing values.
 Deduplication merges publication identity, not discovery history: every source

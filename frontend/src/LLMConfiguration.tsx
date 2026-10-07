@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { ModelRateLine } from './ModelRate'
+import { shortRate, type ModelRate } from './modelRateFormat'
 
 export type ProviderId = 'openai' | 'anthropic'
 
@@ -7,6 +9,7 @@ export type LLMProviderStatus = {
   display_name: string
   api_key_configured: boolean
   models: string[]
+  model_rates: Record<string, ModelRate>
 }
 
 export type LLMSettings = {
@@ -69,9 +72,9 @@ export function LLMConfiguration({ setupToken, settings, mode, onChange }: Props
         body: JSON.stringify({ api_key: apiKey.trim() || null }),
       })
       if (!response.ok) throw new Error(await readApiError(response))
-      const result = (await response.json()) as { provider: ProviderId, models: string[] }
+      const result = (await response.json()) as { provider: ProviderId, models: string[], model_rates: Record<string, ModelRate> }
       setProviderStates(current => current.map(item => item.id === result.provider
-        ? { ...item, api_key_configured: true, models: result.models }
+        ? { ...item, api_key_configured: true, models: result.models, model_rates: result.model_rates }
         : item))
       if (!result.models.includes(model)) setModel(result.models[0] ?? '')
       setApiKey('')
@@ -182,8 +185,9 @@ export function LLMConfiguration({ setupToken, settings, mode, onChange }: Props
     <label htmlFor={`model-${mode}`}>Default model</label>
     <select id={`model-${mode}`} className="configuration-input" value={model} onChange={event => setModel(event.target.value)} disabled={providerState.models.length === 0}>
       {providerState.models.length === 0 && <option value="">Fetch models to continue</option>}
-      {providerState.models.map(modelId => <option key={modelId} value={modelId}>{modelId}</option>)}
+      {providerState.models.map(modelId => <option key={modelId} value={modelId}>{modelId} — {shortRate(providerState.model_rates?.[modelId])}</option>)}
     </select>
+    {model && <ModelRateLine rate={providerState.model_rates?.[model]} />}
 
     {notice && <p className="setup-notice" role="status">{notice}</p>}
     {error && <p className="setup-error" role="alert">{error}</p>}
