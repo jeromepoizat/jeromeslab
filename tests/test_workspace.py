@@ -69,7 +69,28 @@ def test_configure_workspace_creates_layout_and_applies_migration(tmp_path: Path
         revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
 
     assert "application_metadata" in tables
-    assert revision == ("0025",)
+    assert revision == ("0029",)
+    with sqlite3.connect(workspace_path / DATABASE_FILE_NAME) as connection:
+        parallel = next(row for row in connection.execute("PRAGMA table_info(relevance_scoring_runs)")
+                        if row[1] == "parallel_batches")
+    assert parallel[4] == "'1'" or parallel[4] == "1"
+
+
+def test_existing_scoring_database_upgrades_to_extension_schema(tmp_path: Path) -> None:
+    database_path = tmp_path / "scoring-migration.db"
+    configuration = Config()
+    configuration.set_main_option("script_location", str(MIGRATIONS_DIRECTORY))
+    configuration.set_main_option("sqlalchemy.url", database_url(database_path))
+    command.upgrade(configuration, "0025")
+    command.upgrade(configuration, "head")
+    with sqlite3.connect(database_path) as connection:
+        tables = {row[0] for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table'",
+        )}
+        revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
+    assert {"relevance_scoring_runs", "relevance_scoring_extensions",
+            "relevance_scoring_confirmations", "relevance_score_filters"} <= tables
+    assert revision == ("0029",)
 
 
 def test_readiness_migration_preserves_consumed_scope_prompt(tmp_path: Path) -> None:

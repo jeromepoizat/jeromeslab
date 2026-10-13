@@ -301,8 +301,19 @@ class RelevanceScoringRun(Base):
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     stop_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     next_batch_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    parallel_batches: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    retrieved_record_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     created_at: Mapped[str] = mapped_column(String(32), nullable=False)
     completed_at: Mapped[str | None] = mapped_column(String(32))
+
+
+class RelevanceScoringBatchInput(Base):
+    """Small, exact per-batch read model of the preserved frozen selection."""
+
+    __tablename__ = "relevance_scoring_batch_inputs"
+    run_id: Mapped[str] = mapped_column(ForeignKey("relevance_scoring_runs.id"), primary_key=True)
+    batch_index: Mapped[int] = mapped_column(Integer, primary_key=True)
+    records_json: Mapped[str] = mapped_column(Text, nullable=False)
 
 
 class RelevanceScoringBatchJob(Base):
@@ -323,3 +334,45 @@ class RelevanceScore(Base):
     job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), nullable=False)
     outcome: Mapped[str] = mapped_column(String(32), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class RelevanceScoringExtension(Base):
+    """Immutable record selection appended to a completed scoring run."""
+
+    __tablename__ = "relevance_scoring_extensions"
+    __table_args__ = (Index("ix_relevance_extensions_run", "run_id"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("relevance_scoring_runs.id"), nullable=False)
+    previous_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    added_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    added_manifest_json: Mapped[str] = mapped_column(Text, nullable=False)
+    added_manifest_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+class RelevanceScoringConfirmation(Base):
+    """Exact immutable score list approved for downstream use."""
+
+    __tablename__ = "relevance_scoring_confirmations"
+
+    run_id: Mapped[str] = mapped_column(ForeignKey("relevance_scoring_runs.id"), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    content_json: Mapped[str] = mapped_column(Text, nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    scored_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[str] = mapped_column(String(32), nullable=False)
+
+
+class RelevanceScoreFilter(Base):
+    """Exact user-validated inclusion pool, without changing original scores."""
+
+    __tablename__ = "relevance_score_filters"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("relevance_scoring_confirmations.run_id"), primary_key=True,
+    )
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False)
+    content_json: Mapped[str] = mapped_column(Text, nullable=False)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(32), nullable=False)

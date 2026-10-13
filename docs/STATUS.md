@@ -1,6 +1,6 @@
 # Current status
 
-Last updated: 2026-10-07
+Last updated: 2026-10-13
 
 ## Current milestone
 
@@ -10,6 +10,69 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 
 ## Implementation state
 
+- Fixed scoring-status lock/loading failure paths (ADR 0028): queue, scoring and
+  retrieval contexts are coordinated locally and always close their connections;
+  idle claims no longer reserve a writer. Charter dependency scans are skipped
+  for scoring-job display. Migration 0029 adds bounded per-batch reads and a
+  cached distinct retrieval count, retaining original plan/manifests and scores.
+  Progress reads omit the full plan and use saved batch titles for six previews.
+  Failed/timed-out status loads show an error, last known data and Retry status;
+  busy databases return HTTP 503 rather than appearing to load forever.
+  Read-only live diagnosis found 3,985 saved scores. On a temporary migrated
+  copy, status took 0.063 seconds; optimizing irrelevant per-job charter/edit
+  checks reduced the live read-only 840-job SELECT from about 2.7 seconds to
+  0.093 seconds. The temporary copy was removed; no live schema migration,
+  score reset, or provider calls were performed. Restart is required to load
+  the fix and apply migration 0029 to the remembered workspace.
+  Verified with the 129-test full suite and a final 24-test queue/charter/scoring/
+  contention regression run, including retryable busy responses; Ruff, strict
+  mypy, frontend lint and production build pass. No paid calls were used.
+- ADR 0027 and migration 0028 add **Parallel batches** (1–8, default 1) for one
+  relevance-scoring run only. The bounded worker pool and transactional claims
+  prevent other operations or runs from overlapping. Out-of-order completions
+  update actual completed identities, remaining estimates and validation; pause
+  cancels queued attempts and drains all in-flight calls. Existing runs retain
+  their records/history and migrate to concurrency 1; paused runs can change
+  concurrency on resume and completed runs before extension.
+  Resume no longer waits indefinitely for follow-up/global queue refreshes:
+  mutations have a 20-second browser timeout, progress requests are separately
+  bounded, repeated matching resumes are idempotent, and preparation/storage
+  errors cannot kill the dispatcher. Cancelling pending work no longer marks
+  unrelated in-flight runs failed. Restart recovery pauses interrupted or
+  stranded failed runs rather than replaying uncertain requests.
+  Verified with 125 Python tests, plus a 14-test worker/concurrency regression
+  rerun after the final immutable-failure guard; Ruff, strict mypy, frontend lint
+  and production build pass. Concurrency tests use controlled fake providers.
+  No live LLM calls or user-project data mutations were performed.
+- Score hover/focus previews now show up to six saved record titles per outcome.
+  Additional-record input values above the remaining count are clamped to that
+  count (also respecting the existing 100,000-record per-extension cap).
+  Verified with all nine relevance-scoring tests and the frontend production build.
+- The next local section, **Select records for further work**, now consumes the
+  validated scored pool. A vertical 0–5 minimum-score slider shows counts by
+  score and live included/excluded totals; not-assessable has a separate checkbox.
+  Validate selection opens a confirmation, then freezes the exact included source
+  IDs, criteria and parent validation digest. Original scores/excluded records
+  remain unchanged, and paused validation excludes unfinished records from these
+  totals. Migration 0027 and ADR 0026 record the checkpoint. No LLM/source call is
+  required; later quality/extraction steps are not implemented.
+  Verified with 119 Python tests, Ruff, strict mypy for source/tests, frontend
+  lint and production build. Fake-provider tests cover thresholds, the separate
+  not-assessable choice, paused subsets, immutable identities/hashes, API guards,
+  invalid/empty selections and migrations. No live API calls or user-project
+  data changes were performed.
+- ADR 0025 adds one silent automatic retry per failed relevance-scoring batch;
+  a second consecutive failure pauses the run. User-requested pauses suppress
+  retries; explicit resume resets the allowance. Every failed/retried job, call,
+  raw output, usage and cost remains saved. Shutdown-interrupted requests are
+  not automatically replayed. Scoring validation is available for nonempty
+  completed or fully paused results and locks only successfully scored records,
+  preventing resume or additions. Its centered **Validate scoring** button has
+  a hover/focus helper explaining the lock. This supersedes the older completed-
+  only confirmation and no-automatic-scoring-retry descriptions below.
+  Verified with 111 Python tests, Ruff, strict mypy, frontend lint and production
+  build. Tests use fake providers; no live API calls or project-data resets were
+  performed for this change.
 - ADR 0015 narrows the product from general scientific research to
   evidence-guided therapeutic peptide discovery. The accepted path now runs from
   the original question through scientific-source evidence, an approved peptide
@@ -287,15 +350,17 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 - Each scoring batch is a separate persistent single-worker LLM job. Validated
   exact 0–5 or not-assessable decisions, raw responses, call provenance, and
   hashed output artifacts persist atomically with batch completion. The project
-  UI polls scored/remaining records and batches, live counts per score/source
-  collection, observed tokens/cost, and a revised remaining estimate. A pause
+  UI polls scored/remaining records and batches, score counts, observed
+  tokens/cost, and a revised remaining estimate. Source-collection breakdowns
+  remain in saved data, not the score display. A pause
   stops after any in-flight call; explicit resume never silently retries an
   ambiguous or failed request. The same paused or failed run may resume its
-  unscored batches, but a second run or extension is disallowed in the same
-  project. The selected count and seed stay
-  visible but locked; the start card disappears, and progress uses one animated
-  current-batch label plus vertical score rows with title samples on hover/focus.
-  Forking and first-class scored-set approval remain future work (ADR 0023).
+  unscored batches, but a second independent run is disallowed in the same
+  project. The initial count and seed stay visible and locked; the current count
+  grows only through explicit, provenance-bearing extensions. The start card
+  disappears, and progress uses one animated current-batch label plus vertical
+  score rows with title samples on hover/focus.
+  Forking remains future work (ADRs 0023–0024).
 - New scoring-batch attempts use version-2 numbered record slots. For OpenAI,
   the request includes a strict Structured Outputs schema with every slot
   required; the application maps each decision back to its frozen source ID
@@ -305,6 +370,14 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
   selected records, prompt, prior calls, or completed scores. The running app
   must be restarted to load this code before resuming; no paid live call has
   been used to verify provider behavior.
+- Completed scoring runs can append a user-chosen number of unscored distinct
+  source records using the same saved seed, retrieval, prompt, provider, and
+  model. An immutable extension manifest records each addition, while the
+  existing result and prior scores remain intact. The user may confirm the
+  completed scored list; an immutable hashed confirmation freezes its exact
+  decisions and blocks further scoring. The score display omits per-collection
+  counts. Scoring validation now unlocks the local relevance-score selection
+  described above, but no later quality/extraction job (ADRs 0024–0026).
 - Added the official `gpt-6-sol` Standard API rate to the exact-model estimate
   table; preparation cost information is shown only after prompt generation.
 - Exact-model OpenAI Standard-rate snapshots checked on 2026-10-05 (with
@@ -500,8 +573,8 @@ deferred.
 2. Refine only newly versioned defaults when evaluation exposes a reproducible
    failure; never rewrite consumed prompts or historical artifacts.
 3. Evaluate generated scoring prompts and bounded batch decisions on representative
-   approved investigations; design an approved scored-set checkpoint, later
-   screening/quality steps, and project forking before downstream consumption.
+   approved investigations; evaluate the implemented minimum-score selection,
+   then design its downstream quality/extraction consumer and project forking.
 4. Separately inventory candidate
    protein, structure, interaction, bioactivity, peptide, and assay sources.
 5. Extend pricing coverage and add call/step/project cost aggregation without

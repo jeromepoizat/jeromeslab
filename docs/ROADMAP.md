@@ -146,10 +146,17 @@ on each target OS rather than treating it as a cross-compiled artifact.
 - Use the implemented seeded distinct-source prompt-design sample and generated
   reviewable scoring prompt in a separate bounded scoring section (implemented:
   requested count, seeded selection, post-first-batch remaining estimate,
-  token-bounded batches, between-call pause, live score/collection summaries,
-  and explicit resume of the single run; additional runs are disallowed).
-  A first-class approved scored-set version and
-  checkpoint forking remain future work (ADR 0023).
+  token-bounded batches, between-call pause, live cumulative score summaries,
+  explicit resume and extension of the single run, and exact scored-set
+  validation while completed or paused; independent runs are disallowed).
+  One automatic retry precedes a pause on a second batch failure. A local
+  1–8 parallel-batch control (default 1) now supports out-of-order completions
+  within one scoring run, with no concurrent unrelated research operations.
+  Pause drains all in-flight calls and resume has bounded browser waits. The
+  minimum-score selection with a separate not-assessable choice now consumes
+  the validated scored pool and saves exact included identities after user
+  confirmation. Later quality/extraction consumers and checkpoint forking remain
+  future work (ADRs 0023–0027).
 - Define atomic peptide-relevant evidence with explicit source location and
   observed/annotated/inferred/predicted type.
 - Reconcile supporting, contradictory, negative, and missing evidence without an

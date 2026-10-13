@@ -28,6 +28,11 @@ unresolved ideas in other documentation are not decisions.
 | [0021](adr/0021-relevance-preparation-and-bounded-scoring.md) | Distinct-source sampling, relevance-only calibration, and bounded future scoring | Accepted |
 | [0022](adr/0022-sample-informed-relevance-scoring-prompt.md) | Generate and review a compact relevance prompt from approved context and a seeded sample before calibration | Accepted; amends 0021 |
 | [0023](adr/0023-bounded-relevance-scoring-and-freeze.md) | Separate prompt design from bounded scoring; pause between calls and freeze consumed score sets | Accepted design; amends 0021–0022 |
+| [0024](adr/0024-extend-and-confirm-relevance-scoring.md) | Append additional scored records to the same run until its exact scored set is confirmed | Accepted; amends 0023 |
+| [0025](adr/0025-bounded-scoring-retries-and-paused-validation.md) | Retry a failed scoring batch once, pause on its second failure, and permit validation of a paused scored pool | Accepted; amends 0023–0024 |
+| [0026](adr/0026-reviewed-relevance-score-selection.md) | Review a minimum-score inclusion filter and preserve its exact validated record pool | Accepted |
+| [0027](adr/0027-bounded-parallel-scoring-batches.md) | Allow 1–8 simultaneous batches within one scoring run, with bounded resume waits and out-of-order checkpoints | Accepted; amends 0004 |
+| [0028](adr/0028-bounded-scoring-database-access.md) | Coordinate short SQLite contexts and use bounded scoring read models with visible status failures | Accepted; refines 0027 |
 
 Routine implementation choices belong in code and tests. Add an ADR when a
 choice constrains future architecture, security, scientific validity, data

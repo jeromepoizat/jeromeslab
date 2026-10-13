@@ -1,7 +1,8 @@
 # ADR 0023: Bounded relevance scoring and downstream freeze
 
-- Status: Accepted; bounded scoring execution implemented, project forking and first-class scored-set approval remain future work
+- Status: Accepted; extension prohibition superseded by ADR 0024, project forking remains future work
 - Date: 2026-10-07
+- Amended by ADR 0025: scoring failures permit one automatic retry before pausing.
 - Amends: ADRs 0021–0022. Prompt-design sampling does not score records; the former optional sample calibration remains only as preserved history and a compatibility API.
 
 ## Context
@@ -65,6 +66,9 @@ not allowed. This supersedes the earlier extension allowance above; investigatin
 additional records later requires a checkpoint fork, which is not yet implemented.
 The UI presents one current-batch status rather than a historical batch list,
 and shows a small, read-only sample of record titles for each score.
+
+ADR 0024 supersedes only the extension prohibition: additional records may be
+appended to the same completed run until its exact scored set is confirmed.
 
 ## Consequences
 

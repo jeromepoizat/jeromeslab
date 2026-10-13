@@ -316,9 +316,20 @@ provider/model, selected metadata, and a batch plan capped at ten records and a
 conservative estimated input budget. Each batch is a separate queued provider
 call with its own raw response, usage, timing, and immutable validated 0–5 or
 not-assessable decisions. Results update after each completed batch, including
+out-of-order completions. **Parallel batches** selects 1–8 concurrent requests
+within the same run, default 1; other research operations remain sequential.
+Higher concurrency may improve speed but increases concurrent usage and rate-
+limit pressure. Pause before changing it, or choose a new value before extending
+a completed run. A pause stops dispatch and waits for all already-sent requests.
+Each attempt retains the concurrency in its input snapshot. Resume requests
+have bounded browser waits and do not depend on a global queue refresh finishing
+(ADR 0027). Results retain
 source-collection counts per score. A pause stops before the next call; it does
-not cancel an in-flight request. Failed or interrupted calls are never retried
-automatically; explicit resume makes a new attempt only for unscored records.
+not cancel an in-flight request. A failed scoring batch automatically retries
+once; a second consecutive failure of that batch pauses the run. Explicit resume
+starts a fresh two-attempt allowance for its unscored batch. A user-requested
+pause suppresses retries. Ambiguous calls interrupted by shutdown are never
+automatically replayed. Failed attempts retain raw responses, usage and cost.
 New attempts address records by numbered slots rather than asking the model to
 copy source IDs. OpenAI requests require every slot in a strict JSON schema;
 the application maps decisions back to the exact frozen identities and validates
@@ -327,10 +338,35 @@ and schema versions. This changes neither the selected record set nor the
 investigation-specific scoring rules on resume.
 The original count and seed remain visible but locked once the run starts. The
 project permits one scoring run, including its bounded batch jobs; pause/resume
-continues that run, but a second run or extension cannot start in the same
-project. The live view shows one current-batch status and vertical counts by
-score, with a few saved record titles on hover or keyboard focus. Later work
-locks resume until checkpoint forking exists (ADR 0023).
+continues that run. After the current plan completes, the researcher may append
+a chosen number of remaining distinct source records using the same seed,
+retrieval, prompt, provider, and model. Each extension preserves its added-ID
+manifest and uses batches of at most five. The live view continues to show the
+same cumulative result, with vertical counts by score and a few saved titles
+on hover or keyboard focus, not per-collection counts. When the plan is complete
+or fully paused, the researcher can validate a nonempty, exact hashed scored-set
+snapshot. Only successfully scored records enter this pool; selected but unscored
+records remain outside it. Validation locks extension and resume. Later work must consume this
+confirmation explicitly, and adding scores after it requires a checkpoint fork
+(ADRs 0023–0025).
+
+### Select scored records for further work
+
+After scoring validation, a separate local section selects records from that
+exact frozen pool. A vertical slider sets the minimum included score (0–5),
+with counts beside each score and live included/excluded totals above. Scores
+at or above the threshold are included. **Not assessable** has its own checkbox;
+it is not treated as score 0. The initial threshold is 0 and not-assessable is
+unchecked, with both choices visible for review. No API call is made.
+
+**Validate selection** requests confirmation of the exact totals and saves the
+threshold, not-assessable choice, parent scoring-validation digest and included
+source IDs as an immutable hashed checkpoint. The selection then becomes
+read-only and survives restart. At least one included record is required.
+Excluded records and original scores stay preserved; unscored retrieval records
+are outside these counts. Future quality or extraction jobs must consume this
+selection explicitly. Those later stages and checkpoint forking remain future
+work (ADR 0026).
 
 Publication records are normalized without inventing missing values.
 Deduplication merges publication identity, not discovery history: every source

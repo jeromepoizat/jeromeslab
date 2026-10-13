@@ -26,10 +26,23 @@ charter prompts; consumed prompts and historical projects remain unchanged.
 After retrieval, relevance preparation previews a seeded distinct-source sample,
 generates a reviewable investigation-specific scoring prompt. It does not score sample records.
 The next section chooses a record count and seed, then scores distinct source
-records in resumable, bounded batches with live progress. A remaining-usage
-estimate appears after the first completed batch. The original record count and
-seed are locked once the single scoring run starts; a paused or failed run can
-resume, but a second scoring run cannot be started in the same project.
+records in resumable, bounded batches with live progress. **Parallel batches**
+chooses 1–8 simultaneous scoring requests (default 1). Pause before changing it;
+higher values can improve speed but may hit provider rate limits and increase
+concurrent API usage. Other research operations stay sequential. A remaining-usage
+estimate appears after the first completed batch. The seed is locked once the
+single scoring run starts; a paused or failed run can resume. After its current
+plan completes, the user may score additional records in that same run, then
+validate and lock the exact cumulative scored list, including while paused if
+some records have been scored. Failed scoring batches retry once automatically,
+then pause on a second consecutive failure; each attempt and its cost stays
+recorded. A second independent scoring
+run cannot be started in the same project.
+After scoring validation, **Select records for further work** provides a vertical
+minimum-score slider, per-score counts, and live included/excluded totals.
+Not-assessable records have a separate inclusion checkbox. **Validate selection**
+asks for confirmation and saves the exact read-only inclusion pool without
+deleting excluded records or changing scores. This local step makes no API calls.
 Study-quality assessment, evidence extraction, design, and in-silico stages
 remain planned. See
 [current status](docs/STATUS.md) before starting work.
@@ -64,7 +77,8 @@ in-silico evaluation still require explicit design before implementation.
 - Immutable large artifacts on disk in an OS-appropriate application-data
   directory.
 - A provider-independent LLM layer and source-specific literature adapters.
-- A persistent queue with a single worker in V1.
+- A persistent dispatcher: sequential operations, with bounded parallel batches
+  available within one relevance-scoring run.
 - Native OS credential storage for API keys.
 - Local binding to `127.0.0.1`; the default browser opens on launch.
 

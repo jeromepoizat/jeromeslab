@@ -359,8 +359,38 @@ every record on each poll. Every batch is a normal `jobs`/`llm_calls` pair linke
 not-assessable decision/reason per selected source identity, linked to that
 batch job. Batch artifact, score rows, job completion, and next-batch enqueueing
 share one transaction. A pause flag takes effect between calls; failure leaves
-the current batch unscored for explicit resume. No downstream scoring consumer
-or first-class scored-set approval/version exists yet (ADR 0023).
+the batch unscored and atomically queues one retry unless a pause was requested.
+The retry snapshot records `retry_of_job_id` and `automatic_retry_attempt`; the
+call's `retry_count` matches that attempt. A second failure pauses the run.
+`relevance_scoring_extensions`
+stores an immutable selection manifest and digest for every addition to a
+completed run. The run's current batch plan and selected count grow, while its
+initial manifest and all earlier batch artifacts remain unchanged.
+Migration 0028 adds `parallel_batches` to each run, defaulting historical runs to
+1. Future batch snapshots record this execution limit. Completed identities are
+derived from linked completed jobs, even when responses arrive out of order;
+`next_batch_index` remains the first unfinished index. Progress and validation
+must not interpret it as a completed-batch count (ADR 0027).
+Migration 0029 adds `relevance_scoring_batch_inputs`, keyed by run/index, as exact
+bounded read-model copies of each preserved plan batch; extensions append rows.
+`retrieved_record_count` caches the frozen completed retrieval's distinct source
+count. These avoid loading the full plan or corpus on each status poll or queue
+transaction. Preview titles resolve to their scored batch's frozen inputs, not
+current retrieval appearances. Original JSON plans, manifests and scores remain
+unchanged (ADR 0028).
+`relevance_scoring_confirmations` stores a single immutable, SHA-256-addressed
+snapshot of every decision, its originating job, and the initial and extension
+manifest hashes. Validation permits completed or fully paused runs, records the
+planned and unscored-selected counts, and freezes only completed decisions.
+Confirmation locks further additions and resume. No downstream scoring
+quality or extraction consumer is implemented yet (ADRs 0023–0025).
+`relevance_score_filters` (migration 0027) consumes that validation as the first
+local selection checkpoint. Its immutable canonical JSON includes the parent
+validation digest, minimum numeric score, not-assessable inclusion choice,
+counts by outcome, included/excluded totals, and exact included source IDs.
+SHA-256 and a timestamp identify the selection. One validated selection is
+allowed per run, scoped to its project; it does not change `relevance_scores`
+or classify unscored records as excluded (ADR 0026).
 Older preparation and calibration jobs retain their historical first-run cap
 snapshot; new prompt-generation jobs have no cap. A later scoring-run decision
 will choose its own record limit. The per-1,000-report estimate is derived from

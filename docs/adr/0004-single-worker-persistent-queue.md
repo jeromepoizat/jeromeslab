@@ -1,6 +1,7 @@
 # ADR 0004: Single-worker persistent research queue
 
 - Status: Accepted
+- Amended by ADR 0027: one scoring run may execute a user-selected bounded number of its batches simultaneously; other operations remain sequential.
 - Date: 2026-09-07
 
 ## Context

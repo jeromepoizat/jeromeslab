@@ -1,5 +1,6 @@
 """Batch scoring is reproducible, resumable, and validates exact identities."""
 
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -169,7 +170,7 @@ def test_bounded_run_pauses_resumes_and_preserves_scores(tmp_path: Path) -> None
     assert progress["completed_batches"] == 1
     by_score = cast(dict[str, dict[str, object]], progress["by_score"])
     samples = cast(list[dict[str, str]], by_score["4"]["samples"])
-    assert len(samples) == 3
+    assert len(samples) == 6
     assert all(sample["title"] for sample in samples)
     with pytest.raises(ScoringError, match="already has a scoring run"):
         scoring.preview(project_id, retrieval_id, prompt_job_id, 1, 123)
@@ -189,7 +190,7 @@ def test_bounded_run_pauses_resumes_and_preserves_scores(tmp_path: Path) -> None
         scoring.preview(project_id, retrieval_id, prompt_job_id, 100, 123)
 
 
-def test_invalid_batch_is_not_scored_or_retried_automatically(tmp_path: Path) -> None:
+def test_invalid_batch_retries_once_then_pauses_with_preserved_history(tmp_path: Path) -> None:
     scoring, project_id, retrieval_id, prompt_job_id, service = _ready_scoring(tmp_path)
     plan = scoring.preview(project_id, retrieval_id, prompt_job_id, 1, 25)
     run_id = scoring.start(
@@ -220,7 +221,7 @@ def test_invalid_batch_is_not_scored_or_retried_automatically(tmp_path: Path) ->
     )
     assert failed_worker.run_once()
     failed = scoring.progress(project_id)[0]
-    assert failed["status"] == "failed"
+    assert failed["status"] == "running"
     assert failed["scored_count"] == 0
     with sqlite3.connect(scoring.database_path) as connection:
         call = connection.execute(
@@ -229,14 +230,18 @@ def test_invalid_batch_is_not_scored_or_retried_automatically(tmp_path: Path) ->
         ).fetchone()
     assert call[0:3] == ("failed", 240, "estimated")
     assert json.loads(json.loads(call[3])["output"])["scores"] == []
+    assert failed_worker.run_once()
+    assert scoring.progress(project_id)[0]["status"] == "paused"
     assert not failed_worker.run_once()
+    with pytest.raises(ScoringError, match="at least one"):
+        scoring.confirm(run_id, project_id)
     scoring.resume(run_id, project_id)
     assert JobWorker(service, MemoryCredentialStore(), ScoringGateway()).run_once()
     completed = scoring.progress(project_id)[0]
     assert completed["status"] == "completed"
     assert completed["scored_count"] == 1
     assert [job["status"] for job in cast(list[dict[str, object]], completed["jobs"])] == [
-        "failed", "completed",
+        "failed", "failed", "completed",
     ]
     with sqlite3.connect(scoring.database_path) as connection:
         versions = connection.execute(
@@ -244,8 +249,15 @@ def test_invalid_batch_is_not_scored_or_retried_automatically(tmp_path: Path) ->
             "FROM relevance_scoring_batch_jobs links JOIN jobs ON jobs.id = links.job_id "
             "WHERE links.run_id = ? ORDER BY jobs.created_at", (run_id,),
         ).fetchall()
-    assert [version for version, _ in versions] == ["1", "2"]
-    assert [json.loads(snapshot)["schema_version"] for _, snapshot in versions] == [1, 2]
+        retry_counts = connection.execute(
+            "SELECT calls.retry_count FROM llm_calls calls JOIN jobs ON jobs.id = calls.job_id "
+            "JOIN relevance_scoring_batch_jobs links ON links.job_id = jobs.id "
+            "WHERE links.run_id = ? ORDER BY jobs.rowid", (run_id,),
+        ).fetchall()
+    assert [version for version, _ in versions] == ["1", "2", "2"]
+    assert [json.loads(snapshot)["schema_version"] for _, snapshot in versions] == [1, 2, 2]
+    assert [row[0] for row in retry_counts] == [0, 1, 0]
+    assert json.loads(versions[1][1])["retry_of_job_id"] == old[0]
 
 
 def test_pause_requested_during_call_stops_before_next_batch(tmp_path: Path) -> None:
@@ -268,6 +280,105 @@ def test_pause_requested_during_call_stops_before_next_batch(tmp_path: Path) -> 
     assert paused["scored_count"] == 10
     assert len(cast(list[object], paused["jobs"])) == 1
     assert not worker.run_once()
+    confirmation = scoring.confirm(run_id, project_id)
+    assert confirmation["scored_count"] == 10
+    with sqlite3.connect(scoring.database_path) as connection:
+        content = json.loads(connection.execute(
+            "SELECT content_json FROM relevance_scoring_confirmations WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()[0])
+    assert content["planned_count"] == 12
+    assert content["unscored_selected_count"] == 2
+    assert len(content["scores"]) == 10
+    with pytest.raises(ScoringError, match="locked"):
+        scoring.resume(run_id, project_id)
+    assert not worker.run_once()
+
+
+def test_retry_success_continues_and_user_pause_suppresses_retry(tmp_path: Path) -> None:
+    scoring, project_id, retrieval_id, prompt_job_id, service = _ready_scoring(tmp_path)
+    plan = scoring.preview(project_id, retrieval_id, prompt_job_id, 12, 123)
+    run_id = scoring.start(
+        project_id, retrieval_id, prompt_job_id, 12, 123, "openai", "gpt-6-luna",
+        cast(str, plan["manifest_sha256"]), cast(str, plan["prompt_artifact_id"]),
+    )
+    failed_worker = JobWorker(
+        service, MemoryCredentialStore(), ScopeGateway('{"schema_version":1,"scores":[]}'),
+    )
+    assert failed_worker.run_once()
+    assert scoring.progress(project_id)[0]["status"] == "running"
+    assert JobWorker(service, MemoryCredentialStore(), ScoringGateway()).run_once()
+    assert scoring.progress(project_id)[0]["scored_count"] == 10
+
+    class PauseAndFail(ScopeGateway):
+        def execute(self, prepared: PreparedGeneration, api_key: str) -> GenerationResult:
+            scoring.pause(run_id, project_id)
+            with pytest.raises(ScoringError, match="pause scoring"):
+                scoring.confirm(run_id, project_id)
+            return super().execute(prepared, api_key)
+
+    paused_worker = JobWorker(
+        service, MemoryCredentialStore(), PauseAndFail('{"schema_version":1,"scores":[]}'),
+    )
+    assert paused_worker.run_once()
+    paused = scoring.progress(project_id)[0]
+    assert paused["status"] == "paused"
+    assert paused["scored_count"] == 10
+    assert len(cast(list[object], paused["jobs"])) == 3
+    assert not paused_worker.run_once()
+    assert scoring.confirm(run_id, project_id)["scored_count"] == 10
+
+
+def test_completed_run_extends_same_seed_then_confirms_exact_scores(tmp_path: Path) -> None:
+    scoring, project_id, retrieval_id, prompt_job_id, service = _ready_scoring(tmp_path)
+    plan = scoring.preview(project_id, retrieval_id, prompt_job_id, 2, 123)
+    run_id = scoring.start(
+        project_id, retrieval_id, prompt_job_id, 2, 123, "openai", "gpt-6-luna",
+        cast(str, plan["manifest_sha256"]), cast(str, plan["prompt_artifact_id"]),
+    )
+    worker = JobWorker(service, MemoryCredentialStore(), ScoringGateway())
+    assert worker.run_once()
+    before = scoring.progress(project_id)[0]
+    assert before["status"] == "completed"
+    assert before["scored_count"] == 2
+    assert cast(int, before["available_unscored"]) > 0
+    old_job_ids = [job["id"] for job in cast(list[dict[str, object]], before["jobs"])]
+    with pytest.raises(ScoringError, match="Only"):
+        scoring.extend(run_id, project_id, cast(int, before["available_unscored"]) + 1)
+    assert scoring.extend(run_id, project_id, 3) == 3
+    during = scoring.progress(project_id)[0]
+    assert during["status"] == "running"
+    assert during["seed"] == 123
+    assert during["selected_count"] == 5
+    assert during["scored_count"] == 2
+    assert during["batch_sizes"] == [2, 3]
+    assert [job["id"] for job in cast(list[dict[str, object]], during["jobs"])[:1]] == old_job_ids
+    with pytest.raises(ScoringError, match="Finish all"):
+        scoring.confirm(run_id, project_id)
+    assert worker.run_once()
+    completed = scoring.progress(project_id)[0]
+    assert completed["status"] == "completed"
+    assert completed["scored_count"] == 5
+    confirmation = scoring.confirm(run_id, project_id)
+    assert confirmation["scored_count"] == 5
+    assert scoring.progress(project_id)[0]["confirmed_at"] == confirmation["confirmed_at"]
+    with sqlite3.connect(scoring.database_path) as connection:
+        row = connection.execute(
+            "SELECT content_json, content_sha256 FROM relevance_scoring_confirmations "
+            "WHERE run_id = ?", (run_id,),
+        ).fetchone()
+        extension = connection.execute(
+            "SELECT previous_count, added_count FROM relevance_scoring_extensions "
+            "WHERE run_id = ?", (run_id,),
+        ).fetchone()
+    assert extension == (2, 3)
+    assert len(json.loads(row[0])["scores"]) == 5
+    assert row[1] == confirmation["content_sha256"]
+    assert row[1] == hashlib.sha256(row[0].encode("utf-8")).hexdigest()
+    with pytest.raises(ScoringError, match="locked"):
+        scoring.extend(run_id, project_id, 1)
+    with pytest.raises(ScoringError, match="already been confirmed"):
+        scoring.confirm(run_id, project_id)
 
 
 @pytest.mark.asyncio
@@ -295,14 +406,23 @@ async def test_scoring_api_previews_starts_and_pauses_without_provider_call(tmp_
         assert preview["selected_count"] == 1
         assert preview["batch_sizes"] == [1]
         assert preview["cost"]["status"] == "estimated"
+        invalid = await client.post(f"{path}/runs", json={
+            **payload, "expected_manifest_sha256": preview["manifest_sha256"],
+            "expected_prompt_artifact_id": preview["prompt_artifact_id"],
+            "expected_provider": preview["provider"], "expected_model": preview["model"],
+            "parallel_batches": 9,
+        }, headers=headers)
+        assert invalid.status_code == 422
         start = await client.post(f"{path}/runs", json={
             **payload, "expected_manifest_sha256": preview["manifest_sha256"],
             "expected_prompt_artifact_id": preview["prompt_artifact_id"],
             "expected_provider": preview["provider"], "expected_model": preview["model"],
+            "parallel_batches": 2,
         }, headers=headers)
         assert start.status_code == 201, start.text
         run_id = start.json()["id"]
         assert (await client.get(f"{path}/runs")).json()[0]["status"] == "running"
+        assert (await client.get(f"{path}/runs")).json()[0]["parallel_batches"] == 2
         paused = await client.post(f"{path}/runs/{run_id}/pause", headers=headers)
         assert paused.status_code == 200
         assert scoring.progress(project_id)[0]["status"] == "paused"
@@ -313,3 +433,42 @@ async def test_scoring_api_previews_starts_and_pauses_without_provider_call(tmp_
         }, headers=headers)
         assert second_start.status_code == 422
         assert "already has a scoring run" in second_start.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_scoring_api_extends_then_confirms_one_run(tmp_path: Path) -> None:
+    scoring, project_id, retrieval_id, prompt_job_id, service = _ready_scoring(tmp_path)
+    plan = scoring.preview(project_id, retrieval_id, prompt_job_id, 1, 7)
+    run_id = scoring.start(
+        project_id, retrieval_id, prompt_job_id, 1, 7, "openai", "gpt-6-luna",
+        cast(str, plan["manifest_sha256"]), cast(str, plan["prompt_artifact_id"]),
+    )
+    worker = JobWorker(service, MemoryCredentialStore(), ScoringGateway())
+    assert worker.run_once()
+    app = create_app(
+        static_directory=None, workspace_service=service,
+        credential_store=MemoryCredentialStore(), start_job_worker=False,
+    )
+    base = f"/api/projects/{project_id}/relevance/scoring/runs/{run_id}"
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app), base_url="http://testserver",
+    ) as client:
+        token = (await client.get("/api/setup")).json()["setup_token"]
+        headers = {"X-Jeromes-Lab-Setup-Token": token}
+        assert (await client.post(f"{base}/extend", json={"additional_count": 2})).status_code == 403
+        extended = await client.post(
+            f"{base}/extend", json={"additional_count": 2}, headers=headers,
+        )
+        assert extended.status_code == 200, extended.text
+        assert extended.json()["added_count"] == 2
+        assert (await client.post(f"{base}/confirm", headers=headers)).status_code == 409
+        assert worker.run_once()
+        confirmed = await client.post(f"{base}/confirm", headers=headers)
+        assert confirmed.status_code == 200, confirmed.text
+        assert confirmed.json()["scored_count"] == 3
+        runs = (await client.get(f"/api/projects/{project_id}/relevance/scoring/runs")).json()
+        assert runs[0]["confirmed_at"]
+        assert runs[0]["available_unscored"] > 0
+        assert (await client.post(
+            f"{base}/extend", json={"additional_count": 1}, headers=headers,
+        )).status_code == 409

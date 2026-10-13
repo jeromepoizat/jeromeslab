@@ -1,13 +1,15 @@
-"""One sequential background worker for persistent research jobs."""
+"""Durable research execution with bounded parallel batches within one scoring run."""
 
 from __future__ import annotations
 
 import json
+import logging
 import threading
+import time
 from dataclasses import replace
 from pathlib import Path
 
-from jeromes_laboratory.database.jobs import JobRepository, provider_input_for_job
+from jeromes_laboratory.database.jobs import JobRecord, JobRepository, provider_input_for_job
 from jeromes_laboratory.database.retrieval import RetrievalRepository
 from jeromes_laboratory.llm.generation import GenerationError, GenerationGateway
 from jeromes_laboratory.security.credentials import CredentialStore, CredentialStoreError
@@ -25,7 +27,7 @@ from jeromes_laboratory.workflow.relevance import scoring_slot_schema
 
 
 class JobWorker:
-    """Poll one workspace queue and execute no more than one job at a time."""
+    """Poll one workspace queue; only batches of one scoring run may overlap."""
 
     def __init__(
         self,
@@ -42,31 +44,47 @@ class JobWorker:
         self._poll_interval = poll_interval
         self._europe_pmc_client = europe_pmc_client or EuropePMCClient()
         self._stop_event = threading.Event()
-        self._thread: threading.Thread | None = None
+        self._threads: list[threading.Thread] = []
         self._recovered_database: Path | None = None
+        self._recovery_lock = threading.Lock()
 
     def start(self) -> None:
-        if self._thread is not None and self._thread.is_alive():
+        if any(thread.is_alive() for thread in self._threads):
             return
         self._stop_event.clear()
-        self._thread = threading.Thread(target=self._run, name="research-job-worker", daemon=True)
-        self._thread.start()
+        # Daemon slots preserve bounded app shutdown even if a remote request
+        # is still outstanding. Restart marks such requests interrupted.
+        self._threads = [threading.Thread(
+            target=self._run, name=f"research-batch-{slot}", daemon=True,
+        ) for slot in range(8)]
+        for thread in self._threads:
+            thread.start()
 
     def stop(self) -> None:
         self._stop_event.set()
-        if self._thread is not None:
-            self._thread.join(timeout=2)
+        deadline = time.monotonic() + 2
+        for thread in self._threads:
+            thread.join(timeout=max(0, deadline - time.monotonic()))
 
     def run_once(self) -> bool:
         repository = self._repository()
         if repository is None:
             return False
-        if self._recovered_database != repository.database_path:
-            repository.fail_interrupted_jobs()
-            self._recovered_database = repository.database_path
+        with self._recovery_lock:
+            if self._recovered_database != repository.database_path:
+                repository.fail_interrupted_jobs()
+                self._recovered_database = repository.database_path
         job = repository.claim_next()
         if job is None:
             return False
+        try:
+            self._execute(repository, job)
+        except Exception:  # noqa: BLE001 - preparation/persistence must not kill the worker.
+            if repository.get_job(job.id).status == "awaiting_response":
+                repository.fail(job.id, None, "An unexpected error stopped job preparation or storage.")
+        return True
+
+    def _execute(self, repository: JobRepository, job: JobRecord) -> bool:
         if job.kind == "source_retrieval":
             try:
                 RetrievalRepository(repository.database_path).run_job(
@@ -124,11 +142,19 @@ class JobWorker:
                 repository.complete(job.id, call_id, result)
             except ValueError as error:
                 repository.fail(job.id, call_id, str(error), result.raw_response, result=result)
+            except Exception:  # noqa: BLE001 - keep response/usage even if artifact storage fails.
+                repository.fail(job.id, call_id, "Could not save the provider output.",
+                                result.raw_response, result=result)
         return True
 
     def _run(self) -> None:
+        # SQL claims enforce one logical research operation. Only batches of the
+        # same scoring run may overlap, within its persisted concurrency limit.
         while not self._stop_event.is_set():
-            self.run_once()
+            try:
+                self.run_once()
+            except Exception:  # noqa: BLE001 - sanitized; continue after temporary storage errors.
+                logging.getLogger(__name__).warning("Research worker encountered a storage error.")
             self._stop_event.wait(self._poll_interval)
 
     def _repository(self) -> JobRepository | None:

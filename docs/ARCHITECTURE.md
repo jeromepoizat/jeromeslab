@@ -104,10 +104,21 @@ attempt and its precise inputs and outputs. Completed runs with downstream
 dependents are immutable. The latest step may be rerun only while it has no
 dependent results; otherwise, the user creates a `ProjectFork` from a checkpoint.
 
-Jobs are persistent database records. In V1 exactly one worker executes one job at
-a time; other jobs remain pending. State transitions and restart recovery rules
-must be transactional and tested. The exact recovery policy for a job found in
-`running` state after a crash remains unresolved.
+Jobs are persistent database records. One dispatcher executes one logical
+research operation at a time. Relevance scoring alone supports 1–8 concurrent
+batches of that same run (default 1); SQL claims enforce the limit and prevent
+other jobs or runs from overlapping. Each request has separate provenance and
+commits its results atomically. Pause drains all in-flight requests before the
+pool can be validated; completed batches may be out of order. Interrupted calls
+are marked failed and their scoring run paused for explicit resume, without
+automatic replay. Preparation/storage failures do not terminate the dispatcher
+(ADR 0027).
+
+Queue/scoring/retrieval database contexts use coordinated short local access and
+deterministically close their SQLite handles; network requests remain outside
+them. Scheduling loads a bounded per-batch read model, while progress uses cached
+retrieval counts and frozen batch titles. Initial status failures are reported
+with retry, never hidden as indefinite loading (ADR 0028).
 
 ## LLM layer and call accounting
 

@@ -22,7 +22,8 @@ Keep these invariants unless a new, explicit decision supersedes them:
   edited versions, and provenance links;
 - fork at a checkpoint instead of rewriting history with downstream dependents;
 - never store or return API secrets outside the native credential store;
-- execute at most one research job at a time in V1;
+- execute at most one research operation at a time in V1; ADR 0027 permits
+  bounded parallel batches within that single relevance-scoring run only;
 - do not require end users to preinstall Python, Node.js, `uv`, or pnpm;
 - distinguish experimental/source evidence, inference, and computational
   prediction, and require an approved peptide design brief before candidate work;

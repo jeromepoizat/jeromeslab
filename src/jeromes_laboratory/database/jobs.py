@@ -11,8 +11,9 @@ from pathlib import Path
 from typing import Literal, cast
 from uuid import uuid4
 
+from jeromes_laboratory.database.connections import connect_database
 from jeromes_laboratory.database.relevance import distinct_source_records
-from jeromes_laboratory.database.scoring import enqueue_next_batch
+from jeromes_laboratory.database.scoring import enqueue_next_batch, schedule_scoring_batches
 from jeromes_laboratory.llm.catalog import ProviderName
 from jeromes_laboratory.llm.generation import GenerationResult, PreparedGeneration
 from jeromes_laboratory.llm.pricing import estimate_standard_cost
@@ -1485,17 +1486,17 @@ class JobRepository:
             ).fetchall()
         return [self._record(row) for row in rows]
 
-    def get_job(self, job_id: str) -> JobRecord:
-        with self._connect() as connection:
-            row = connection.execute(
-                self._select_sql(
-                    self._table_exists(connection, "research_charter_approvals"),
-                    self._table_exists(connection, "evidence_strategy_approvals"),
-                    self._table_exists(connection, "source_queries_approvals"),
-                )
-                + " WHERE jobs.id = ?",
-                (job_id,),
-            ).fetchone()
+    def get_job(self, job_id: str, *, connection: sqlite3.Connection | None = None) -> JobRecord:
+        if connection is None:
+            with self._connect() as owned:
+                return self.get_job(job_id, connection=owned)
+        row = connection.execute(
+            self._select_sql(
+                self._table_exists(connection, "research_charter_approvals"),
+                self._table_exists(connection, "evidence_strategy_approvals"),
+                self._table_exists(connection, "source_queries_approvals"),
+            ) + " WHERE jobs.id = ?", (job_id,),
+        ).fetchone()
         if row is None:
             raise JobError("The selected job no longer exists.")
         return self._record(row)
@@ -1504,13 +1505,6 @@ class JobRepository:
         now = _timestamp()
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
-            if self._table_exists(connection, "relevance_scoring_batch_jobs"):
-                connection.execute(
-                    "UPDATE relevance_scoring_runs SET status = 'failed' WHERE id IN "
-                    "(SELECT links.run_id FROM relevance_scoring_batch_jobs links "
-                    "JOIN jobs ON jobs.id = links.job_id WHERE jobs.kind = 'relevance_scoring_batch' "
-                    "AND jobs.status = 'awaiting_response') AND status = 'running'",
-                )
             cursor = connection.execute(
                 "UPDATE jobs SET status = 'cancelled', completed_at = ? "
                 "WHERE id = ? AND status = 'pending'",
@@ -1530,21 +1524,45 @@ class JobRepository:
             ).fetchone() if self._table_exists(connection, "relevance_scoring_batch_jobs") else None
             if link is not None:
                 connection.execute(
-                    "UPDATE relevance_scoring_runs SET status = 'paused', stop_requested = 1 "
+                    "UPDATE relevance_scoring_runs SET stop_requested = 1 "
                     "WHERE id = ?", (link["run_id"],),
                 )
+                schedule_scoring_batches(connection, link["run_id"])
         return self.get_job(job_id)
 
     def claim_next(self) -> JobRecord | None:
         """Atomically close cancellation immediately before provider preparation."""
         now = _timestamp()
         with self._connect() as connection:
+            # Idle executor slots must not continually reserve SQLite's writer.
+            if connection.execute("SELECT 1 FROM jobs WHERE status = 'pending' LIMIT 1").fetchone() is None:
+                return None
             connection.execute("BEGIN IMMEDIATE")
             row = connection.execute(
-                "SELECT id FROM jobs WHERE status = 'pending' ORDER BY created_at, id LIMIT 1"
+                "SELECT id FROM jobs WHERE status = 'pending' ORDER BY created_at, rowid LIMIT 1"
             ).fetchone()
             if row is None:
                 return None
+            active = connection.execute(
+                "SELECT id, kind FROM jobs WHERE status = 'awaiting_response'",
+            ).fetchall()
+            if active:
+                if any(job["kind"] != "relevance_scoring_batch" for job in active):
+                    return None
+                run = connection.execute(
+                    "SELECT runs.id, runs.parallel_batches, runs.stop_requested FROM "
+                    "relevance_scoring_batch_jobs links JOIN relevance_scoring_runs runs "
+                    "ON runs.id = links.run_id WHERE links.job_id = ?", (active[0]["id"],),
+                ).fetchone()
+                if run is None or run["stop_requested"] or len(active) >= run["parallel_batches"]:
+                    return None
+                row = connection.execute(
+                    "SELECT jobs.id FROM jobs JOIN relevance_scoring_batch_jobs links "
+                    "ON links.job_id = jobs.id WHERE links.run_id = ? AND jobs.status = 'pending' "
+                    "ORDER BY jobs.created_at, jobs.rowid LIMIT 1", (run["id"],),
+                ).fetchone()
+                if row is None:
+                    return None
             cursor = connection.execute(
                 "UPDATE jobs SET status = 'awaiting_response', started_at = ? "
                 "WHERE id = ? AND status = 'pending'",
@@ -1620,7 +1638,7 @@ class JobRepository:
                 "INSERT INTO llm_calls (id, project_id, job_id, provider, model, operation, "
                 "purpose, prompt_template_id, prompt_template_version, instructions, input_content, "
                 "request_json, started_at, status, retry_count, generation_settings_json, cost_status) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'started', 0, ?, 'unavailable')",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'started', ?, ?, 'unavailable')",
                 (
                     call_id,
                     job.project_id,
@@ -1635,6 +1653,9 @@ class JobRepository:
                     input_content,
                     _json(prepared.request_body),
                     _timestamp(),
+                    int(json.loads(job.workflow_input_snapshot_json or "{}").get(
+                        "automatic_retry_attempt", 0,
+                    )) if job.kind == "relevance_scoring_batch" else 0,
                     _json(prepared.generation_settings),
                 ),
             )
@@ -1912,21 +1933,7 @@ class JobRepository:
                         (link["run_id"], job_id, decision["source"], decision["source_record_id"],
                          str(decision["outcome"]), decision["reason"]),
                     )
-                connection.execute(
-                    "UPDATE relevance_scoring_runs SET next_batch_index = ? WHERE id = ? "
-                    "AND next_batch_index = ?",
-                    (link["batch_index"] + 1, link["run_id"], link["batch_index"]),
-                )
-                run = connection.execute(
-                    "SELECT stop_requested FROM relevance_scoring_runs WHERE id = ?", (link["run_id"],),
-                ).fetchone()
-                if run["stop_requested"]:
-                    connection.execute(
-                        "UPDATE relevance_scoring_runs SET status = 'paused' WHERE id = ?",
-                        (link["run_id"],),
-                    )
-                else:
-                    enqueue_next_batch(connection, link["run_id"])
+                schedule_scoring_batches(connection, link["run_id"])
         return self.get_job(job_id)
 
     def submit_intent_selection(
@@ -2510,6 +2517,13 @@ class JobRepository:
             )
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            # A caller may observe a storage error after a commit succeeded.
+            # Never replace a completed attempt or enqueue a duplicate retry.
+            state = connection.execute(
+                "SELECT status FROM jobs WHERE id = ?", (job_id,),
+            ).fetchone()
+            if state is not None and state["status"] in {"completed", "failed", "cancelled"}:
+                return self.get_job(job_id, connection=connection)
             if call_id is not None:
                 started = connection.execute(
                     "SELECT started_at FROM llm_calls WHERE id = ?", (call_id,)
@@ -2545,11 +2559,25 @@ class JobRepository:
                 (now, error, job_id),
             )
             if self._table_exists(connection, "relevance_scoring_batch_jobs"):
-                connection.execute(
-                    "UPDATE relevance_scoring_runs SET status = 'failed' WHERE id IN "
-                    "(SELECT run_id FROM relevance_scoring_batch_jobs WHERE job_id = ?)",
+                linked = connection.execute(
+                    "SELECT runs.id, runs.stop_requested, links.batch_index, "
+                    "jobs.workflow_input_snapshot_json "
+                    "FROM relevance_scoring_batch_jobs links "
+                    "JOIN relevance_scoring_runs runs ON runs.id = links.run_id "
+                    "JOIN jobs ON jobs.id = links.job_id WHERE links.job_id = ?",
                     (job_id,),
-                )
+                ).fetchone()
+                if linked is not None:
+                    snapshot = json.loads(linked["workflow_input_snapshot_json"] or "{}")
+                    if linked["stop_requested"] or snapshot.get("automatic_retry_attempt", 0) >= 1:
+                        connection.execute(
+                            "UPDATE relevance_scoring_runs SET stop_requested = 1 "
+                            "WHERE id = ?", (linked["id"],),
+                        )
+                    else:
+                        enqueue_next_batch(connection, linked["id"], retry_of_job_id=job_id,
+                                           batch_index=linked["batch_index"])
+                    schedule_scoring_batches(connection, linked["id"])
         return self.get_job(job_id)
 
     def fail_interrupted_jobs(self) -> int:
@@ -2558,6 +2586,10 @@ class JobRepository:
         message = "The application stopped while awaiting the provider response; this job was not retried."
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
+            interrupted_runs = connection.execute(
+                "SELECT DISTINCT links.run_id FROM relevance_scoring_batch_jobs links "
+                "JOIN jobs ON jobs.id = links.job_id WHERE jobs.status = 'awaiting_response'",
+            ).fetchall() if self._table_exists(connection, "relevance_scoring_batch_jobs") else []
             cursor = connection.execute(
                 "UPDATE jobs SET status = 'failed', completed_at = ?, error = ? "
                 "WHERE status = 'awaiting_response' AND kind != 'source_retrieval'",
@@ -2580,6 +2612,32 @@ class JobRepository:
                     "error = 'The application stopped during retrieval; saved pages remain available.' "
                     "WHERE status = 'running'", (now,),
                 )
+            for run in interrupted_runs:
+                connection.execute(
+                    "UPDATE relevance_scoring_runs SET stop_requested = 1 WHERE id = ?", (run[0],),
+                )
+                schedule_scoring_batches(connection, run[0])
+            if self._table_exists(connection, "relevance_scoring_runs"):
+                for run in connection.execute(
+                    "SELECT id FROM relevance_scoring_runs WHERE status = 'running'",
+                ).fetchall():
+                    # Repair a previous worker's orphaned failed run without
+                    # automatically replaying an uncertain paid request.
+                    stranded = connection.execute(
+                        "SELECT 1 FROM relevance_scoring_batch_jobs links "
+                        "JOIN jobs ON jobs.id = links.job_id WHERE links.run_id = ? "
+                        "AND jobs.status IN ('pending', 'awaiting_response')", (run[0],),
+                    ).fetchone() is None
+                    if stranded and connection.execute(
+                        "SELECT 1 FROM relevance_scoring_batch_jobs links JOIN jobs "
+                        "ON jobs.id = links.job_id WHERE links.run_id = ? AND jobs.status = 'failed'",
+                        (run[0],),
+                    ).fetchone() is not None:
+                        connection.execute(
+                            "UPDATE relevance_scoring_runs SET stop_requested = 1 WHERE id = ?",
+                            (run[0],),
+                        )
+                    schedule_scoring_batches(connection, run[0])
         return cursor.rowcount + source_cursor.rowcount
 
     @staticmethod
@@ -2596,22 +2654,29 @@ class JobRepository:
     ) -> str:
         charter_columns = (
             "charter_approval.approved_at AS charter_approved_at, "
-            "NOT EXISTS (SELECT 1 FROM jobs active_charter WHERE "
+            "CASE WHEN jobs.kind = 'research_charter' THEN NOT EXISTS "
+            "(SELECT 1 FROM jobs active_charter WHERE "
             "active_charter.project_id = jobs.project_id "
             "AND active_charter.kind = 'research_charter' "
-            "AND active_charter.status IN ('pending', 'awaiting_response')) AS no_active_charter, "
+            "AND active_charter.status IN ('pending', 'awaiting_response')) "
+            "ELSE 0 END AS no_active_charter, "
+            "CASE WHEN jobs.kind = 'research_charter' THEN "
             "jobs.rowid = COALESCE((SELECT current_charter.rowid FROM jobs current_charter "
             "WHERE current_charter.project_id = jobs.project_id "
             "AND current_charter.kind = 'research_charter' "
             "AND current_charter.status = 'completed' "
-            "ORDER BY current_charter.rowid DESC LIMIT 1), -1) AS is_current_charter, "
-            "NOT EXISTS (SELECT 1 FROM jobs charter_consumer, "
-            "json_tree(charter_consumer.workflow_input_snapshot_json) charter_input "
+            "ORDER BY current_charter.rowid DESC LIMIT 1), -1) ELSE 0 END AS is_current_charter, "
+            "CASE WHEN jobs.kind = 'research_charter' THEN NOT EXISTS "
+            "(SELECT 1 FROM jobs charter_consumer, "
+            "json_tree(CASE WHEN charter_consumer.kind IN "
+            "('research_charter', 'relevance_scoring_batch') THEN NULL "
+            "ELSE charter_consumer.workflow_input_snapshot_json END) charter_input "
             "JOIN artifact_versions charter_artifact ON charter_artifact.id = charter_input.value "
             "WHERE charter_input.key = 'charter_artifact_id' "
             "AND charter_artifact.job_id = jobs.id "
             "AND charter_artifact.kind = 'research_charter_output' "
-            "AND charter_consumer.kind != 'research_charter') AS no_charter_dependents, "
+            "AND charter_consumer.kind NOT IN ('research_charter', 'relevance_scoring_batch')) "
+            "ELSE 1 END AS no_charter_dependents, "
         ) if has_charter_approvals else (
             "NULL AS charter_approved_at, 1 AS no_active_charter, "
             "0 AS is_current_charter, 1 AS no_charter_dependents, "
@@ -2660,9 +2725,10 @@ class JobRepository:
             + strategy_columns
             + source_columns
             +
+            "CASE WHEN jobs.kind = 'relevance_scoring_batch' THEN 0 ELSE "
             "NOT EXISTS (SELECT 1 FROM jobs downstream WHERE "
             "downstream.project_id = jobs.project_id AND downstream.id != jobs.id "
-            "AND downstream.created_at > jobs.created_at) AS no_downstream_job "
+            "AND downstream.created_at > jobs.created_at) END AS no_downstream_job "
             "FROM jobs JOIN projects ON projects.id = jobs.project_id "
             "LEFT JOIN llm_calls ON llm_calls.job_id = jobs.id "
             "LEFT JOIN artifact_versions original ON original.job_id = jobs.id "
@@ -2810,9 +2876,7 @@ class JobRepository:
         )
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self._database_path, timeout=30)
-        connection.row_factory = sqlite3.Row
-        return connection
+        return connect_database(self._database_path)
 
 
 def provider_input(scientific_question: str) -> str:

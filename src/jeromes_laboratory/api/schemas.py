@@ -600,10 +600,26 @@ class RelevanceScoringPreviewRequest(BaseModel):
 
 
 class StartRelevanceScoringRequest(RelevanceScoringPreviewRequest):
+    parallel_batches: int = Field(default=1, ge=1, le=8, strict=True)
     expected_manifest_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
     expected_prompt_artifact_id: str
     expected_provider: LLMProviderName
     expected_model: str
+
+
+class ExtendRelevanceScoringRequest(BaseModel):
+    additional_count: int = Field(ge=1, le=100_000)
+    parallel_batches: int | None = Field(default=None, ge=1, le=8, strict=True)
+
+
+class ResumeRelevanceScoringRequest(BaseModel):
+    parallel_batches: int | None = Field(default=None, ge=1, le=8, strict=True)
+
+
+class ValidateRelevanceScoreFilterRequest(BaseModel):
+    minimum_score: int = Field(ge=0, le=5, strict=True)
+    include_not_assessable: bool = Field(strict=True)
+    expected_confirmation_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
 class ClientStateResponse(BaseModel):

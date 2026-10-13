@@ -169,8 +169,12 @@ def parse_scoring_batch_slots(raw: str, records: list[dict[str, object]]) -> dic
     return {"schema_version": 1, "scores": [item.model_dump(mode="json") for item in decisions]}
 
 
-def scoring_batches(records: list[dict[str, object]], prompt: str) -> list[list[dict[str, object]]]:
-    """Keep each call to ten records and a conservative estimated input budget."""
+def scoring_batches(
+    records: list[dict[str, object]], prompt: str, *, max_records: int = 10,
+) -> list[list[dict[str, object]]]:
+    """Bound each call by record count and a conservative estimated input budget."""
+    if not 1 <= max_records <= 10:
+        raise RelevanceError("Choose a batch ceiling between 1 and 10 records.")
     batches: list[list[dict[str, object]]] = []
     current: list[dict[str, object]] = []
     current_tokens = estimate_text_tokens(prompt) + 250
@@ -178,7 +182,7 @@ def scoring_batches(records: list[dict[str, object]], prompt: str) -> list[list[
         tokens = estimate_text_tokens(_canonical(record))
         if tokens + estimate_text_tokens(prompt) + 250 > 12_000:
             raise RelevanceError("One record exceeds the scoring request budget.")
-        if current and (len(current) == 10 or current_tokens + tokens > 12_000):
+        if current and (len(current) == max_records or current_tokens + tokens > 12_000):
             batches.append(current)
             current = []
             current_tokens = estimate_text_tokens(prompt) + 250

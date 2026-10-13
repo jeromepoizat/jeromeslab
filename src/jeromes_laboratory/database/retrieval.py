@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from uuid import uuid4
 
+from jeromes_laboratory.database.connections import connect_database
 from jeromes_laboratory.literature.identity import ArticleMetadata, summarize_article_matches
 from jeromes_laboratory.sources.europe_pmc import (
     ADAPTER_VERSION,
@@ -36,8 +37,7 @@ class RetrievalRepository:
         self.database_path = database_path
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.database_path, timeout=30)
-        connection.row_factory = sqlite3.Row
+        connection = connect_database(self.database_path)
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
 

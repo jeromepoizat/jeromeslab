@@ -1,5 +1,6 @@
 """FastAPI application factory."""
 
+import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -17,6 +18,7 @@ from jeromes_laboratory.api.schemas import (
     CreateProjectRequest,
     EnqueueResearchCharterRequest,
     EnqueueSourceQueriesRequest,
+    ExtendRelevanceScoringRequest,
     FetchLLMModelsRequest,
     FetchLLMModelsResponse,
     FolderPickerResponse,
@@ -33,6 +35,7 @@ from jeromes_laboratory.api.schemas import (
     RelevancePromptGenerationResponse,
     RelevanceScoringPreviewRequest,
     RenameProjectRequest,
+    ResumeRelevanceScoringRequest,
     RetrievalSummaryResponse,
     SearchRunResponse,
     StartRelevanceCalibrationRequest,
@@ -61,6 +64,7 @@ from jeromes_laboratory.api.schemas import (
     UpdateScopeReadinessPromptRequest,
     UpdateSourceQueriesPromptRequest,
     UpdateSourceQueriesRequest,
+    ValidateRelevanceScoreFilterRequest,
     WorkspaceConfiguredResponse,
     WorkspaceForgottenResponse,
     WorkspaceMovedResponse,
@@ -1491,6 +1495,7 @@ def create_app(
                 project_id, request.retrieval_job_id, request.prompt_job_id,
                 request.count, request.seed, settings.provider, settings.model,
                 request.expected_manifest_sha256, request.expected_prompt_artifact_id,
+                request.parallel_batches,
             )
             return {"id": run_id}
         except (ScoringError, LLMSettingsError, CredentialStoreError) as error:
@@ -1498,7 +1503,15 @@ def create_app(
 
     @application.get("/api/projects/{project_id}/relevance/scoring/runs", tags=["relevance"])
     def relevance_scoring_runs(project_id: str) -> list[dict[str, object]]:
-        return ScoringRepository(job_repository().database_path).progress(project_id)
+        try:
+            return ScoringRepository(job_repository().database_path).progress(project_id)
+        except sqlite3.OperationalError as error:
+            if "locked" not in str(error).lower() and "busy" not in str(error).lower():
+                raise
+            raise HTTPException(status_code=503, detail=(
+                "The workspace database is busy. Retry scoring status shortly; "
+                "your saved records and scores have not been changed."
+            )) from error
 
     @application.post("/api/projects/{project_id}/relevance/scoring/runs/{run_id}/pause", tags=["relevance"])
     def pause_relevance_scoring(
@@ -1513,10 +1526,64 @@ def create_app(
     @application.post("/api/projects/{project_id}/relevance/scoring/runs/{run_id}/resume", tags=["relevance"])
     def resume_relevance_scoring(
         project_id: str, run_id: str, _: Annotated[None, Depends(require_setup_token)],
+        request: ResumeRelevanceScoringRequest | None = None,
     ) -> dict[str, str]:
         try:
-            ScoringRepository(job_repository().database_path).resume(run_id, project_id)
+            ScoringRepository(job_repository().database_path).resume(
+                run_id, project_id, request.parallel_batches if request else None,
+            )
             return {"status": "running"}
+        except ScoringError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @application.post(
+        "/api/projects/{project_id}/relevance/scoring/runs/{run_id}/extend", tags=["relevance"],
+    )
+    def extend_relevance_scoring(
+        project_id: str, run_id: str, request: ExtendRelevanceScoringRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> dict[str, object]:
+        try:
+            count = ScoringRepository(job_repository().database_path).extend(
+                run_id, project_id, request.additional_count, request.parallel_batches,
+            )
+            return {"status": "running", "added_count": count}
+        except ScoringError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @application.post(
+        "/api/projects/{project_id}/relevance/scoring/runs/{run_id}/confirm", tags=["relevance"],
+    )
+    def confirm_relevance_scoring(
+        project_id: str, run_id: str, _: Annotated[None, Depends(require_setup_token)],
+    ) -> dict[str, object]:
+        try:
+            return ScoringRepository(job_repository().database_path).confirm(run_id, project_id)
+        except ScoringError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @application.get(
+        "/api/projects/{project_id}/relevance/scoring/runs/{run_id}/filter", tags=["relevance"],
+    )
+    def relevance_score_filter(project_id: str, run_id: str) -> dict[str, object]:
+        try:
+            return ScoringRepository(job_repository().database_path).filter_state(run_id, project_id)
+        except ScoringError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @application.post(
+        "/api/projects/{project_id}/relevance/scoring/runs/{run_id}/filter",
+        tags=["relevance"], status_code=201,
+    )
+    def validate_relevance_score_filter(
+        project_id: str, run_id: str, request: ValidateRelevanceScoreFilterRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> dict[str, object]:
+        try:
+            return ScoringRepository(job_repository().database_path).validate_filter(
+                run_id, project_id, request.minimum_score, request.include_not_assessable,
+                request.expected_confirmation_sha256,
+            )
         except ScoringError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
