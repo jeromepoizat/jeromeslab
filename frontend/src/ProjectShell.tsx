@@ -14,6 +14,7 @@ import { EvidenceStrategyStage } from './EvidenceStrategyStage'
 import { SourceQueriesStage } from './SourceQueriesStage'
 import { RelevancePreparationStage } from './RelevancePreparationStage'
 import { RelevanceScoringStage } from './RelevanceScoringStage'
+import { SectionNavigator } from './SectionNavigator'
 
 type Project = {
   id: string
@@ -59,6 +60,8 @@ type Props = {
 }
 
 export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, jobNavigation, onJobsChanged, onOpenSettings }: Props) {
+  const projectContentRef = useRef<HTMLElement | null>(null)
+  const projectScrollRef = useRef<HTMLDivElement | null>(null)
   const [projects, setProjects] = useState<Project[]>([])
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null)
   const [question, setQuestion] = useState('')
@@ -133,7 +136,8 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
 
   useEffect(() => {
     if (selectedProjectId === null) return
-    window.setTimeout(() => window.scrollTo({ top: restoredScrollTop.current }), 0)
+    const timer = window.setTimeout(() => projectScrollRef.current?.scrollTo({ top: restoredScrollTop.current }), 0)
+    return () => window.clearTimeout(timer)
   }, [selectedProjectId])
 
   useEffect(() => {
@@ -167,15 +171,17 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
   }, [jobNavigation, saveClientState])
 
   useEffect(() => {
+    const scroller = projectScrollRef.current
+    if (!scroller) return
     const onScroll = () => {
       if (saveTimer.current !== null) window.clearTimeout(saveTimer.current)
       saveTimer.current = window.setTimeout(() => {
-        saveClientState({ selected_project_id: selectedProjectId, scroll_top: Math.round(window.scrollY) })
+        saveClientState({ selected_project_id: selectedProjectId, scroll_top: Math.round(scroller.scrollTop) })
       }, 350)
     }
-    window.addEventListener('scroll', onScroll, { passive: true })
+    scroller.addEventListener('scroll', onScroll, { passive: true })
     return () => {
-      window.removeEventListener('scroll', onScroll)
+      scroller.removeEventListener('scroll', onScroll)
       if (saveTimer.current !== null) window.clearTimeout(saveTimer.current)
     }
   }, [saveClientState, selectedProjectId])
@@ -375,7 +381,7 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
     setSuppressHoverExpansion(true)
   }
   return (
-    <div className={`project-layout ${isSidebarExpanded ? 'project-layout--expanded' : ''}`}>
+    <div ref={projectScrollRef} className={`project-layout ${isSidebarExpanded ? 'project-layout--expanded' : ''}`}>
       {selectedProject !== null && <div className="project-header-context"><strong>{selectedProject.tag}</strong><span>{selectedProject.scientific_question}</span></div>}
       <aside className="project-sidebar" aria-label="Projects" onMouseEnter={() => setIsSidebarHovered(true)} onMouseLeave={() => { setIsSidebarHovered(false); setSuppressHoverExpansion(false) }}>
         <div className="project-sidebar-header">
@@ -392,7 +398,7 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
           </nav>
         </div>
       </aside>
-      <section className="project-content">
+      <section className="project-content" ref={projectContentRef}>
         {selectedProject === null ? <div className="new-project-card">
           <p className="step-label">New project</p>
           <SectionTitle help="Start from a therapeutic problem, a biological system, a known target, or an existing peptide. You do not need to know the mechanism or final design yet.">What scientific question do you want to investigate?</SectionTitle>
@@ -582,6 +588,7 @@ export function ProjectShell({ setupToken, llmSettings, jobs, nowMilliseconds, j
           {error !== null && <p className="setup-error" role="alert">{error}</p>}
         </article>}
       </section>
+      {selectedProject !== null && <SectionNavigator contentRef={projectContentRef} scrollRef={projectScrollRef} projectId={selectedProject.id} projectTag={selectedProject.tag} />}
     </div>
   )
 }

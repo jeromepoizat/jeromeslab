@@ -350,7 +350,7 @@ records remain outside it. Validation locks extension and resume. Later work mus
 confirmation explicitly, and adding scores after it requires a checkpoint fork
 (ADRs 0023–0025).
 
-### Select scored records for further work
+### Select records by relevance score
 
 After scoring validation, a separate local section selects records from that
 exact frozen pool. A vertical slider sets the minimum included score (0–5),

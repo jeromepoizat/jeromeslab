@@ -161,7 +161,7 @@ export function RelevanceScoringStage({ projectId, retrievalJob, promptJob, setu
   }
 
   return <><section className="project-section relevance-scoring">
-    <SectionTitle help="Score distinct saved source records for relevance only, in bounded API batches. Choose a record count to control expense; the seed makes the query-and-collection-balanced selection repeatable. You can pause between requests and resume saved progress. This is not study-quality assessment.">Score retrieved records</SectionTitle>
+    <SectionTitle help="Score distinct saved source records for relevance only, in bounded API batches. Choose a record count to control expense; the seed makes the query-and-collection-balanced selection repeatable. You can pause between requests and resume saved progress. This is not study-quality assessment.">Score retrieved records for relevance</SectionTitle>
     {statusError?.projectId === projectId ? <div role="alert"><p className="setup-error">{runsLoaded ? 'Showing last saved status. ' : ''}{statusError.message}</p><button type="button" className="text-button" onClick={() => { setStatusError(null); setRetryStatus(value => value + 1) }}>Retry status</button></div> : !runsLoaded && <p className="evidence-themes-helper">Loading scoring status…</p>}
     {runsLoaded && <>
       <div className="relevance-controls">
@@ -196,7 +196,7 @@ export function RelevanceScoringStage({ projectId, retrievalJob, promptJob, setu
       {firstRun.status === 'completed' && firstRun.available_unscored > 0 && <ExtensionCard key={`${firstRun.id}:${firstRun.selected_count}`} run={firstRun} working={working} onExtend={additionalCount => void action(`/api/projects/${projectId}/relevance/scoring/runs/${firstRun.id}/extend`, { additional_count: additionalCount, parallel_batches: parallelBatches })} />}
       <div className="relevance-confirm-card">
         <button className="primary-button" type="button" disabled={working || firstRun.scored_count === 0} onClick={() => void action(`/api/projects/${projectId}/relevance/scoring/runs/${firstRun.id}/confirm`)}>Validate scoring</button>
-        <HelpTooltip label="Validate scoring help">{`Validation locks the ${firstRun.scored_count.toLocaleString()} currently scored records for the next step. After validation, more records cannot be added to this scored pool, and scoring cannot be resumed in this project.`}</HelpTooltip>
+        <HelpTooltip label="Scoring validation warning" variant="warning">{`Validation locks the ${firstRun.scored_count.toLocaleString()} currently scored records for the next step. After validation, more records cannot be added to this scored pool, and scoring cannot be resumed in this project.`}</HelpTooltip>
       </div>
     </>}
     {error && <p className={error.includes('already been scored') ? 'evidence-themes-helper' : 'setup-error'} role={error.includes('already been scored') ? undefined : 'alert'}>{error}</p>}

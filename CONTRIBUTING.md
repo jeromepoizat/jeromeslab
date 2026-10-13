@@ -62,6 +62,7 @@ From the repository root:
 
 Push-Location frontend
 & ..\.runtime\node\node.exe ..\.runtime\pnpm\node_modules\pnpm\bin\pnpm.cjs lint
+& ..\.runtime\node\node.exe ..\.runtime\pnpm\node_modules\pnpm\bin\pnpm.cjs test
 & ..\.runtime\node\node.exe ..\.runtime\pnpm\node_modules\pnpm\bin\pnpm.cjs build
 Pop-Location
 ```
@@ -78,6 +79,7 @@ From the repository root:
 (
   cd frontend
   ../.runtime/node/bin/node ../.runtime/pnpm/lib/node_modules/pnpm/bin/pnpm.cjs lint
+  ../.runtime/node/bin/node ../.runtime/pnpm/lib/node_modules/pnpm/bin/pnpm.cjs test
   ../.runtime/node/bin/node ../.runtime/pnpm/lib/node_modules/pnpm/bin/pnpm.cjs build
 )
 ```

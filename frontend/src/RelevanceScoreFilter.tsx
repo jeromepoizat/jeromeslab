@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { readApiError } from './apiClient'
 import { HelpTooltip, SectionTitle } from './ProjectElements'
 import { relevanceScoreLabels } from './relevanceScoreLabels'
+import { ScoreThresholdControl } from './ScoreThresholdControl'
 
 type Selection = {
   minimum_score: number
@@ -16,6 +17,8 @@ type FilterState = {
   confirmation_sha256: string
   selection: Selection | null
 }
+
+const selectionWarning = 'After validation, records excluded at this step cannot be included in later steps of this project. Their original records and scores remain saved.'
 
 /** A local selection of an immutable scored pool, not another LLM job. */
 export function RelevanceScoreFilter({ projectId, runId, setupToken }: {
@@ -72,7 +75,7 @@ export function RelevanceScoreFilter({ projectId, runId, setupToken }: {
   }
 
   return <section className="project-section relevance-score-filter">
-    <SectionTitle help="Choose which validated relevance scores to carry into further work. The slider sets the minimum included score: higher scores are also included. Not assessable is a separate choice, not a low score. Counts refer only to the validated scored pool, not unscored retrieval records. This filter does not assess study quality or delete excluded records.">Select records for further work</SectionTitle>
+    <SectionTitle help="Choose which validated relevance scores to carry into further work. The slider sets the minimum included score: higher scores are also included. Not assessable is a separate choice, not a low score. Counts refer only to the validated scored pool, not unscored retrieval records. This filter does not assess study quality or delete excluded records.">Select records by relevance score</SectionTitle>
     {!data && !error && <p className="evidence-themes-helper">Loading scored records…</p>}
     {data && <>
       <div className="score-filter-summary" aria-live="polite" aria-atomic="true">
@@ -80,17 +83,17 @@ export function RelevanceScoreFilter({ projectId, runId, setupToken }: {
         <div><strong>{excluded.toLocaleString()}</strong><span>Records excluded</span></div>
       </div>
       <div className="score-filter-card">
-        <div className="score-filter-threshold"><strong>Minimum inclusion score: {threshold}</strong><HelpTooltip label="Minimum score help">Include records at this score or higher. Move the slider or click a score row to choose the minimum.</HelpTooltip></div>
+        <div className="score-filter-threshold"><strong>Minimum inclusion score: {threshold}</strong><HelpTooltip label="Minimum score help">The numbered arrow marks the minimum included score. Green points above it are included; lower points are excluded. Click a point or row, drag the arrow, or use the arrow keys to change the threshold.</HelpTooltip></div>
         <div className="score-filter-scale">
-          <div className="score-filter-slider-wrap"><input className="score-filter-slider" type="range" min={0} max={5} step={1} value={threshold} disabled={locked} aria-label="Minimum inclusion score" aria-valuetext={`Include scores ${threshold} to 5`} onChange={event => setMinimum(Number(event.target.value))} /></div>
+          <ScoreThresholdControl value={threshold} disabled={locked} onChange={setMinimum} />
           <div className="score-filter-levels">{relevanceScoreLabels.filter(([score]) => score !== 'not_assessable').map(([score, label]) => <button className={`score-filter-level ${Number(score) >= threshold ? 'score-filter-level--included' : ''}`} type="button" key={score} disabled={locked} onClick={() => setMinimum(Number(score))} aria-label={`Set minimum score to ${score}: ${data.counts[score].toLocaleString()} records`}><span>{label}</span><strong>{data.counts[score].toLocaleString()}</strong><small>{Number(score) >= threshold ? 'Included' : 'Excluded'}</small></button>)}</div>
         </div>
         <label className={`score-filter-unassessable ${includeNA ? 'score-filter-unassessable--included' : ''}`}><input type="checkbox" checked={includeNA} disabled={locked} onChange={event => setIncludeUnassessable(event.target.checked)} /><span>Include not assessable</span><strong>{data.counts.not_assessable.toLocaleString()}</strong><HelpTooltip label="Not assessable help">The saved metadata was insufficient to assign a relevance score. Keep these records for further review if you do not want to exclude them on missing information alone.</HelpTooltip></label>
       </div>
       {data.selection ? <p className="score-filter-validation" role="status">Selection validated · {data.selection.included_count.toLocaleString()} records saved for further work</p> : confirming ? <div className="score-filter-confirmation">
         <p>Include {included.toLocaleString()} records and exclude {excluded.toLocaleString()} from further work? This saves and locks this selection; original scores and excluded records remain preserved.</p>
-        <div className="query-actions"><button className="primary-button" type="button" disabled={saving} onClick={() => void validate()}>{saving ? 'Validating…' : 'Confirm selection'}</button><button className="text-button" type="button" disabled={saving} onClick={() => setConfirming(false)}>Cancel</button></div>
-      </div> : <div className="relevance-confirm-card"><button className="primary-button" type="button" disabled={included === 0} onClick={() => setConfirming(true)}>Validate selection</button></div>}
+        <div className="query-actions"><button className="primary-button" type="button" disabled={saving} onClick={() => void validate()}>{saving ? 'Validating…' : 'Confirm selection'}</button><HelpTooltip label="Relevance selection validation warning" variant="warning">{selectionWarning}</HelpTooltip><button className="text-button" type="button" disabled={saving} onClick={() => setConfirming(false)}>Cancel</button></div>
+      </div> : <div className="relevance-confirm-card"><button className="primary-button" type="button" disabled={included === 0} onClick={() => setConfirming(true)}>Validate selection</button><HelpTooltip label="Relevance selection validation warning" variant="warning">{selectionWarning}</HelpTooltip></div>}
       {!data.selection && included === 0 && <p className="evidence-themes-helper">Include at least one record to continue.</p>}
     </>}
     {error && <p className="setup-error" role="alert">{error}</p>}

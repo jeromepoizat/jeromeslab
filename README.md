@@ -38,7 +38,7 @@ some records have been scored. Failed scoring batches retry once automatically,
 then pause on a second consecutive failure; each attempt and its cost stays
 recorded. A second independent scoring
 run cannot be started in the same project.
-After scoring validation, **Select records for further work** provides a vertical
+After scoring validation, **Select records by relevance score** provides a vertical
 minimum-score slider, per-score counts, and live included/excluded totals.
 Not-assessable records have a separate inclusion checkbox. **Validate selection**
 asks for confirmation and saves the exact read-only inclusion pool without
@@ -244,6 +244,7 @@ Run frontend checks from `frontend/`:
 
 ```shell
 pnpm lint
+pnpm test
 pnpm build
 ```
 

@@ -1,11 +1,13 @@
-import { useState, type ReactNode } from 'react'
+import { useId, useState, type ReactNode } from 'react'
 
-export function HelpTooltip({ children, label = 'Section help' }: { children: string; label?: string }) {
-  return <span className="section-help" tabIndex={0} aria-label={label}>?<span className="section-help-tooltip" role="tooltip">{children}</span></span>
+export function HelpTooltip({ children, label = 'Section help', variant = 'help' }: { children: string; label?: string; variant?: 'help' | 'warning' }) {
+  const tooltipId = useId()
+  return <span className={`section-help ${variant === 'warning' ? 'section-help--warning' : ''}`} tabIndex={0} aria-label={label} aria-describedby={tooltipId}>{variant === 'warning' ? '!' : '?'}<span id={tooltipId} className="section-help-tooltip" role="tooltip">{children}</span></span>
 }
 
 export function SectionTitle({ children, help }: { children: string; help: string }) {
-  return <div className="section-title"><h2>{children}</h2><HelpTooltip>{help}</HelpTooltip></div>
+  const sectionId = useId()
+  return <div className="section-title" id={`project-section-${sectionId}`} data-project-section-title={children}><h2>{children}</h2><HelpTooltip>{help}</HelpTooltip></div>
 }
 
 export function ChangeModelIcon() {

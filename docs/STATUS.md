@@ -10,6 +10,41 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 
 ## Implementation state
 
+- Scoring and relevance-filter validation actions now use neutral grey **!** icons
+  matching the shared **?** helper styling, without warm warning colors,
+  on hover or keyboard focus. Scoring warns that its scored pool cannot grow or
+  resume; selection warns that excluded records cannot enter later steps of the
+  same project, while original records/scores remain preserved. Both selection
+  validation and its final confirmation reuse the shared warning-tooltip variant.
+  Verified with ten frontend tests, frontend lint and production build.
+- Scoring-section titles now explicitly distinguish relevance from future score
+  types: **Prepare relevance scoring**, **Score retrieved records for relevance**,
+  and **Select records by relevance score**. The section navigator automatically
+  uses these titles. Only presentation wording changed, not prompts or history.
+- Relevance-score selection now uses a six-point threshold rail rather than the
+  browser's native range styling. A numbered right-pointing arrow marks the
+  minimum score and aligns with its row; the green rail/points show included
+  levels. Clicking points/rows, dragging, touch and keyboard controls remain
+  available until confirmation/validation locks the selection. Original scores,
+  filtering semantics and saved provenance are unchanged. Verified with ten
+  frontend tests, frontend lint and production build.
+- Projects now have a fixed, collapsible project-tag navigator on the right.
+  It discovers visible shared section headings in document order, highlights the
+  viewport's current section, and smoothly scrolls to a chosen section's top.
+  Dynamic stages and project switches update the list automatically; rendered
+  Markdown subheadings and hidden sections are not separate navigation entries.
+  The central project stays centered without shifting. Smaller screens default
+  to a compact toggle; keyboard navigation, aria-current and reduced-motion
+  preferences are supported. This is local UI only, not a workflow/data change.
+  Section travel and highlight tracking use the fixed, scrollable
+  `.project-layout` pane, not the browser window. Saved/restored project scroll
+  positions use that same pane; project-tag renames update the navigator header.
+  Titles stay on one line and clip/ellipsize during expansion instead of wrapping.
+  The final expanded width is measured from the longest title so its full text is
+  visible; viewport width remains a safety cap, with full-title hover text.
+  Verified with seven frontend navigation tests, frontend lint and production
+  build. The earlier scoring/database changes were committed as `cf2a1a6`;
+  the navigator and relevance-selection UI have now been approved for commit.
 - Fixed scoring-status lock/loading failure paths (ADR 0028): queue, scoring and
   retrieval contexts are coordinated locally and always close their connections;
   idle claims no longer reserve a writer. Charter dependency scans are skipped

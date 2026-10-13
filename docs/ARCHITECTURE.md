@@ -53,6 +53,15 @@ The initial client will poll job and project endpoints. WebSockets are out of
 scope for V1; Server-Sent Events can be evaluated later if polling becomes
 inadequate.
 
+The right-side project section navigator discovers the shared `SectionTitle`
+markers within the selected project, rather than duplicating stage names and
+visibility rules. DOM/size changes refresh the list; scroll tracking highlights
+the current section within the actual `.project-layout` scroll pane. Section
+travel and saved/restored scroll positions use that same pane rather than window
+scroll coordinates. The header displays the project tag. Its fixed, collapsible
+layout does not shift the central content, and reduced-motion preferences disable
+animated travel.
+
 ## Backend boundaries
 
 The Python package will evolve toward these logical modules:
