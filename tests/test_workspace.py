@@ -69,7 +69,7 @@ def test_configure_workspace_creates_layout_and_applies_migration(tmp_path: Path
         revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
 
     assert "application_metadata" in tables
-    assert revision == ("0029",)
+    assert revision == ("0030",)
     with sqlite3.connect(workspace_path / DATABASE_FILE_NAME) as connection:
         parallel = next(row for row in connection.execute("PRAGMA table_info(relevance_scoring_runs)")
                         if row[1] == "parallel_batches")
@@ -90,7 +90,7 @@ def test_existing_scoring_database_upgrades_to_extension_schema(tmp_path: Path) 
         revision = connection.execute("SELECT version_num FROM alembic_version").fetchone()
     assert {"relevance_scoring_runs", "relevance_scoring_extensions",
             "relevance_scoring_confirmations", "relevance_score_filters"} <= tables
-    assert revision == ("0029",)
+    assert revision == ("0030",)
 
 
 def test_readiness_migration_preserves_consumed_scope_prompt(tmp_path: Path) -> None:

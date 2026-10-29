@@ -433,7 +433,46 @@ Will preserve include/exclude/uncertain, reason, exact criteria version, stage,
 model/prompt provenance, confidence representation, and human override without
 deleting the original decision. Schema is unresolved.
 
-### EvidenceItem
+### Source material (implemented)
+
+Migration 0030 adds `source_material_runs` linked to the exact relevance filter,
+with its digest, frozen adapter/limit policy and resumable state. Each
+`source_material_records` row preserves one retained source identity, original
+retrieval metadata and page reference, metadata digest, ordinal and abstract flag.
+`source_material_resources` holds the current status of metadata, full text,
+supplements and data-link inventory; this cursor is not scientific history.
+
+`source_material_attempts` appends immutable outcomes per resource and queue job:
+URL, HTTP status, retrieval date, original file path, SHA-256, byte size, content
+type, complete parsed inventory/license context and sanitized failure. Retries
+never overwrite an earlier response. `source_material_job_tasks` stores each
+attempt's exact ordered resource manifest; jobs snapshot its digest/count,
+selection digest and policy without embedding thousands of task IDs in the
+global queue response. Successful assets stay fixed; future extraction must
+consume explicit attempt IDs/hashes, not a mutable latest cursor.
+
+`full_text_fallback` is an additional resource kind, requiring no schema migration.
+New runs include it; existing runs explicitly append it only for records without
+saved text. Job snapshots freeze the additional resolver policy separately from
+the original run policy. Attempts retain provider, format, metadata-attempt link,
+route diagnostics and preprint discovery response/version information. Coverage
+counts distinct records with either saved primary or fallback text; it does not
+rewrite Europe PMC access outcomes or double-count two representations.
+
+ADR 0032 adds explicit `unsupported` and `needs_review` cursor/attempt outcomes,
+separate from retryable `failed`, `unavailable`, `blocked` and `skipped_limit`.
+Local-only recovery jobs freeze exact task manifests and parser versions; new
+attempts link prior attempt IDs/hashes and preserve successful raw files and all
+older outcomes. No schema change is necessary. Queue completion is not an
+assertion of complete acquisition or a validated extraction checkpoint.
+
+ADR 0033 adds a `recovered` primary resource cursor for text already acquired via
+fallback. The failed primary attempt remains immutable; the covering fallback
+attempt records its primary resource/failure link, or an offline repair appends
+a recovered attempt linked to the existing fallback. Coverage still counts only
+distinct sources with saved text, not the recovered cursor as another asset.
+
+### EvidenceItem (planned)
 
 Will represent an atomic peptide-relevant result with a source publication or
 structured source record and exact source location/field, study or assay context,

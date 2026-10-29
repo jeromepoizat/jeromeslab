@@ -43,6 +43,34 @@ minimum-score slider, per-score counts, and live included/excluded totals.
 Not-assessable records have a separate inclusion checkbox. **Validate selection**
 asks for confirmation and saves the exact read-only inclusion pool without
 deleting excluded records or changing scores. This local step makes no API calls.
+**Collect source material** then retrieves available Europe PMC full-text XML,
+bounded declared supplements, refreshed metadata, and linked-data inventories
+for the exact retained pool. It makes no LLM calls. Live progress, resource
+states, pause/resume and retry of failed resources preserve successfully saved
+material and every earlier attempt. Missing text never excludes a retained record.
+Known Europe PMC access limitations are not retried; failed prerequisites show
+dependent material as blocked, separately from failed requests. Abstract-only
+does not necessarily mean paywalled. Searches can include preprint metadata,
+and missing text can use official PMC BioC and bioRxiv/medRxiv JATS fallbacks.
+Fallbacks preserve identifiers, preprint versions, licensing and earlier attempts;
+they do not scrape arbitrary publishers or bypass paywalls. Existing runs offer
+**Try missing full text elsewhere**; prepared tasks use **Resume collection**.
+New starts/resumes prioritize metadata and full text across the retained pool,
+then linked-data inventories, with supplements deferred until the end. Progress
+identifies the current phase. PMC's explicit BioC "No result" response is
+unavailable, not a retryable failure; saved earlier responses are reused to append
+a corrected outcome on resume without downloading them again.
+Resource outcomes distinguish retryable network/server failures, confirmed
+unavailability at a checked route, unsupported routes, verification issues and
+size limits. Only temporary failures/unfinished dependencies are retried;
+unavailable resources are skipped. Verified saved BioC XML can be recovered
+locally using numeric or explicit matching PMCID fields, preserving every earlier
+attempt. Unresolved material is visible, not silently treated as unavailable.
+Primary XML failures covered by saved fallback text are labelled recovered and
+not retried; the failed HTTP attempts remain in history. Supplements are separate:
+explicit no-supplement metadata resolves their status, otherwise unsupported
+discovery stays visible rather than being retried indefinitely.
+PDF uploads and recursive linked-database fetching are not implemented.
 Study-quality assessment, evidence extraction, design, and in-silico stages
 remain planned. See
 [current status](docs/STATUS.md) before starting work.

@@ -33,6 +33,11 @@ unresolved ideas in other documentation are not decisions.
 | [0026](adr/0026-reviewed-relevance-score-selection.md) | Review a minimum-score inclusion filter and preserve its exact validated record pool | Accepted |
 | [0027](adr/0027-bounded-parallel-scoring-batches.md) | Allow 1–8 simultaneous batches within one scoring run, with bounded resume waits and out-of-order checkpoints | Accepted; amends 0004 |
 | [0028](adr/0028-bounded-scoring-database-access.md) | Coordinate short SQLite contexts and use bounded scoring read models with visible status failures | Accepted; refines 0027 |
+| [0029](adr/0029-bounded-source-material-acquisition.md) | Collect bounded Europe PMC source material from the exact validated inclusion pool, without an LLM | Accepted |
+| [0030](adr/0030-provider-scoped-access-and-blocked-resources.md) | Distinguish provider-scoped unavailable text from retryable failures and blocked dependencies | Accepted; refines 0029 |
+| [0031](adr/0031-official-full-text-fallbacks.md) | Resolve missing text through bounded official PMC and preprint routes with additive history | Accepted; extends 0029–0030 |
+| [0032](adr/0032-explicit-acquisition-outcomes-and-local-recovery.md) | Distinguish temporary failure, confirmed absence, unsupported routes and review issues; recover verified saved text offline | Accepted; refines 0029–0031 |
+| [0033](adr/0033-fallback-covered-primary-resources.md) | Resolve primary download failures covered by saved fallback text without rewriting history or retrying redundant downloads | Accepted; refines 0029–0032 |
 
 Routine implementation choices belong in code and tests. Add an ADR when a
 choice constrains future architecture, security, scientific validity, data

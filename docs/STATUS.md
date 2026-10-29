@@ -1,6 +1,6 @@
 # Current status
 
-Last updated: 2026-10-13
+Last updated: 2026-10-15
 
 ## Current milestone
 
@@ -10,6 +10,156 @@ Windows x64/ARM64, Linux x64/ARM64, and macOS ARM64/Intel runners.
 
 ## Implementation state
 
+- ADR 0033 resolves primary XML failures covered by verified saved fallback
+  text. New fallback attempts link the primary resource/failure they cover and
+  atomically mark the mutable cursor recovered; immutable failed HTTP attempts
+  stay unchanged. Recovered cursors are excluded from retries/failure counts and
+  never counted as another saved full text. Inspectors name the recovery provider
+  and covering attempt. Metadata explicitly reporting `hasSuppl=N` resolves a
+  missing-primary supplement as not applicable; saved XML declarations take
+  precedence. With fallback-only text and no explicit absence, supplementary
+  discovery is unsupported, not indefinitely blocked or globally unavailable.
+  User-authorized PROJ012 offline reconciliation removed its last retryable
+  failure and resolved the blocked supplement without requests. All 375 saved
+  full texts, prior jobs/attempts/records/selections and successful cursors were
+  verified unchanged. Three newer bioRxiv routes remain pending for explicit
+  resume (the previous worker had still used its old DOI-prefix rule); the
+  separate size-limited archive remains unresolved. Restart before resuming.
+  A safety snapshot is in ignored
+  `.runtime/proj012-before-coverage-resolution-20261015-01.sqlite3`.
+  Verified with 28 acquisition tests, Ruff, strict mypy, frontend lint and build;
+  no migration, new dependency or LLM/source requests were required for repair.
+- ADR 0032 separates retryable transient failures, explicit route-unavailable
+  material, unsupported routes, verification/review issues and size exclusions.
+  Only pending/failed/blocked resources enter ordinary retries. Queue completion
+  is labelled separately from unresolved acquisition; the UI explains each
+  resource count, without treating missing access as paper exclusion. BioC now
+  accepts numeric/canonical PMCID forms and explicit matching PMC metadata when
+  the document ID is unknown, while rejecting contradictions and unverifiable
+  bodies. Versioned offline recovery verifies stored bytes/hashes, atomically
+  claims the single operation, and appends corrected attempts with parent links;
+  successful assets and completed history are never rewritten. Active work and
+  downstream dependents block recovery. A publisher-based preprint DOI check
+  replaces the obsolete `10.1101`-only filter and supports current bioRxiv IDs.
+  User-authorized PROJ012 recovery saved 36 existing XML responses as usable
+  full text (334 -> 370 distinct records), classified 118 explicit PMC absences
+  as unavailable, and separated 779 records with no supported route. Three newer
+  bioRxiv identifiers are now pending for explicit resume; 14 transient failures,
+  one dependency-blocked supplement and one size-limited archive remain visible.
+  No network or LLM requests were made by either recovery job. All earlier
+  attempts/jobs/records/selections and successful resource cursors were verified
+  unchanged; a safety snapshot is in ignored
+  `.runtime/proj012-before-outcome-recovery-20261015-01.sqlite3`. Restart the app
+  before resuming so future requests use the updated adapters and UI.
+  The full Python suite passed 153 tests before the final preprint-prefix fix;
+  focused acquisition tests, Ruff, strict mypy, ten frontend tests, lint and
+  production build were also run. No new dependency or migration is required.
+- New acquisition start/resume manifests prioritize each record's metadata,
+  primary full text and fallback across the whole retained pool, then linked-data
+  inventories, with supplements deferred to the end. Slow supplement requests
+  cannot block unattempted text. Limits/retries and sequential execution remain
+  unchanged; old active/completed manifests are not rewritten. Progress now names
+  the current collection phase. PMC BioC's explicit leading "No result can be
+  found" message is correctly unavailable, not failed; generic HTML, timeouts,
+  identity mismatches and server errors remain failures. On explicit resume,
+  digest-verified saved absence responses append new unavailable attempts with
+  parent-attempt/hash/rule-version links without refetching or erasing failures.
+  PROJ012 needs pause/restart/resume to load this behavior; no live job or history
+  was changed during implementation. Verified with 20 acquisition/fallback tests,
+  Ruff, strict mypy, frontend lint and production build. No migration, new
+  dependency, parallel requests or LLM calls are introduced.
+- Official full-text fallbacks now extend acquisition (ADR 0031): PMC BioC by
+  explicit PMCID and bioRxiv/medRxiv DOI discovery followed by version-matched
+  JATS XML. Identifier/body/version checks, HTTPS host/redirect restrictions,
+  bounded streamed bytes/deadlines/retries and pacing prevent arbitrary scraping
+  or silent document substitution. BioC is labelled as transformed repository
+  text. Raw text, preprint discovery files/hashes, licensing and route diagnostics
+  are preserved; supplements remain Europe PMC-specific. No PDFs, Unpaywall,
+  arbitrary publisher harvesting, LLM calls or paywall bypass are added.
+  New runs include fallback resources; idle old runs can explicitly add missing
+  tasks and resume, guarded against downstream dependents. Original policy and
+  attempts remain fixed; each new job separately freezes the resolver policy.
+  Coverage counts distinct records with primary or fallback text. User-authorized
+  PROJ012 preparation appended 968 pending fallback tasks, preserving its 315
+  primary full texts and verified unchanged records/attempts/jobs/run/selection
+  history. No job was queued or started. A safety snapshot remains in ignored
+  `.runtime/proj012-before-fallback-20261014-01.sqlite3`. Restart then use
+  **Resume collection**. Other old runs offer **Try missing full text elsewhere**.
+  Verified with 147 Python tests, Ruff, strict mypy, ten frontend tests, lint and
+  production build. Live smoke tests recovered one PMC BioC and one bioRxiv JATS
+  document; an initial PMC 429 remained retryable, not misclassified as no access.
+  medRxiv uses the documented shared API but has not had a live download smoke
+  test. No new dependency or database migration is required.
+- Source-material retry/resume action is centered using the shared action-row
+  styling. Frontend lint and production build pass; no acquisition/data change.
+- Source acquisition now distinguishes **Unavailable via Europe PMC**, retryable
+  failures and dependency-blocked resources (ADR 0030). Successful metadata with
+  `inEPMC=N` or `isOpenAccess=N` prevents known-unavailable XML requests, recording
+  the metadata attempt, source flags and access-rule version. Unknown availability
+  and HTTP 500 alone never prove no access. Failed XML/metadata blocks dependent
+  resources rather than inflating the failed-download count; resume includes those
+  dependencies, while unavailable material is excluded from later retry manifests.
+  Existing saved files/history stay unchanged. On the next explicit retry, older
+  failed records can receive new local availability outcomes without repeating
+  known-unavailable requests. No live project data was changed automatically.
+  Read-only PROJ012 inspection found 33 retained preprints: 19 bioRxiv, nine
+  Research Square, five Preprints.org. All lacked Europe PMC-hosted XML in the
+  saved metadata; this does not mean their publisher text is private. The app
+  searches their Europe PMC metadata, not bioRxiv/publisher full text directly.
+  Verified with 13 acquisition tests, including an existing-run retry that appends
+  local availability outcomes without downloads or rewriting old attempts; Ruff,
+  strict mypy, frontend lint and build pass.
+  Restart is required for these rules; no migration or LLM calls are needed.
+- Source-material access summary now has a 1.25rem top gap and a live remaining-
+  resource counter during retries. Existing three-second polling refreshes current
+  unavailable/failed/size-limited counts; remaining retry checks visibly decrease
+  even when attempts fail again. Earlier failures only disappear from the current
+  failure total when resolved, not when a retry is queued. Histories are preserved.
+  Read-only PROJ012 diagnosis found 475 failed resource cursors: 191 full-text
+  HTTP 500 responses, 81 generic network/timeout failures (63 supplements, 12 XML,
+  six data-link inventories), and 203 supplements blocked by failed XML rather
+  than an attempted supplement download. A subsequent saved-metadata snapshot
+  associated 190 of those 191 HTTP 500 responses with non-open-access records;
+  one open-access record also returned 500. Two public endpoints reproduced the
+  generic service error. This suggests access-aware acquisition and separate
+  dependency-blocked states as follow-up work, not a silent reclassification or
+  modification of the existing run. Saved network diagnostics cannot distinguish
+  the underlying timeout/connection causes; one public supplement probe reproduced
+  a read timeout before response headers arrived. Verified with ten acquisition tests,
+  Ruff, strict mypy, frontend lint and production build. No live project writes,
+  acquisition-policy changes or LLM calls were made.
+- Collection retry progress now subtracts distinct records with unattempted tasks
+  in the latest acquisition job, even when their earlier attempt failed. A record
+  returns to the processed count only after every retry task for it has an outcome;
+  multiple failed resources on one record are counted once. Active retries are
+  explicitly labelled, and saved resources, failure counts and immutable attempt
+  history are unchanged. This also works for paused or already-running retries.
+  Verified with ten acquisition regression tests, Ruff, strict mypy, frontend lint
+  and production build; tests use isolated fake-provider workspaces, not live data.
+- **Collect source material** now follows validated relevance selection (ADR 0029,
+  migration 0030). It freezes that exact retained pool and collects Europe PMC
+  metadata, available full-text XML, bounded declared supplementary ZIPs and
+  data-link inventories without an LLM. Raw files, hashes, URLs, HTTP outcomes,
+  dates, licenses, original retrieval/page links and failed/retried attempts stay
+  preserved. Missing text never changes inclusion. ZIPs are not executed or
+  extracted; linked databases are not recursively fetched. PDFs/user uploads and
+  evidence extraction remain future work.
+  The shared-style job card shows progress and elapsed time, aggregate access
+  coverage, failures/limits and 25-record inspect pages. Pause finishes the
+  current request; resume/retry skips successfully saved resources. Queue
+  cancellation, worker errors and restart leave runs resumable, and future
+  downstream jobs lock retry/resume. Exact per-job task manifests live in indexed
+  tables rather than large global-queue JSON payloads. All network calls happen
+  outside managed database transactions. HTTP requests have bounded retries,
+  sizes, timeout/backoff and official-host redirects; XML/entities and ZIP paths
+  are validated before marking files saved.
+  Verified with 137 Python tests, a final nine-test acquisition rerun, Ruff,
+  strict mypy, ten frontend tests, lint and production build. Browser QA used an
+  isolated temporary fake-data workspace; public Europe PMC smoke checks verified
+  metadata, XML and link inventory. The public supplementary endpoint probe timed
+  out after bounded retries; ZIP handling is fixture-tested, not live-download
+  verified. The temporary QA workspace was removed; no real project data or LLM
+  calls were used. Restart is required to load the backend and apply migration 0030.
 - Scoring and relevance-filter validation actions now use neutral grey **!** icons
   matching the shared **?** helper styling, without warm warning colors,
   on hover or keyboard focus. Scoring warns that its scored pool cannot grow or

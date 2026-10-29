@@ -10,6 +10,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from jeromes_laboratory.database.jobs import JobRecord, JobRepository, provider_input_for_job
+from jeromes_laboratory.database.materials import MaterialRepository
 from jeromes_laboratory.database.retrieval import RetrievalRepository
 from jeromes_laboratory.llm.generation import GenerationError, GenerationGateway
 from jeromes_laboratory.security.credentials import CredentialStore, CredentialStoreError
@@ -18,6 +19,7 @@ from jeromes_laboratory.sources.europe_pmc import (
     SourceSearchClient,
     SourceSearchError,
 )
+from jeromes_laboratory.sources.materials import EuropePMCMaterialClient, MaterialClient
 from jeromes_laboratory.storage.workspace import (
     DATABASE_FILE_NAME,
     WorkspaceLocationError,
@@ -37,12 +39,14 @@ class JobWorker:
         *,
         poll_interval: float = 0.5,
         europe_pmc_client: SourceSearchClient | None = None,
+        material_client: MaterialClient | None = None,
     ) -> None:
         self._workspace_service = workspace_service
         self._credential_store = credential_store
         self._generation_gateway = generation_gateway
         self._poll_interval = poll_interval
         self._europe_pmc_client = europe_pmc_client or EuropePMCClient()
+        self._material_client = material_client or EuropePMCMaterialClient()
         self._stop_event = threading.Event()
         self._threads: list[threading.Thread] = []
         self._recovered_database: Path | None = None
@@ -85,6 +89,14 @@ class JobWorker:
         return True
 
     def _execute(self, repository: JobRepository, job: JobRecord) -> bool:
+        if job.kind == "source_material_collection":
+            try:
+                MaterialRepository(repository.database_path).run_job(
+                    job.id, self._material_client, self._stop_event.is_set,
+                )
+            except Exception:  # noqa: BLE001 - files and completed attempts remain preserved.
+                repository.fail(job.id, None, "Source collection stopped unexpectedly. Resume from saved resources.")
+            return True
         if job.kind == "source_retrieval":
             try:
                 RetrievalRepository(repository.database_path).run_job(

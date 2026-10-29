@@ -411,13 +411,68 @@ manual override. Excluded papers are never deleted.
 The criteria schema, batching, confidence representation, model disagreement, and
 human-review protocol are unresolved.
 
-### Full-text and access resolution
+### Collect source material (Europe PMC with official text fallbacks implemented)
 
-The system needs explicit states such as `FULLTEXT_OPEN`, `ABSTRACT_ONLY`,
-`FULLTEXT_CLOSED`, `FULLTEXT_USER_PROVIDED`, and `NO_ABSTRACT`. Candidate legal
-resolution sources include PMC/Europe PMC, Unpaywall, publisher open access,
-repositories, preprints, and user-provided PDFs. Acquisition ordering, local
-retention, copyright boundaries, and document identity require further design.
+The exact validated relevance-selection pool is frozen as the acquisition input.
+Without an LLM, the queue refreshes Europe PMC metadata, retrieves available
+full-text XML by supported identifier, collects declared supplementary ZIPs
+within size/file limits, and inventories data-literature links. Original files,
+hashes, URLs, HTTP outcomes, timestamps, licensing statements and source/page
+relationships are retained. Linked entries are not recursively fetched and do
+not enlarge the validated publication pool.
+
+The UI distinguishes saved, unavailable-at-this-endpoint, not applicable,
+size-limited, failed and pending resources, with a live aggregate overview and
+paginated record details. Abstract-only is an access limitation, not an exclusion
+or a quality judgment. Some source records have neither abstract nor full text.
+Availability is provider-scoped, not proof of a paywall. Explicit Europe PMC
+metadata indicating no hosted text or no supported open-access XML prevents a
+doomed download. Unknown availability and HTTP 500 remain retryable failures.
+Supplements blocked by failed XML are counted separately and retried after their
+prerequisite; confirmed-unavailable resources are not retried (ADR 0030).
+Pause finishes the current request; resume skips successful resources and appends
+attempts for unfinished/failed resources. Restart leaves interrupted work paused.
+Later work must freeze the exact material versions it consumes, locking further
+acquisition in this project. See ADR 0029 for fixed limits and security boundaries.
+
+Missing text also uses bounded official PMC BioC and bioRxiv/medRxiv JATS routes
+(ADR 0031). BioC is a repository-derived text representation, not original JATS.
+Preprint DOI, API date/version selection and version-path identity are preserved;
+an ambiguous version remains unavailable rather than silently using the latest.
+Old runs can explicitly append fallback resources without replacing earlier
+attempts or enqueuing traffic until the user resumes. Full-text coverage counts
+each retained source once across primary and fallback assets. Supplementary
+discovery remains Europe PMC-specific; fallback text does not trigger scraping.
+
+New job manifests prioritize each record's metadata, primary text and fallback
+across the entire pool before linked-data inventories and, finally, supplements.
+Slow supplement requests therefore cannot block the remaining full texts. Jobs
+remain sequential; download size/time limits and retries are unchanged. Existing
+active manifests keep their original order: pause/restart/resume creates a new
+ordered manifest without editing completed history. Progress names the phase.
+PMC BioC's explicit "No result can be found" message is a provider-scoped
+unavailable outcome. A digest-verified saved response can append that correction
+on explicit resume without repeating the request; generic HTML, identity errors,
+timeouts and HTTP 500 do not imply unavailable text.
+
+ADR 0032 makes only temporary network/service failures retryable. Ambiguous
+versions, identity or format failures require review; no enabled route is
+unsupported, not proven absent. Size limits remain unresolved separately.
+The UI explains each outcome and never presents a finished queue as proof that
+every available resource was recovered. Verified historical BioC responses can
+be reparsed locally using numeric or explicit PMC IDs; parent attempts/hashes
+are preserved. Explicit absence/no-route outcomes can be corrected without
+redownloading; successful material is not replaced. Later extraction must account
+for unresolved coverage instead of silently dropping those retained records.
+
+Primary XML failures covered by verified fallback text are recovered, not missing
+full text (ADR 0033). They are excluded from retries and keep the original failed
+HTTP history and fallback provenance. Supplements are not implied by recovery:
+explicit saved metadata reporting none resolves the dependency; otherwise an
+unsupported discovery route is visible without asserting no supplement exists.
+
+Unpaywall, arbitrary publisher/repository resolution, PDFs, user-provided documents, richer
+scientific-database enrichment and extraction remain future work.
 
 ### Evidence extraction
 

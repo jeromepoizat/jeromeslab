@@ -1528,6 +1528,8 @@ class JobRepository:
                     "WHERE id = ?", (link["run_id"],),
                 )
                 schedule_scoring_batches(connection, link["run_id"])
+            from jeromes_laboratory.database.materials import recover_material_runs
+            recover_material_runs(connection)
         return self.get_job(job_id)
 
     def claim_next(self) -> JobRecord | None:
@@ -2558,6 +2560,8 @@ class JobRepository:
                 "UPDATE jobs SET status = 'failed', completed_at = ?, error = ? WHERE id = ?",
                 (now, error, job_id),
             )
+            from jeromes_laboratory.database.materials import recover_material_runs
+            recover_material_runs(connection)
             if self._table_exists(connection, "relevance_scoring_batch_jobs"):
                 linked = connection.execute(
                     "SELECT runs.id, runs.stop_requested, links.batch_index, "
@@ -2601,6 +2605,12 @@ class JobRepository:
                 "WHERE status = 'awaiting_response' AND kind = 'source_retrieval'",
                 (now,),
             )
+            from jeromes_laboratory.database.materials import recover_material_runs
+            connection.execute(
+                "UPDATE jobs SET error = 'Source collection was interrupted. Resume to continue from saved resources.' "
+                "WHERE kind = 'source_material_collection' AND status = 'failed' AND completed_at = ?", (now,),
+            )
+            recover_material_runs(connection)
             connection.execute(
                 "UPDATE llm_calls SET status = 'failed', completed_at = ?, error = ? "
                 "WHERE status = 'started'",

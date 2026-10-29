@@ -281,6 +281,17 @@ main.project-main {
 .section-title h2 { margin: 0; }
 .section-help { align-items: center; border: 1px solid var(--border); border-radius: 50%; color: var(--muted); cursor: help; display: inline-flex; font-size: 0.72rem; font-weight: 700; height: 1.2rem; justify-content: center; position: relative; width: 1.2rem; }
 .section-help--warning { flex: 0 0 auto; }
+.source-material-job-card { align-items: center; flex-wrap: wrap; gap: 1rem; justify-content: space-between; margin: 1rem 0; }
+.source-material-job-card > div { display: flex; flex-direction: column; gap: 0.3rem; }
+.source-material-overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 1rem; margin-top: 1.2rem; }
+.source-material-overview > div { align-items: center; border: 1px solid var(--border); border-radius: 0.65rem; display: flex; flex-direction: column; gap: 0.4rem; padding: 1rem; text-align: center; }
+.source-material-overview strong { color: var(--ink); font-size: 1.8rem; }
+.source-material-overview span, .source-material-record small { color: var(--muted); }
+.source-material-stage .source-material-access-summary { margin-top: 1.25rem; }
+.source-material-records { margin-top: 1.5rem; }
+.source-material-records summary { cursor: pointer; padding: 0.5rem 0; }
+.source-material-record { border: 1px solid var(--border); border-radius: 0.65rem; margin: 1rem 0; padding: 1rem; overflow-wrap: anywhere; }
+.source-material-record > strong, .source-material-record > small { display: block; margin-bottom: 0.4rem; }
 .section-help-tooltip { background: var(--tooltip-background); border: 1px solid var(--border); border-radius: 0.5rem; color: var(--tooltip-text); font-size: 0.82rem; font-weight: 400; left: calc(100% + 0.7rem); line-height: 1.45; opacity: 0; padding: 0.65rem 0.75rem; pointer-events: none; position: absolute; top: 50%; transform: translate(-0.2rem, -50%); transition: opacity 140ms ease, transform 140ms ease; width: min(18rem, calc(100vw - 2rem)); z-index: 5; }
 .section-help:hover .section-help-tooltip, .section-help:focus .section-help-tooltip { opacity: 1; transform: translate(0, -50%); }
 .edit-icon { background: var(--surface-subtle); border: 1px solid var(--border); border-radius: 0.4rem; bottom: 0; color: var(--ink); cursor: pointer; font-size: 1.1rem; padding: 0.35rem 0.5rem; position: absolute; right: -3rem; }

@@ -3,6 +3,7 @@ import { readApiError } from './apiClient'
 import { HelpTooltip, SectionTitle } from './ProjectElements'
 import { relevanceScoreLabels } from './relevanceScoreLabels'
 import { ScoreThresholdControl } from './ScoreThresholdControl'
+import { SourceMaterialStage } from './SourceMaterialStage'
 
 type Selection = {
   minimum_score: number
@@ -74,7 +75,7 @@ export function RelevanceScoreFilter({ projectId, runId, setupToken }: {
     finally { setSaving(false) }
   }
 
-  return <section className="project-section relevance-score-filter">
+  return <><section className="project-section relevance-score-filter">
     <SectionTitle help="Choose which validated relevance scores to carry into further work. The slider sets the minimum included score: higher scores are also included. Not assessable is a separate choice, not a low score. Counts refer only to the validated scored pool, not unscored retrieval records. This filter does not assess study quality or delete excluded records.">Select records by relevance score</SectionTitle>
     {!data && !error && <p className="evidence-themes-helper">Loading scored records…</p>}
     {data && <>
@@ -97,5 +98,5 @@ export function RelevanceScoreFilter({ projectId, runId, setupToken }: {
       {!data.selection && included === 0 && <p className="evidence-themes-helper">Include at least one record to continue.</p>}
     </>}
     {error && <p className="setup-error" role="alert">{error}</p>}
-  </section>
+  </section>{data?.selection && <SourceMaterialStage key={`${projectId}:${runId}`} projectId={projectId} filterRunId={runId} setupToken={setupToken} />}</>
 }

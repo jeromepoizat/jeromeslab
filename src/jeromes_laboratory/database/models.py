@@ -28,6 +28,70 @@ class ApplicationMetadata(Base):
     value: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class SourceMaterialRun(Base):
+    __tablename__ = "source_material_runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id"), nullable=False, unique=True)
+    filter_run_id: Mapped[str] = mapped_column(ForeignKey("relevance_score_filters.run_id"), nullable=False)
+    selection_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy_json: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    stop_requested: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    created_at: Mapped[str] = mapped_column(String(32), nullable=False)
+    completed_at: Mapped[str | None] = mapped_column(String(32))
+
+
+class SourceMaterialRecord(Base):
+    __tablename__ = "source_material_records"
+    __table_args__ = (UniqueConstraint("run_id", "source", "source_record_id"),
+                      Index("ix_material_records_run", "run_id", "ordinal"))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("source_material_runs.id"), nullable=False)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    source_record_id: Mapped[str] = mapped_column(String(255), nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    has_abstract: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class SourceMaterialResource(Base):
+    __tablename__ = "source_material_resources"
+    __table_args__ = (UniqueConstraint("record_id", "kind"),
+                      Index("ix_material_resources_record", "record_id"))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    record_id: Mapped[str] = mapped_column(ForeignKey("source_material_records.id"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pending")
+
+
+class SourceMaterialJobTask(Base):
+    __tablename__ = "source_material_job_tasks"
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), primary_key=True)
+    resource_id: Mapped[str] = mapped_column(ForeignKey("source_material_resources.id"), primary_key=True)
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class SourceMaterialAttempt(Base):
+    __tablename__ = "source_material_attempts"
+    __table_args__ = (UniqueConstraint("resource_id", "job_id"),
+                      Index("ix_material_attempts_resource", "resource_id"))
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    resource_id: Mapped[str] = mapped_column(ForeignKey("source_material_resources.id"), nullable=False)
+    job_id: Mapped[str] = mapped_column(ForeignKey("jobs.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    request_url: Mapped[str] = mapped_column(Text, nullable=False)
+    http_status: Mapped[int | None] = mapped_column(Integer)
+    retrieved_at: Mapped[str] = mapped_column(String(32), nullable=False)
+    raw_path: Mapped[str | None] = mapped_column(Text)
+    raw_sha256: Mapped[str | None] = mapped_column(String(64))
+    raw_byte_size: Mapped[int | None] = mapped_column(Integer)
+    content_type: Mapped[str | None] = mapped_column(Text)
+    details_json: Mapped[str] = mapped_column(Text, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text)
+
+
 class Project(Base):
     """The durable root record for one scientific research project."""
 

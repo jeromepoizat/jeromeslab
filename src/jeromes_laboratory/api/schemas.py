@@ -622,6 +622,11 @@ class ValidateRelevanceScoreFilterRequest(BaseModel):
     expected_confirmation_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
 
 
+class StartSourceMaterialRequest(BaseModel):
+    filter_run_id: str
+    expected_selection_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 class ClientStateResponse(BaseModel):
     """Device-local navigation state, not research data."""
 

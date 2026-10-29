@@ -142,6 +142,7 @@ function jobKindLabel(job: Job) {
   if (job.kind === 'evidence_strategy') return 'Scientific-source investigation plan'
   if (job.kind === 'source_queries') return 'Europe PMC query draft'
   if (job.kind === 'source_retrieval') return 'Europe PMC retrieval'
+  if (job.kind === 'source_material_collection') return 'Collect source material'
   if (job.kind === 'relevance_prompt_generation') return 'Relevance scoring prompt'
   if (job.kind === 'relevance_calibration') return 'Relevance sample calibration'
   if (job.kind === 'relevance_scoring_batch') return 'Relevance scoring batch'
@@ -156,8 +157,8 @@ const statusLabels: Record<JobStatus, string> = {
   cancelled: 'Cancelled',
 }
 
-export function JobStatusLabel({ status, sourceRetrieval = false }: { status: JobStatus; sourceRetrieval?: boolean }) {
-  return <span className={`job-status job-status--${status}`}><span aria-hidden="true" />{sourceRetrieval && status === 'awaiting_response' ? 'Searching Europe PMC' : statusLabels[status]}</span>
+export function JobStatusLabel({ status, sourceRetrieval = false, sourceCollection = false }: { status: JobStatus; sourceRetrieval?: boolean; sourceCollection?: boolean }) {
+  return <span className={`job-status job-status--${status}`}><span aria-hidden="true" />{sourceCollection && status === 'awaiting_response' ? 'Collecting source material' : sourceRetrieval && status === 'awaiting_response' ? 'Searching Europe PMC' : statusLabels[status]}</span>
 }
 
 function timestampMilliseconds(value: string | null) {
@@ -217,7 +218,7 @@ export function JobQueueDrawer({ jobs, nowMilliseconds, onClose, onCancel, onOpe
     {jobs.length === 0 ? <p className="queue-empty">No jobs have been started yet.</p> : <div className="queue-list">
       {jobs.map(job => <article className="queue-job" key={job.id}>
         <button className="queue-job-open" type="button" onClick={() => onOpenJob(job)} aria-label={`Open ${job.project_tag} ${jobKindLabel(job)} job`}>
-          <div className="queue-job-heading"><strong>{job.project_tag}</strong><JobStatusLabel status={job.status} sourceRetrieval={job.kind === 'source_retrieval'} /></div>
+          <div className="queue-job-heading"><strong>{job.project_tag}</strong><JobStatusLabel status={job.status} sourceRetrieval={job.kind === 'source_retrieval'} sourceCollection={job.kind === 'source_material_collection'} /></div>
           <p>{jobKindLabel(job)}</p>
           <div className="queue-job-details"><small>{job.provider === 'openai' ? 'OpenAI' : job.provider === 'anthropic' ? 'Anthropic' : 'Europe PMC'} · {job.model}</small><JobElapsedTime job={job} nowMilliseconds={nowMilliseconds} /></div>
           {job.error && <p className="setup-error">{job.error}</p>}

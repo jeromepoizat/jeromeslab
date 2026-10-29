@@ -7,7 +7,7 @@ from pathlib import Path
 from secrets import token_urlsafe
 from typing import Annotated, cast
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from fastapi.staticfiles import StaticFiles
 
 from jeromes_laboratory.api.schemas import (
@@ -40,6 +40,7 @@ from jeromes_laboratory.api.schemas import (
     SearchRunResponse,
     StartRelevanceCalibrationRequest,
     StartRelevanceScoringRequest,
+    StartSourceMaterialRequest,
     SubmitEvidenceScopeAnswersRequest,
     SubmitIntentSelectionRequest,
     SubmitScopeAnswersRequest,
@@ -72,6 +73,7 @@ from jeromes_laboratory.api.schemas import (
     WorkspaceSetupStatus,
 )
 from jeromes_laboratory.database.jobs import JobError, JobRecord, JobRepository
+from jeromes_laboratory.database.materials import MaterialError, MaterialRepository
 from jeromes_laboratory.database.projects import ProjectError, ProjectRecord, ProjectRepository
 from jeromes_laboratory.database.retrieval import RetrievalRepository
 from jeromes_laboratory.database.scoring import ScoringError, ScoringRepository
@@ -1585,6 +1587,41 @@ def create_app(
                 request.expected_confirmation_sha256,
             )
         except ScoringError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @application.get("/api/projects/{project_id}/source-material", tags=["source material"])
+    def source_material_state(
+        project_id: str, filter_run_id: str, offset: int = Query(default=0, ge=0, le=100000),
+    ) -> dict[str, object]:
+        try:
+            return MaterialRepository(job_repository().database_path).state(project_id, filter_run_id, offset)
+        except MaterialError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+        except sqlite3.OperationalError as error:
+            if "locked" not in str(error).lower() and "busy" not in str(error).lower():
+                raise
+            raise HTTPException(status_code=503, detail="The workspace is busy. Retry source collection status shortly.") from error
+
+    @application.post("/api/projects/{project_id}/source-material", tags=["source material"], status_code=201)
+    def start_source_material(
+        project_id: str, request: StartSourceMaterialRequest,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> dict[str, object]:
+        try:
+            return MaterialRepository(job_repository().database_path).start(
+                project_id, request.filter_run_id, request.expected_selection_sha256,
+            )
+        except MaterialError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @application.post("/api/projects/{project_id}/source-material/{run_id}/{action}", tags=["source material"])
+    def control_source_material(
+        project_id: str, run_id: str, action: str,
+        _: Annotated[None, Depends(require_setup_token)],
+    ) -> dict[str, object]:
+        try:
+            return MaterialRepository(job_repository().database_path).control(project_id, run_id, action)
+        except MaterialError as error:
             raise HTTPException(status_code=409, detail=str(error)) from error
 
     @application.get(

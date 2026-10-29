@@ -182,6 +182,37 @@ licensing/API constraints, response parsing, rate/error handling, and raw
 response capture. Cross-source entity resolution must preserve each source
 record and every discovery relationship.
 
+The source-material adapter now acquires known Europe PMC resources without an
+LLM. `database/materials.py` consumes the immutable relevance-filter digest and
+snapshots exact original retrieval rows/page references. One sequential queue
+job per start/resume writes independent immutable response attempts; resource
+cursors track progress without replacing successful history. Metadata, XML,
+ZIP and link responses have bounded downloads/validation. ZIPs stay unexecuted
+and unextracted; link inventory never launches external requests. Per-job task
+tables keep global queue snapshots small, while status returns aggregates and
+25-record pages. Pausing/cancellation/restart and failure preserve resumability,
+with no network activity under a database transaction (ADR 0029).
+
+The independent full-text resolver adds official PMC BioC and bioRxiv/medRxiv
+JATS routes only (ADR 0031). HTTPS host allowlists apply at every redirect, with
+bounded streamed bytes, deadlines, retries and pacing. Document IDs/body content
+are checked; ambiguous preprint versions are not silently substituted. Fallback
+resources and policy snapshots are additive; original Europe PMC policy/history
+stay fixed. Supplements do not inherit the fallback's access or parsing rules.
+New source-job manifests use versioned full-text-first scheduling across records,
+then link inventories and supplements. Old manifests are not reordered in place.
+The BioC absence classifier records its own version and can reuse a verified
+historical response to append a corrected unavailable attempt without network
+traffic. ADR 0032 separates temporary failures from verification issues requiring
+review, no supported route, explicit absence and size limits. Numeric/prefixed or
+explicit PMC metadata IDs must all agree. A single-operation, offline-only recovery
+job can reparse verified saved XML and append corrected outcomes without rewriting
+history or using the network. Limits/concurrency stay fixed.
+ADR 0033 resolves primary progress cursors covered by saved fallback attempts
+atomically, without rewriting failed attempts or counting another full-text asset.
+Supplement absence needs explicit metadata/XML evidence; unsupported discovery
+is separated from an indefinitely retryable prerequisite failure.
+
 ## Peptide design and computation boundaries
 
 The planned peptide design service consumes an exact approved design-brief
